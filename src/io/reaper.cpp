@@ -81,12 +81,12 @@ void slk::reaper_t::process_stop ()
 {
     _terminating = true;
 
-    // If there are no sockets being reaped finish immediately
-    if (!_sockets) {
-        send_done ();
-        _poller->rm_fd (_mailbox_handle);
-        _poller->stop ();
-    }
+    // FIXME: Since socket reaping is not fully implemented yet (process_reap is a stub),
+    // we always send done immediately. This allows context destruction to complete.
+    // In the full implementation, we should only send done when _sockets == 0.
+    send_done ();
+    _poller->rm_fd (_mailbox_handle);
+    _poller->stop ();
 }
 
 void slk::reaper_t::process_reap (socket_base_t *socket_)

@@ -4,12 +4,16 @@
 #include "precompiled.hpp"
 #include <new>
 #include <string>
+#include <sstream>
 #include <algorithm>
 
 #include "../util/macros.hpp"
 #include "socket_base.hpp"
 #include "../transport/tcp_listener.hpp"
 #include "../transport/tcp_connecter.hpp"
+#if defined SL_HAVE_IPC
+#include "../transport/ipc_listener.hpp"
+#endif
 #include "../io/io_thread.hpp"
 #include "session_base.hpp"
 #include "../util/config.hpp"
@@ -159,14 +163,26 @@ int slk::socket_base_t::parse_uri (const char *uri_,
 
 int slk::socket_base_t::check_protocol (const std::string &protocol_) const
 {
-    // ServerLink only supports TCP protocol
-    if (protocol_ != slk::protocol_name::tcp) {
-        errno = EPROTONOSUPPORT;
-        return -1;
+    // ServerLink supports TCP protocol
+    if (protocol_ == slk::protocol_name::tcp) {
+        return 0;
     }
 
-    // Protocol is available
-    return 0;
+#if defined SL_HAVE_IPC
+    // IPC protocol is supported on Unix-like systems
+    if (protocol_ == slk::protocol_name::ipc) {
+        return 0;
+    }
+#endif
+
+    // Inproc protocol is always supported
+    if (protocol_ == slk::protocol_name::inproc) {
+        return 0;
+    }
+
+    // Unsupported protocol
+    errno = EPROTONOSUPPORT;
+    return -1;
 }
 
 void slk::socket_base_t::attach_pipe (pipe_t *pipe_,
@@ -283,6 +299,56 @@ int slk::socket_base_t::bind (const char *endpoint_uri_)
         options.connected = true;
         return 0;
     }
+#if defined SL_HAVE_IPC
+    else if (protocol == slk::protocol_name::ipc) {
+        // Choose the I/O thread to run the listener in
+        io_thread_t *io_thread = choose_io_thread (options.affinity);
+        if (!io_thread) {
+            errno = SL_EMTHREAD;
+            return -1;
+        }
+
+        ipc_listener_t *listener =
+          new (std::nothrow) ipc_listener_t (io_thread, this, options);
+        alloc_assert (listener);
+        rc = listener->set_local_address (address.c_str ());
+        if (rc != 0) {
+            delete listener;
+            return -1;
+        }
+
+        // Save last endpoint URI
+        listener->get_local_address (_last_endpoint);
+
+        add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),
+                      static_cast<own_t *> (listener), NULL);
+        options.connected = true;
+        return 0;
+    }
+#endif
+    else if (protocol == slk::protocol_name::inproc) {
+        // inproc: register endpoint in context
+        const endpoint_t endpoint = {this, options};
+        rc = get_ctx ()->register_endpoint (address.c_str (), endpoint);
+        if (rc != 0) {
+            return -1;
+        }
+
+        // Save last endpoint URI
+        std::stringstream s;
+        s << protocol << "://" << address;
+        _last_endpoint = s.str ();
+
+        // For inproc, we don't have a listener object, so pass NULL
+        add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),
+                      NULL, NULL);
+
+        // Connect any pending connections for this endpoint
+        get_ctx ()->connect_pending (address.c_str (), this);
+
+        options.connected = true;
+        return 0;
+    }
 
     slk_assert (false);
     return -1;
@@ -312,6 +378,73 @@ int slk::socket_base_t::connect_internal (const char *endpoint_uri_)
     if (parse_uri (endpoint_uri_, protocol, address)
         || check_protocol (protocol)) {
         return -1;
+    }
+
+    // Handle inproc protocol specially (no I/O thread needed)
+    if (protocol == slk::protocol_name::inproc) {
+        // Find the bound endpoint
+        endpoint_t peer = get_ctx ()->find_endpoint (address.c_str ());
+        if (!peer.socket) {
+            // Endpoint not found, queue this connection as pending
+            // Create a bi-directional pipe
+            object_t *parents[2] = {this, NULL};
+            pipe_t *new_pipes[2] = {NULL, NULL};
+
+            int hwms[2] = {options.sndhwm, options.rcvhwm};
+            bool conflates[2] = {false, false};
+            rc = pipepair (parents, new_pipes, hwms, conflates);
+            errno_assert (rc == 0);
+
+            // Note: We can't set HWM boost yet since peer doesn't exist
+            // It will be set when the bind happens and the connection is established
+
+            // Save last endpoint URI
+            std::stringstream s;
+            s << protocol << "://" << address;
+            _last_endpoint = s.str ();
+
+            // Add endpoint pair
+            add_endpoint (make_unconnected_connect_endpoint_pair (_last_endpoint),
+                          NULL, new_pipes[0]);
+
+            // Queue the pending connection
+            const endpoint_t local_endpoint = {this, options};
+            get_ctx ()->pend_connection (address, local_endpoint, new_pipes);
+
+            return 0;
+        }
+
+        // Endpoint found, connect directly
+        // Create a bi-directional pipe
+        object_t *parents[2] = {this, peer.socket};
+        pipe_t *new_pipes[2] = {NULL, NULL};
+
+        int hwms[2] = {options.sndhwm, peer.options.rcvhwm};
+        bool conflates[2] = {false, false};
+        rc = pipepair (parents, new_pipes, hwms, conflates);
+        errno_assert (rc == 0);
+
+        // Set HWM boost for inproc
+        new_pipes[0]->set_hwms_boost (peer.options.sndhwm, peer.options.rcvhwm);
+        new_pipes[1]->set_hwms_boost (options.sndhwm, options.rcvhwm);
+
+        // Save last endpoint URI
+        std::stringstream s;
+        s << protocol << "://" << address;
+        _last_endpoint = s.str ();
+
+        // Attach local end of the pipe to this socket
+        attach_pipe (new_pipes[0], false, true);
+
+        // Attach remote end of the pipe to the peer socket
+        // We need to send a bind command to the peer
+        send_bind (peer.socket, new_pipes[1], false);
+
+        // Add endpoint
+        add_endpoint (make_unconnected_connect_endpoint_pair (_last_endpoint),
+                      NULL, new_pipes[0]);
+
+        return 0;
     }
 
     // Choose the I/O thread to run the session in
@@ -420,7 +553,10 @@ void slk::socket_base_t::add_endpoint (const endpoint_uri_pair_t &endpoint_pair_
                                         pipe_t *pipe_)
 {
     // Activate the session. Make it a child of this socket
-    launch_child (endpoint_);
+    // For inproc connections, endpoint_ may be NULL
+    if (endpoint_ != NULL)
+        launch_child (endpoint_);
+
     _endpoints.insert (std::make_pair (endpoint_pair_.identifier (),
                                        endpoint_pipe_t (endpoint_, pipe_)));
 

@@ -22,6 +22,9 @@
 #cmakedefine SL_HAVE_SO_NOSIGPIPE @SL_HAVE_SO_NOSIGPIPE@
 #cmakedefine SL_HAVE_MSG_NOSIGNAL @SL_HAVE_MSG_NOSIGNAL@
 
+/* IPC (Unix Domain Sockets) support */
+#cmakedefine SL_HAVE_IPC @SL_HAVE_IPC@
+
 /* Determine the best I/O poller to use */
 #if SL_HAVE_EPOLL
     #define SL_USE_EPOLL 1

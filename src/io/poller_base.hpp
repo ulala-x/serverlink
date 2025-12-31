@@ -71,6 +71,11 @@ class worker_poller_base_t : public poller_base_t
     // Stops the worker thread (should be called from destructor of leaf class)
     void stop_worker ();
 
+    // Flag to signal the worker thread to stop
+    // Accessed by I/O thread in loop() and by other threads in stop_worker()
+    // Using bool is safe here as it's set once and read repeatedly
+    bool _stopping;
+
   private:
     // Main worker thread routine
     static void worker_routine (void *arg_);

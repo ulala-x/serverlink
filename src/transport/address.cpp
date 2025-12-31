@@ -6,6 +6,10 @@
 #include "../core/ctx.hpp"
 #include "../util/err.hpp"
 #include "tcp_address.hpp"
+#if defined SL_HAVE_IPC
+#include "ipc_address.hpp"
+#endif
+#include "inproc_address.hpp"
 
 #include <string>
 #include <sstream>
@@ -23,12 +27,26 @@ slk::address_t::~address_t ()
     if (protocol == protocol_name::tcp) {
         SL_DELETE (resolved.tcp_addr);
     }
+#if defined SL_HAVE_IPC
+    else if (protocol == protocol_name::ipc) {
+        SL_DELETE (resolved.ipc_addr);
+    }
+#endif
+    else if (protocol == protocol_name::inproc) {
+        SL_DELETE (resolved.inproc_addr);
+    }
 }
 
 int slk::address_t::to_string (std::string &addr_) const
 {
     if (protocol == protocol_name::tcp && resolved.tcp_addr)
         return resolved.tcp_addr->to_string (addr_);
+#if defined SL_HAVE_IPC
+    if (protocol == protocol_name::ipc && resolved.ipc_addr)
+        return resolved.ipc_addr->to_string (addr_);
+#endif
+    if (protocol == protocol_name::inproc && resolved.inproc_addr)
+        return resolved.inproc_addr->to_string (addr_);
 
     if (!protocol.empty () && !address.empty ()) {
         std::stringstream s;

@@ -89,6 +89,20 @@ else()
     set(SL_HAVE_MSG_NOSIGNAL 0)
 endif()
 
+# Detect IPC support (Unix Domain Sockets)
+# Available on all Unix-like systems, not on Windows
+if(NOT WIN32)
+    check_include_file("sys/un.h" HAVE_SYS_UN_H)
+    if(HAVE_SYS_UN_H)
+        set(SL_HAVE_IPC 1)
+        message(STATUS "IPC (Unix Domain Sockets) support detected")
+    else()
+        set(SL_HAVE_IPC 0)
+    endif()
+else()
+    set(SL_HAVE_IPC 0)
+endif()
+
 # Platform-specific compiler flags
 if(MSVC)
     # MSVC-specific flags
@@ -123,6 +137,7 @@ message(STATUS "  epoll:           ${SL_HAVE_EPOLL}")
 message(STATUS "  kqueue:          ${SL_HAVE_KQUEUE}")
 message(STATUS "  select:          ${SL_HAVE_SELECT}")
 message(STATUS "  eventfd:         ${SL_HAVE_EVENTFD}")
+message(STATUS "  IPC:             ${SL_HAVE_IPC}")
 message(STATUS "  TCP_KEEPIDLE:    ${SL_HAVE_TCP_KEEPIDLE}")
 message(STATUS "  SO_NOSIGPIPE:    ${SL_HAVE_SO_NOSIGPIPE}")
 message(STATUS "  MSG_NOSIGNAL:    ${SL_HAVE_MSG_NOSIGNAL}")

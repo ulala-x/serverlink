@@ -84,6 +84,9 @@ add_custom_target(test-all
     COMMENT "Running all tests"
 )
 
+# Benchmarks (performance tests, not included in CTest)
+add_subdirectory(benchmark)
+
 # Print summary
 message(STATUS "")
 message(STATUS "Test Suite Configuration:")

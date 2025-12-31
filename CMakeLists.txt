@@ -84,6 +84,7 @@ set(SERVERLINK_SOURCES
     # Transport sources
     src/transport/address.cpp
     src/transport/tcp_address.cpp
+    src/transport/inproc_address.cpp
     src/transport/ip_resolver.cpp
     src/transport/tcp.cpp
     src/transport/stream_connecter_base.cpp
@@ -110,6 +111,19 @@ set(SERVERLINK_SOURCES
 # Platform-specific I/O sources
 if(SL_HAVE_EPOLL)
     list(APPEND SERVERLINK_SOURCES src/io/epoll.cpp)
+elseif(SL_HAVE_KQUEUE)
+    list(APPEND SERVERLINK_SOURCES src/io/kqueue.cpp)
+elseif(SL_HAVE_SELECT)
+    list(APPEND SERVERLINK_SOURCES src/io/select.cpp)
+endif()
+
+# IPC transport sources (Unix-like systems only)
+if(SL_HAVE_IPC)
+    list(APPEND SERVERLINK_SOURCES
+        src/transport/ipc_address.cpp
+        src/transport/ipc_listener.cpp
+        src/transport/ipc_connecter.cpp
+    )
 endif()
 
 # For now, create an interface library since we have no source files yet

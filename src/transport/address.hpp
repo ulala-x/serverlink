@@ -17,10 +17,18 @@ namespace slk
 {
 class ctx_t;
 class tcp_address_t;
+#if defined SL_HAVE_IPC
+class ipc_address_t;
+#endif
+class inproc_address_t;
 
 namespace protocol_name
 {
 static const char tcp[] = "tcp";
+#if defined SL_HAVE_IPC
+static const char ipc[] = "ipc";
+#endif
+static const char inproc[] = "inproc";
 }
 
 struct address_t
@@ -41,6 +49,10 @@ struct address_t
     {
         void *dummy;
         tcp_address_t *tcp_addr;
+#if defined SL_HAVE_IPC
+        ipc_address_t *ipc_addr;
+#endif
+        inproc_address_t *inproc_addr;
     } resolved;
 
     int to_string (std::string &addr_) const;

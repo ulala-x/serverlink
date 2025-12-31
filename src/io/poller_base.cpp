@@ -85,12 +85,14 @@ uint64_t poller_base_t::execute_timers ()
     return res;
 }
 
-worker_poller_base_t::worker_poller_base_t (ctx_t *ctx_) : _ctx (ctx_)
+worker_poller_base_t::worker_poller_base_t (ctx_t *ctx_) :
+    _stopping (false), _ctx (ctx_)
 {
 }
 
 void worker_poller_base_t::stop_worker ()
 {
+    _stopping = true;
     _worker.stop ();
 }
 

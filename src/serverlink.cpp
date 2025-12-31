@@ -159,11 +159,10 @@ void SL_CALL slk_ctx_destroy(slk_ctx_t *ctx_)
     slk::ctx_t *ctx = reinterpret_cast<slk::ctx_t*>(ctx_);
 
     try {
+        // NOTE: terminate() calls "delete this", so we don't delete ctx here
         ctx->terminate();
-        delete ctx;
     } catch (...) {
-        // Best effort cleanup
-        delete ctx;
+        // Best effort cleanup - terminate() should have deleted the object
     }
 }
 

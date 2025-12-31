@@ -9,6 +9,9 @@
 #include "../pipe/pipe.hpp"
 #include "../util/likely.hpp"
 #include "../transport/tcp_connecter.hpp"
+#if defined SL_HAVE_IPC
+#include "../transport/ipc_connecter.hpp"
+#endif
 #include "../transport/address.hpp"
 
 #include "ctx.hpp"
@@ -383,6 +386,12 @@ void slk::session_base_t::start_connecting (bool wait_)
         connecter = new (std::nothrow)
           tcp_connecter_t (io_thread, this, options, _addr, wait_);
     }
+#if defined SL_HAVE_IPC
+    else if (_addr->protocol == protocol_name::ipc) {
+        connecter = new (std::nothrow)
+          ipc_connecter_t (io_thread, this, options, _addr, wait_);
+    }
+#endif
 
     if (connecter != NULL) {
         alloc_assert (connecter);

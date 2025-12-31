@@ -114,6 +114,7 @@ void epoll_t::reset_pollout (handle_t handle_)
 void epoll_t::stop ()
 {
     check_thread ();
+    _stopping = true;
 }
 
 int epoll_t::max_fds ()
@@ -125,7 +126,7 @@ void epoll_t::loop ()
 {
     epoll_event ev_buf[max_io_events];
 
-    while (true) {
+    while (!_stopping) {
         // Execute any due timers
         const int timeout = static_cast<int> (execute_timers ());
 
