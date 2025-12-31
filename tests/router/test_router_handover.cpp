@@ -55,7 +55,6 @@ static void test_router_handover_reconnect()
 
     /* Send a message from client1 */
     slk_send(client1, "SERVER", 6, SLK_SNDMORE);
-    slk_send(client1, "", 0, SLK_SNDMORE);
     slk_send(client1, "Message1", 8, 0);
 
     test_sleep_ms(100);
@@ -63,7 +62,6 @@ static void test_router_handover_reconnect()
     /* Server receives */
     TEST_ASSERT(test_poll_readable(server, 1000));
     char buf[256];
-    slk_recv(server, buf, sizeof(buf), 0);
     slk_recv(server, buf, sizeof(buf), 0);
     int rc = slk_recv(server, buf, sizeof(buf), 0);
     TEST_ASSERT_EQ(rc, 8);
@@ -83,7 +81,6 @@ static void test_router_handover_reconnect()
     /* With ROUTER_HANDOVER, server should accept the new connection */
     /* Send a message from client2 */
     slk_send(client2, "SERVER", 6, SLK_SNDMORE);
-    slk_send(client2, "", 0, SLK_SNDMORE);
     slk_send(client2, "Message2", 8, 0);
 
     test_sleep_ms(100);
@@ -91,21 +88,18 @@ static void test_router_handover_reconnect()
     /* Server should receive from the new client */
     TEST_ASSERT(test_poll_readable(server, 1000));
     slk_recv(server, buf, sizeof(buf), 0);
-    slk_recv(server, buf, sizeof(buf), 0);
     rc = slk_recv(server, buf, sizeof(buf), 0);
     TEST_ASSERT_EQ(rc, 8);
     TEST_ASSERT_MEM_EQ(buf, "Message2", 8);
 
     /* Server can send back to CLIENT (should route to client2) */
     slk_send(server, "CLIENT", 6, SLK_SNDMORE);
-    slk_send(server, "", 0, SLK_SNDMORE);
     slk_send(server, "Reply", 5, 0);
 
     test_sleep_ms(100);
 
     /* client2 should receive the reply */
     TEST_ASSERT(test_poll_readable(client2, 1000));
-    slk_recv(client2, buf, sizeof(buf), 0);
     slk_recv(client2, buf, sizeof(buf), 0);
     rc = slk_recv(client2, buf, sizeof(buf), 0);
     TEST_ASSERT_EQ(rc, 5);
@@ -145,14 +139,12 @@ static void test_router_handover_disabled_duplicate_id()
 
     /* Send from client1 (should work) */
     slk_send(client1, "SERVER", 6, SLK_SNDMORE);
-    slk_send(client1, "", 0, SLK_SNDMORE);
     slk_send(client1, "FromClient1", 11, 0);
 
     test_sleep_ms(100);
     TEST_ASSERT(test_poll_readable(server, 1000));
 
     char buf[256];
-    slk_recv(server, buf, sizeof(buf), 0);
     slk_recv(server, buf, sizeof(buf), 0);
     int rc = slk_recv(server, buf, sizeof(buf), 0);
     TEST_ASSERT_EQ(rc, 11);
@@ -188,7 +180,6 @@ static void test_router_handover_with_queued_messages()
     /* Server sends messages to CLIENT */
     for (int i = 0; i < 3; i++) {
         slk_send(server, "CLIENT", 6, SLK_SNDMORE);
-        slk_send(server, "", 0, SLK_SNDMORE);
         char msg[32];
         snprintf(msg, sizeof(msg), "Queued%d", i);
         slk_send(server, msg, strlen(msg), 0);
@@ -199,7 +190,6 @@ static void test_router_handover_with_queued_messages()
     /* Client1 receives some messages */
     TEST_ASSERT(test_poll_readable(client1, 1000));
     char buf[256];
-    slk_recv(client1, buf, sizeof(buf), 0);
     slk_recv(client1, buf, sizeof(buf), 0);
     slk_recv(client1, buf, sizeof(buf), 0);
 
@@ -219,13 +209,11 @@ static void test_router_handover_with_queued_messages()
 
     /* Send from client2 */
     slk_send(client2, "SERVER", 6, SLK_SNDMORE);
-    slk_send(client2, "", 0, SLK_SNDMORE);
     slk_send(client2, "AfterHandover", 13, 0);
 
     test_sleep_ms(100);
     TEST_ASSERT(test_poll_readable(server, 1000));
 
-    slk_recv(server, buf, sizeof(buf), 0);
     slk_recv(server, buf, sizeof(buf), 0);
     int rc = slk_recv(server, buf, sizeof(buf), 0);
     TEST_ASSERT_EQ(rc, 13);

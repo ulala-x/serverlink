@@ -84,8 +84,6 @@ static void test_router_mandatory_connected_peer()
     int rc;
     rc = slk_send(client, "SERVER", 6, SLK_SNDMORE);
     TEST_ASSERT(rc >= 0);
-    rc = slk_send(client, "", 0, SLK_SNDMORE);
-    TEST_ASSERT(rc >= 0);
     rc = slk_send(client, "Hello", 5, 0);
     TEST_ASSERT(rc >= 0);
 
@@ -95,15 +93,12 @@ static void test_router_mandatory_connected_peer()
 
     char buf[256];
     slk_recv(server, buf, sizeof(buf), 0); /* identity */
-    slk_recv(server, buf, sizeof(buf), 0); /* empty */
     rc = slk_recv(server, buf, sizeof(buf), 0); /* payload */
     TEST_ASSERT_EQ(rc, 5);
     TEST_ASSERT_MEM_EQ(buf, "Hello", 5);
 
     /* Server sends back (should succeed because CLIENT is connected) */
     rc = slk_send(server, "CLIENT", 6, SLK_SNDMORE);
-    TEST_ASSERT(rc >= 0);
-    rc = slk_send(server, "", 0, SLK_SNDMORE);
     TEST_ASSERT(rc >= 0);
     rc = slk_send(server, "World", 5, 0);
     TEST_ASSERT(rc >= 0);
@@ -112,7 +107,6 @@ static void test_router_mandatory_connected_peer()
     test_sleep_ms(100);
     TEST_ASSERT(test_poll_readable(client, 1000));
 
-    slk_recv(client, buf, sizeof(buf), 0);
     slk_recv(client, buf, sizeof(buf), 0);
     rc = slk_recv(client, buf, sizeof(buf), 0);
     TEST_ASSERT_EQ(rc, 5);
@@ -161,8 +155,6 @@ static void test_router_mandatory_after_disconnect()
     /* Verify connection works */
     int rc = slk_send(client, "SERVER", 6, SLK_SNDMORE);
     TEST_ASSERT(rc >= 0);
-    rc = slk_send(client, "", 0, SLK_SNDMORE);
-    TEST_ASSERT(rc >= 0);
     rc = slk_send(client, "Test", 4, 0);
     TEST_ASSERT(rc >= 0);
 
@@ -170,7 +162,6 @@ static void test_router_mandatory_after_disconnect()
     TEST_ASSERT(test_poll_readable(server, 1000));
 
     char buf[256];
-    slk_recv(server, buf, sizeof(buf), 0);
     slk_recv(server, buf, sizeof(buf), 0);
     slk_recv(server, buf, sizeof(buf), 0);
 
@@ -185,11 +176,8 @@ static void test_router_mandatory_after_disconnect()
      * fail on the routing ID, others on the final frame. */
     rc = slk_send(server, "CLIENT", 6, SLK_SNDMORE);
     if (rc >= 0) {
-        rc = slk_send(server, "", 0, SLK_SNDMORE);
-        if (rc >= 0) {
-            rc = slk_send(server, "AfterDisconnect", 15, 0);
-            /* The final frame should either fail or be silently dropped */
-        }
+        rc = slk_send(server, "AfterDisconnect", 15, 0);
+        /* The final frame should either fail or be silently dropped */
     }
     /* At least one of the frames should have failed, or all succeeded
      * but the message is dropped. Either behavior is acceptable. */

@@ -93,9 +93,8 @@ static void test_router_to_router_basic()
     /* Wait for connection */
     test_sleep_ms(200);
 
-    /* Client sends to server: [SERVER][empty][payload] */
+    /* Client sends to server: [SERVER][payload] */
     slk_send(client, "SERVER", 6, SLK_SNDMORE);
-    slk_send(client, "", 0, SLK_SNDMORE);
     slk_send(client, "Hello", 5, 0);
 
     /* Server receives */
@@ -103,23 +102,18 @@ static void test_router_to_router_basic()
     TEST_ASSERT(test_poll_readable(server, 1000));
 
     char identity[256];
-    char empty[256];
     char payload[256];
 
     int rc;
     rc = slk_recv(server, identity, sizeof(identity), 0);
     TEST_ASSERT(rc > 0);
 
-    rc = slk_recv(server, empty, sizeof(empty), 0);
-    TEST_ASSERT_EQ(rc, 0);
-
     rc = slk_recv(server, payload, sizeof(payload), 0);
     TEST_ASSERT_EQ(rc, 5);
     TEST_ASSERT_MEM_EQ(payload, "Hello", 5);
 
-    /* Server sends back: [CLIENT][empty][reply] */
+    /* Server sends back: [CLIENT][reply] */
     slk_send(server, "CLIENT", 6, SLK_SNDMORE);
-    slk_send(server, "", 0, SLK_SNDMORE);
     slk_send(server, "World", 5, 0);
 
     /* Client receives */
@@ -128,9 +122,6 @@ static void test_router_to_router_basic()
 
     rc = slk_recv(client, identity, sizeof(identity), 0);
     TEST_ASSERT(rc > 0);
-
-    rc = slk_recv(client, empty, sizeof(empty), 0);
-    TEST_ASSERT_EQ(rc, 0);
 
     rc = slk_recv(client, payload, sizeof(payload), 0);
     TEST_ASSERT_EQ(rc, 5);
@@ -163,7 +154,6 @@ static void test_router_multiple_messages()
         snprintf(msg, sizeof(msg), "Message %d", i);
 
         slk_send(client, "SERVER", 6, SLK_SNDMORE);
-        slk_send(client, "", 0, SLK_SNDMORE);
         slk_send(client, msg, strlen(msg), 0);
     }
 
@@ -173,12 +163,11 @@ static void test_router_multiple_messages()
     for (int i = 0; i < 10; i++) {
         TEST_ASSERT(test_poll_readable(server, 1000));
 
-        char identity[256], empty[256], payload[256];
+        char identity[256], payload[256];
         char expected[32];
         snprintf(expected, sizeof(expected), "Message %d", i);
 
         slk_recv(server, identity, sizeof(identity), 0);
-        slk_recv(server, empty, sizeof(empty), 0);
         int rc = slk_recv(server, payload, sizeof(payload), 0);
 
         payload[rc] = '\0';
@@ -210,7 +199,6 @@ static void test_router_bidirectional()
     for (int i = 0; i < 5; i++) {
         /* Client -> Server */
         slk_send(client, "SERVER", 6, SLK_SNDMORE);
-        slk_send(client, "", 0, SLK_SNDMORE);
         slk_send(client, "PING", 4, 0);
 
         test_sleep_ms(50);
@@ -218,20 +206,17 @@ static void test_router_bidirectional()
 
         char buf[256];
         slk_recv(server, buf, sizeof(buf), 0);
-        slk_recv(server, buf, sizeof(buf), 0);
         int rc = slk_recv(server, buf, sizeof(buf), 0);
         TEST_ASSERT_EQ(rc, 4);
         TEST_ASSERT_MEM_EQ(buf, "PING", 4);
 
         /* Server -> Client */
         slk_send(server, "CLIENT", 6, SLK_SNDMORE);
-        slk_send(server, "", 0, SLK_SNDMORE);
         slk_send(server, "PONG", 4, 0);
 
         test_sleep_ms(50);
         TEST_ASSERT(test_poll_readable(client, 1000));
 
-        slk_recv(client, buf, sizeof(buf), 0);
         slk_recv(client, buf, sizeof(buf), 0);
         rc = slk_recv(client, buf, sizeof(buf), 0);
         TEST_ASSERT_EQ(rc, 4);
