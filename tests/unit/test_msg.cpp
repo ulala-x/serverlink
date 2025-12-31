@@ -127,21 +127,21 @@ static void test_msg_routing_id()
     slk_msg_t *msg = slk_msg_new();
     TEST_ASSERT_NOT_NULL(msg);
 
-    const char *routing_id = "CLIENT123";
-    size_t id_len = strlen(routing_id);
+    /* Routing IDs in ServerLink are uint32_t (not strings) */
+    uint32_t routing_id = 0x12345678;
 
     /* Set routing ID */
-    int rc = slk_msg_set_routing_id(msg, routing_id, id_len);
+    int rc = slk_msg_set_routing_id(msg, &routing_id, sizeof(uint32_t));
     TEST_SUCCESS(rc);
 
     /* Get routing ID */
-    char buffer[256];
-    size_t buffer_size = sizeof(buffer);
-    rc = slk_msg_get_routing_id(msg, buffer, &buffer_size);
+    uint32_t retrieved_id = 0;
+    size_t buffer_size = sizeof(uint32_t);
+    rc = slk_msg_get_routing_id(msg, &retrieved_id, &buffer_size);
     TEST_SUCCESS(rc);
 
-    TEST_ASSERT_EQ(buffer_size, id_len);
-    TEST_ASSERT_MEM_EQ(buffer, routing_id, id_len);
+    TEST_ASSERT_EQ(buffer_size, sizeof(uint32_t));
+    TEST_ASSERT_EQ(retrieved_id, routing_id);
 
     slk_msg_destroy(msg);
 }

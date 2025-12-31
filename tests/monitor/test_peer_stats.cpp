@@ -230,9 +230,27 @@ static void test_peer_stats_after_disconnect()
 
     /* Disconnect */
     test_socket_close(client);
-    test_sleep_ms(300);
 
-    /* Check if still connected */
+    /* Wait for disconnect to be processed
+     * The pipe termination happens asynchronously, so we need to wait
+     * for the I/O thread to process the disconnect and remove the pipe.
+     * We repeatedly trigger command processing to ensure the pipe_terminated
+     * command is processed. */
+    for (int i = 0; i < 10; i++) {
+        test_sleep_ms(100);
+        /* Try a non-blocking recv to trigger command processing */
+        char dummy[256];
+        int rc = slk_recv(server, dummy, sizeof(dummy), SLK_DONTWAIT);
+        (void)rc; /* May fail with EAGAIN, that's ok */
+
+        /* Check if disconnection has been processed */
+        connected = slk_is_connected(server, "CLIENT", 6);
+        if (connected == 0) {
+            break;
+        }
+    }
+
+    /* Final check if still connected */
     connected = slk_is_connected(server, "CLIENT", 6);
     /* After disconnect, should not be connected */
     TEST_ASSERT_EQ(connected, 0);
