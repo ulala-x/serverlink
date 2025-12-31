@@ -235,6 +235,7 @@ void slk::stream_engine_base_t::in_event ()
 
         //  Adjust input size
         _insize = static_cast<size_t> (rc);
+        _decoder->resize_buffer (_insize);
         SL_DEBUG_LOG("DEBUG: adjusted _insize=%zu\n", _insize);
     }
 
@@ -389,6 +390,9 @@ bool slk::stream_engine_base_t::restart_input ()
     _input_stopped = false;
 
     _session->flush ();
+
+    // Try to get more messages from the decoder
+    in_event ();
 
     return true;
 }

@@ -30,12 +30,12 @@
     classname(classname &&) = delete; \
     classname &operator=(classname &&) = delete;
 
-// Debug logging - only enabled in debug builds
-#ifdef NDEBUG
-    #define SL_DEBUG_LOG(...)
-#else
+// Debug logging - only enabled when explicitly requested
+#ifdef SL_ENABLE_DEBUG_LOG
     #include <cstdio>
     #define SL_DEBUG_LOG(...) fprintf(stderr, __VA_ARGS__)
+#else
+    #define SL_DEBUG_LOG(...)
 #endif
 
 #endif

@@ -115,13 +115,10 @@ void slk::session_base_t::reset ()
 void slk::session_base_t::flush ()
 {
     SL_DEBUG_LOG("DEBUG: session flush called, _pipe=%p\n", (void*)_pipe);
-    fflush(stderr);
     if (_pipe) {
         SL_DEBUG_LOG("DEBUG: session flush: calling _pipe->flush()\n");
-        fflush(stderr);
         _pipe->flush ();
         SL_DEBUG_LOG("DEBUG: session flush: _pipe->flush() returned\n");
-        fflush(stderr);
     }
 }
 
@@ -180,7 +177,6 @@ void slk::session_base_t::pipe_terminated (pipe_t *pipe_)
 void slk::session_base_t::read_activated (pipe_t *pipe_)
 {
     SL_DEBUG_LOG("DEBUG: session read_activated called\n");
-    fflush(stderr);
     // Skip activating if we're detaching this pipe
     if (unlikely (pipe_ != _pipe)) {
         slk_assert (_terminating_pipes.count (pipe_) == 1);
@@ -190,7 +186,6 @@ void slk::session_base_t::read_activated (pipe_t *pipe_)
     if (unlikely (_engine == NULL)) {
         if (_pipe) {
             SL_DEBUG_LOG("DEBUG: session read_activated: calling _pipe->check_read()\n");
-            fflush(stderr);
             _pipe->check_read ();
         }
         return;
@@ -198,7 +193,6 @@ void slk::session_base_t::read_activated (pipe_t *pipe_)
 
     if (likely (pipe_ == _pipe)) {
         SL_DEBUG_LOG("DEBUG: session read_activated: calling _engine->restart_output()\n");
-        fflush(stderr);
         _engine->restart_output ();
     }
 }
@@ -283,7 +277,6 @@ void slk::session_base_t::engine_ready ()
         //  The pipe starts with _in_active=true from the constructor.
         SL_DEBUG_LOG("DEBUG: engine_ready: session thread=%u, socket thread=%u, pipes[1]=%p, pipes[1] thread=%u\n",
                 get_tid(), _socket->get_tid(), (void*)pipes[1], pipes[1]->get_tid());
-        fflush(stderr);
 
         //  Ask socket to plug into the remote end of the pipe.
         //  This adds the pipe to the socket's pipes list and sets the event sink.

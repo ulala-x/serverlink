@@ -25,6 +25,9 @@
 /* IPC (Unix Domain Sockets) support */
 #cmakedefine SL_HAVE_IPC @SL_HAVE_IPC@
 
+/* Performance monitoring */
+#cmakedefine SL_ENABLE_MONITORING
+
 /* Determine the best I/O poller to use */
 #if SL_HAVE_EPOLL
     #define SL_USE_EPOLL 1

@@ -28,9 +28,11 @@ slk::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     // raw_socket functionality in ROUTER is deprecated
     _raw_socket (false),
     _probe_router (false),
-    _handover (false),
-    _conn_manager (NULL),
+    _handover (false)
+#ifdef SL_ENABLE_MONITORING
+    ,_conn_manager (NULL),
     _event_dispatcher (NULL)
+#endif
 {
     options.type = SL_ROUTER;
     options.recv_routing_id = true;
@@ -41,12 +43,14 @@ slk::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _prefetched_id.init ();
     _prefetched_msg.init ();
 
+#ifdef SL_ENABLE_MONITORING
     // Initialize monitoring components
     _conn_manager = new (std::nothrow) connection_manager_t ();
     slk_assert (_conn_manager);
 
     _event_dispatcher = new (std::nothrow) event_dispatcher_t ();
     slk_assert (_event_dispatcher);
+#endif
 }
 
 slk::router_t::~router_t ()
@@ -55,6 +59,7 @@ slk::router_t::~router_t ()
     _prefetched_id.close ();
     _prefetched_msg.close ();
 
+#ifdef SL_ENABLE_MONITORING
     // Clean up monitoring components
     if (_conn_manager) {
         delete _conn_manager;
@@ -65,6 +70,7 @@ slk::router_t::~router_t ()
         delete _event_dispatcher;
         _event_dispatcher = NULL;
     }
+#endif
 }
 
 void slk::router_t::xattach_pipe (pipe_t *pipe_,
@@ -202,6 +208,7 @@ int slk::router_t::xgetsockopt (int option_,
 void slk::router_t::xpipe_terminated (pipe_t *pipe_)
 {
     if (0 == _anonymous_pipes.erase (pipe_)) {
+#ifdef SL_ENABLE_MONITORING
         // Get routing ID before erasing the pipe
         const blob_t &routing_id = pipe_->get_routing_id ();
 
@@ -211,6 +218,7 @@ void slk::router_t::xpipe_terminated (pipe_t *pipe_)
             _conn_manager->peer_disconnected (routing_id, now);
             dispatch_event (EVENT_PEER_DISCONNECTED, routing_id, now);
         }
+#endif
 
         erase_out_pipe (pipe_);
         _fq.pipe_terminated (pipe_);
@@ -319,10 +327,6 @@ int slk::router_t::xsend (msg_t *msg_)
             _current_out = NULL;
         } else {
             if (!_more_out) {
-                // Message fully sent - record statistics
-                const blob_t &routing_id = _current_out->get_routing_id ();
-                record_send_stats (routing_id, msg_->size ());
-
                 _current_out->flush ();
                 _current_out = NULL;
             }
@@ -399,6 +403,7 @@ int slk::router_t::xrecv (msg_t *msg_)
 
         const blob_t &routing_id = pipe->get_routing_id ();
 
+#ifdef SL_ENABLE_MONITORING
         // Check if this is a heartbeat message - handle internally
         if (heartbeat_t::is_heartbeat (msg_)) {
             process_heartbeat_message (routing_id, msg_);
@@ -410,9 +415,7 @@ int slk::router_t::xrecv (msg_t *msg_)
             // Recursively call to get the next message
             return xrecv (msg_);
         }
-
-        // Record receive statistics
-        record_recv_stats (routing_id, msg_->size ());
+#endif
 
         rc = msg_->init_size (routing_id.size ());
         errno_assert (rc == 0);
@@ -522,7 +525,6 @@ bool slk::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
 
     SL_DEBUG_LOG("DEBUG: router identify_peer called, locally_initiated=%d, raw_socket=%d\n",
             locally_initiated_, options.raw_socket);
-    fflush(stderr);
 
     if (locally_initiated_ && connect_routing_id_is_set ()) {
         const std::string connect_routing_id = extract_connect_routing_id ();
@@ -532,7 +534,6 @@ bool slk::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
         // Not allowed to duplicate an existing rid
         slk_assert (!has_out_pipe (routing_id));
         SL_DEBUG_LOG("DEBUG: router identify_peer: using connect_routing_id\n");
-        fflush(stderr);
     } else if (
       options
         .raw_socket) { // Always assign an integral routing id for raw-socket
@@ -541,15 +542,12 @@ bool slk::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
         put_uint32 (buf + 1, _next_integral_routing_id++);
         routing_id.set (buf, sizeof buf);
         SL_DEBUG_LOG("DEBUG: router identify_peer: using integral routing_id (raw_socket)\n");
-        fflush(stderr);
     } else if (!options.raw_socket) {
         // Pick up handshake cases and also case where next integral routing id is set
         SL_DEBUG_LOG("DEBUG: router identify_peer: trying to read routing_id from pipe\n");
-        fflush(stderr);
         msg.init ();
         const bool ok = pipe_->read (&msg);
         SL_DEBUG_LOG("DEBUG: router identify_peer: pipe_->read() returned %d\n", ok);
-        fflush(stderr);
         if (!ok)
             return false;
 
@@ -600,16 +598,19 @@ bool slk::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
     pipe_->set_router_socket_routing_id (routing_id);
     add_out_pipe (SL_MOVE (routing_id), pipe_);
 
+#ifdef SL_ENABLE_MONITORING
     // Notify monitoring system of new connection
     if (_conn_manager) {
         const int64_t now = clock_t::now_us ();
         _conn_manager->peer_connected (routing_id, now);
         dispatch_event (EVENT_PEER_CONNECTED, routing_id, now);
     }
+#endif
 
     return true;
 }
 
+#ifdef SL_ENABLE_MONITORING
 // Monitoring API implementations
 
 bool slk::router_t::is_peer_connected (const blob_t &routing_id) const
@@ -747,3 +748,4 @@ void slk::router_t::record_recv_stats (const blob_t &routing_id, size_t size)
         _conn_manager->record_recv (routing_id, size, now);
     }
 }
+#endif // SL_ENABLE_MONITORING

@@ -116,6 +116,7 @@ class router_t : public routing_socket_base_t
     // will be terminated
     bool _handover;
 
+#ifdef SL_ENABLE_MONITORING
     // Monitoring system components
     class connection_manager_t *_conn_manager;
     class event_dispatcher_t *_event_dispatcher;
@@ -127,6 +128,7 @@ class router_t : public routing_socket_base_t
     // Helper: record send/recv statistics
     void record_send_stats (const blob_t &routing_id, size_t size);
     void record_recv_stats (const blob_t &routing_id, size_t size);
+#endif
 
     SL_NON_COPYABLE_NOR_MOVABLE (router_t)
 };

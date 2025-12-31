@@ -10,6 +10,7 @@ project(serverlink
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 option(BUILD_TESTS "Build test suite" ON)
 option(BUILD_EXAMPLES "Build examples" ON)
+option(SL_ENABLE_MONITORING "Enable performance monitoring features" OFF)
 
 # C++ standard
 set(CMAKE_CXX_STANDARD 11)
@@ -153,6 +154,13 @@ if(SERVERLINK_SOURCES)
         )
     endif()
 
+    # Enable monitoring if requested
+    if(SL_ENABLE_MONITORING)
+        target_compile_definitions(serverlink
+            PUBLIC SL_ENABLE_MONITORING
+        )
+    endif()
+
     # Set library properties
     set_target_properties(serverlink PROPERTIES
         VERSION ${PROJECT_VERSION}
@@ -239,6 +247,7 @@ message(STATUS "  Build type:      ${CMAKE_BUILD_TYPE}")
 message(STATUS "  Shared libs:     ${BUILD_SHARED_LIBS}")
 message(STATUS "  Build tests:     ${BUILD_TESTS}")
 message(STATUS "  Build examples:  ${BUILD_EXAMPLES}")
+message(STATUS "  Monitoring:      ${SL_ENABLE_MONITORING}")
 message(STATUS "  C++ standard:    C++${CMAKE_CXX_STANDARD}")
 message(STATUS "  I/O poller:      ${SL_POLLER_NAME}")
 message(STATUS "  Install prefix:  ${CMAKE_INSTALL_PREFIX}")

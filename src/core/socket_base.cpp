@@ -443,7 +443,6 @@ int slk::socket_base_t::connect_internal (const char *endpoint_uri_)
             routing_id_msg.set_flags (msg_t::routing_id);
             const bool ok = new_pipes[0]->write (&routing_id_msg);
             slk_assert (ok);
-            new_pipes[0]->flush ();  // Flush to make routing_id available for reading
             rc = routing_id_msg.close ();
             errno_assert (rc == 0);
         }
@@ -457,10 +456,15 @@ int slk::socket_base_t::connect_internal (const char *endpoint_uri_)
             routing_id_msg.set_flags (msg_t::routing_id);
             const bool ok = new_pipes[1]->write (&routing_id_msg);
             slk_assert (ok);
-            new_pipes[1]->flush ();  // Flush to make routing_id available for reading
             rc = routing_id_msg.close ();
             errno_assert (rc == 0);
         }
+
+        // Flush both pipes once at the end
+        if (peer.options.recv_routing_id)
+            new_pipes[0]->flush ();
+        if (options.recv_routing_id)
+            new_pipes[1]->flush ();
 
         // Attach remote end of the pipe to the peer socket
         // We need to send a bind command to the peer

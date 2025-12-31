@@ -869,9 +869,14 @@ int SL_CALL slk_is_connected(slk_socket_t *socket_, const void *routing_id, size
         // Use the get_peer_state method
         int state = socket->get_peer_state(routing_id, id_len);
         if (state < 0) {
+            // If peer not found (EHOSTUNREACH), return 0 (not connected)
+            // This is not an error condition for is_connected
+            if (errno == EHOSTUNREACH) {
+                return 0;
+            }
             return set_errno(map_errno(errno));
         }
-        return (state > 0) ? 1 : 0;
+        return (state >= 0) ? 1 : 0;
     } catch (...) {
         return set_errno(SLK_EPROTO);
     }

@@ -269,7 +269,6 @@ void slk::object_t::send_activate_read (pipe_t *destination_)
 {
     SL_DEBUG_LOG("DEBUG: send_activate_read from thread %u to pipe %p (thread %u)\n",
             get_tid(), (void*)destination_, destination_->get_tid());
-    fflush(stderr);
     command_t cmd;
     cmd.destination = destination_;
     cmd.type = command_t::activate_read;
