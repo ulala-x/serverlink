@@ -4,11 +4,18 @@
 #include <thread>
 
 // Sender thread: sends messages as fast as possible
-void run_sender(slk_socket_t *socket, const bench_params_t &params) {
+// For ROUTER-ROUTER pattern, sender must include receiver's identity
+void run_sender(slk_socket_t *socket, const char *receiver_id, const bench_params_t &params) {
     std::vector<char> data(params.message_size, 'A');
+    size_t receiver_id_len = strlen(receiver_id);
 
     for (int i = 0; i < params.message_count; i++) {
-        int rc = slk_send(socket, data.data(), data.size(), 0);
+        // Send receiver identity frame first (ROUTER requirement)
+        int rc = slk_send(socket, receiver_id, receiver_id_len, SLK_SNDMORE);
+        BENCH_ASSERT(rc == static_cast<int>(receiver_id_len));
+
+        // Send message frame
+        rc = slk_send(socket, data.data(), data.size(), 0);
         BENCH_ASSERT(rc == static_cast<int>(data.size()));
     }
 }
@@ -41,10 +48,13 @@ void bench_throughput_tcp(const bench_params_t &params) {
     slk_socket_t *sender = slk_socket(ctx, SLK_ROUTER);
     BENCH_ASSERT(receiver && sender);
 
-    // Set identity for sender
+    // Set identities for both sockets (ROUTER-ROUTER pattern)
     const char *sender_id = "sender";
+    const char *receiver_id = "receiver";
     int rc = slk_setsockopt(sender, SLK_ROUTING_ID, sender_id, strlen(sender_id));
-    BENCH_CHECK(rc, "slk_setsockopt(SLK_ROUTING_ID)");
+    BENCH_CHECK(rc, "slk_setsockopt(sender SLK_ROUTING_ID)");
+    rc = slk_setsockopt(receiver, SLK_ROUTING_ID, receiver_id, strlen(receiver_id));
+    BENCH_CHECK(rc, "slk_setsockopt(receiver SLK_ROUTING_ID)");
 
     rc = slk_bind(receiver, "tcp://127.0.0.1:15555");
     BENCH_CHECK(rc, "slk_bind");
@@ -58,7 +68,7 @@ void bench_throughput_tcp(const bench_params_t &params) {
     // Run benchmark in separate threads
     double elapsed_ms = 0;
     std::thread recv_thread(run_receiver, receiver, std::cref(params), &elapsed_ms);
-    std::thread send_thread(run_sender, sender, std::cref(params));
+    std::thread send_thread(run_sender, sender, receiver_id, std::cref(params));
 
     send_thread.join();
     recv_thread.join();
@@ -79,9 +89,13 @@ void bench_throughput_inproc(const bench_params_t &params) {
     slk_socket_t *sender = slk_socket(ctx, SLK_ROUTER);
     BENCH_ASSERT(receiver && sender);
 
+    // Set identities for both sockets (ROUTER-ROUTER pattern)
     const char *sender_id = "sender";
+    const char *receiver_id = "receiver";
     int rc = slk_setsockopt(sender, SLK_ROUTING_ID, sender_id, strlen(sender_id));
-    BENCH_CHECK(rc, "slk_setsockopt(SLK_ROUTING_ID)");
+    BENCH_CHECK(rc, "slk_setsockopt(sender SLK_ROUTING_ID)");
+    rc = slk_setsockopt(receiver, SLK_ROUTING_ID, receiver_id, strlen(receiver_id));
+    BENCH_CHECK(rc, "slk_setsockopt(receiver SLK_ROUTING_ID)");
 
     rc = slk_bind(receiver, "inproc://bench");
     BENCH_CHECK(rc, "slk_bind");
@@ -92,7 +106,7 @@ void bench_throughput_inproc(const bench_params_t &params) {
     // inproc doesn't need connection delay
     double elapsed_ms = 0;
     std::thread recv_thread(run_receiver, receiver, std::cref(params), &elapsed_ms);
-    std::thread send_thread(run_sender, sender, std::cref(params));
+    std::thread send_thread(run_sender, sender, receiver_id, std::cref(params));
 
     send_thread.join();
     recv_thread.join();
@@ -114,9 +128,13 @@ void bench_throughput_ipc(const bench_params_t &params) {
     slk_socket_t *sender = slk_socket(ctx, SLK_ROUTER);
     BENCH_ASSERT(receiver && sender);
 
+    // Set identities for both sockets (ROUTER-ROUTER pattern)
     const char *sender_id = "sender";
+    const char *receiver_id = "receiver";
     int rc = slk_setsockopt(sender, SLK_ROUTING_ID, sender_id, strlen(sender_id));
-    BENCH_CHECK(rc, "slk_setsockopt(SLK_ROUTING_ID)");
+    BENCH_CHECK(rc, "slk_setsockopt(sender SLK_ROUTING_ID)");
+    rc = slk_setsockopt(receiver, SLK_ROUTING_ID, receiver_id, strlen(receiver_id));
+    BENCH_CHECK(rc, "slk_setsockopt(receiver SLK_ROUTING_ID)");
 
     rc = slk_bind(receiver, "ipc:///tmp/bench_throughput.ipc");
     BENCH_CHECK(rc, "slk_bind");
@@ -129,7 +147,7 @@ void bench_throughput_ipc(const bench_params_t &params) {
 
     double elapsed_ms = 0;
     std::thread recv_thread(run_receiver, receiver, std::cref(params), &elapsed_ms);
-    std::thread send_thread(run_sender, sender, std::cref(params));
+    std::thread send_thread(run_sender, sender, receiver_id, std::cref(params));
 
     send_thread.join();
     recv_thread.join();

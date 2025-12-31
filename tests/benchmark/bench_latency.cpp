@@ -40,9 +40,13 @@ void bench_latency_tcp(const bench_params_t &params) {
     slk_socket_t *client = slk_socket(ctx, SLK_ROUTER);
     BENCH_ASSERT(server && client);
 
+    // Set identities for ROUTER-ROUTER pattern
     const char *client_id = "client";
+    const char *server_id = "server";
     int rc = slk_setsockopt(client, SLK_ROUTING_ID, client_id, strlen(client_id));
-    BENCH_CHECK(rc, "slk_setsockopt(SLK_ROUTING_ID)");
+    BENCH_CHECK(rc, "slk_setsockopt(client SLK_ROUTING_ID)");
+    rc = slk_setsockopt(server, SLK_ROUTING_ID, server_id, strlen(server_id));
+    BENCH_CHECK(rc, "slk_setsockopt(server SLK_ROUTING_ID)");
 
     rc = slk_bind(server, "tcp://127.0.0.1:15556");
     BENCH_CHECK(rc, "slk_bind");
@@ -62,9 +66,11 @@ void bench_latency_tcp(const bench_params_t &params) {
     std::vector<double> latencies;
     latencies.reserve(params.message_count);
     char buf[65536];
+    size_t server_id_len = strlen(server_id);
 
     // Warmup phase (discard first few measurements)
     for (int i = 0; i < 100; i++) {
+        slk_send(client, server_id, server_id_len, SLK_SNDMORE);
         slk_send(client, data.data(), data.size(), 0);
         slk_recv(client, buf, sizeof(buf), 0);  // identity
         slk_recv(client, buf, sizeof(buf), 0);  // echo
@@ -75,7 +81,8 @@ void bench_latency_tcp(const bench_params_t &params) {
         stopwatch_t sw;
         sw.start();
 
-        // Send request
+        // Send request: [server_id][message]
+        slk_send(client, server_id, server_id_len, SLK_SNDMORE);
         int send_rc = slk_send(client, data.data(), data.size(), 0);
         BENCH_ASSERT(send_rc == static_cast<int>(data.size()));
 
@@ -109,9 +116,13 @@ void bench_latency_inproc(const bench_params_t &params) {
     slk_socket_t *client = slk_socket(ctx, SLK_ROUTER);
     BENCH_ASSERT(server && client);
 
+    // Set identities for ROUTER-ROUTER pattern
     const char *client_id = "client";
+    const char *server_id = "server";
     int rc = slk_setsockopt(client, SLK_ROUTING_ID, client_id, strlen(client_id));
-    BENCH_CHECK(rc, "slk_setsockopt(SLK_ROUTING_ID)");
+    BENCH_CHECK(rc, "slk_setsockopt(client SLK_ROUTING_ID)");
+    rc = slk_setsockopt(server, SLK_ROUTING_ID, server_id, strlen(server_id));
+    BENCH_CHECK(rc, "slk_setsockopt(server SLK_ROUTING_ID)");
 
     rc = slk_bind(server, "inproc://latency");
     BENCH_CHECK(rc, "slk_bind");
@@ -127,9 +138,11 @@ void bench_latency_inproc(const bench_params_t &params) {
     std::vector<double> latencies;
     latencies.reserve(params.message_count);
     char buf[65536];
+    size_t server_id_len = strlen(server_id);
 
     // Warmup phase
     for (int i = 0; i < 100; i++) {
+        slk_send(client, server_id, server_id_len, SLK_SNDMORE);
         slk_send(client, data.data(), data.size(), 0);
         slk_recv(client, buf, sizeof(buf), 0);  // identity
         slk_recv(client, buf, sizeof(buf), 0);  // echo
@@ -140,6 +153,7 @@ void bench_latency_inproc(const bench_params_t &params) {
         stopwatch_t sw;
         sw.start();
 
+        slk_send(client, server_id, server_id_len, SLK_SNDMORE);
         slk_send(client, data.data(), data.size(), 0);
         slk_recv(client, buf, sizeof(buf), 0);  // identity
         slk_recv(client, buf, sizeof(buf), 0);  // echo
@@ -167,9 +181,13 @@ void bench_latency_ipc(const bench_params_t &params) {
     slk_socket_t *client = slk_socket(ctx, SLK_ROUTER);
     BENCH_ASSERT(server && client);
 
+    // Set identities for ROUTER-ROUTER pattern
     const char *client_id = "client";
+    const char *server_id = "server";
     int rc = slk_setsockopt(client, SLK_ROUTING_ID, client_id, strlen(client_id));
-    BENCH_CHECK(rc, "slk_setsockopt(SLK_ROUTING_ID)");
+    BENCH_CHECK(rc, "slk_setsockopt(client SLK_ROUTING_ID)");
+    rc = slk_setsockopt(server, SLK_ROUTING_ID, server_id, strlen(server_id));
+    BENCH_CHECK(rc, "slk_setsockopt(server SLK_ROUTING_ID)");
 
     rc = slk_bind(server, "ipc:///tmp/bench_latency.ipc");
     BENCH_CHECK(rc, "slk_bind");
@@ -188,9 +206,11 @@ void bench_latency_ipc(const bench_params_t &params) {
     std::vector<double> latencies;
     latencies.reserve(params.message_count);
     char buf[65536];
+    size_t server_id_len = strlen(server_id);
 
     // Warmup phase
     for (int i = 0; i < 100; i++) {
+        slk_send(client, server_id, server_id_len, SLK_SNDMORE);
         slk_send(client, data.data(), data.size(), 0);
         slk_recv(client, buf, sizeof(buf), 0);  // identity
         slk_recv(client, buf, sizeof(buf), 0);  // echo
@@ -201,6 +221,7 @@ void bench_latency_ipc(const bench_params_t &params) {
         stopwatch_t sw;
         sw.start();
 
+        slk_send(client, server_id, server_id_len, SLK_SNDMORE);
         slk_send(client, data.data(), data.size(), 0);
         slk_recv(client, buf, sizeof(buf), 0);  // identity
         slk_recv(client, buf, sizeof(buf), 0);  // echo
