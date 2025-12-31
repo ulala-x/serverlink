@@ -1,0 +1,303 @@
+/* ServerLink Test Utilities */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#ifndef SERVERLINK_TESTUTIL_HPP
+#define SERVERLINK_TESTUTIL_HPP
+
+#include <serverlink/serverlink.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
+
+/* Test framework macros */
+#define TEST_ASSERT(cond) \
+    do { \
+        if (!(cond)) { \
+            fprintf(stderr, "ASSERTION FAILED: %s\n  at %s:%d\n", #cond, __FILE__, __LINE__); \
+            abort(); \
+        } \
+    } while (0)
+
+#define TEST_ASSERT_EQ(a, b) \
+    do { \
+        if ((a) != (b)) { \
+            fprintf(stderr, "ASSERTION FAILED: %s == %s (%d != %d)\n  at %s:%d\n", \
+                    #a, #b, (int)(a), (int)(b), __FILE__, __LINE__); \
+            abort(); \
+        } \
+    } while (0)
+
+#define TEST_ASSERT_NEQ(a, b) \
+    do { \
+        if ((a) == (b)) { \
+            fprintf(stderr, "ASSERTION FAILED: %s != %s\n  at %s:%d\n", \
+                    #a, #b, __FILE__, __LINE__); \
+            abort(); \
+        } \
+    } while (0)
+
+#define TEST_ASSERT_NULL(ptr) \
+    do { \
+        if ((ptr) != NULL) { \
+            fprintf(stderr, "ASSERTION FAILED: %s is NULL\n  at %s:%d\n", \
+                    #ptr, __FILE__, __LINE__); \
+            abort(); \
+        } \
+    } while (0)
+
+#define TEST_ASSERT_NOT_NULL(ptr) \
+    do { \
+        if ((ptr) == NULL) { \
+            fprintf(stderr, "ASSERTION FAILED: %s is not NULL\n  at %s:%d\n", \
+                    #ptr, __FILE__, __LINE__); \
+            abort(); \
+        } \
+    } while (0)
+
+#define TEST_ASSERT_STR_EQ(a, b) \
+    do { \
+        if (strcmp((a), (b)) != 0) { \
+            fprintf(stderr, "ASSERTION FAILED: %s == %s (\"%s\" != \"%s\")\n  at %s:%d\n", \
+                    #a, #b, (a), (b), __FILE__, __LINE__); \
+            abort(); \
+        } \
+    } while (0)
+
+#define TEST_ASSERT_MEM_EQ(a, b, len) \
+    do { \
+        if (memcmp((a), (b), (len)) != 0) { \
+            fprintf(stderr, "ASSERTION FAILED: memcmp(%s, %s, %zu) == 0\n  at %s:%d\n", \
+                    #a, #b, (size_t)(len), __FILE__, __LINE__); \
+            abort(); \
+        } \
+    } while (0)
+
+#define TEST_SUCCESS(rc) \
+    do { \
+        if ((rc) != 0) { \
+            fprintf(stderr, "OPERATION FAILED: %s returned %d (expected 0)\n  at %s:%d\n", \
+                    #rc, (rc), __FILE__, __LINE__); \
+            abort(); \
+        } \
+    } while (0)
+
+#define TEST_FAILURE(rc) \
+    do { \
+        if ((rc) == 0) { \
+            fprintf(stderr, "OPERATION SHOULD HAVE FAILED: %s returned 0\n  at %s:%d\n", \
+                    #rc, __FILE__, __LINE__); \
+            abort(); \
+        } \
+    } while (0)
+
+/* Test execution macro */
+#define RUN_TEST(test_func) \
+    do { \
+        printf("Running %s...\n", #test_func); \
+        test_func(); \
+        printf("  PASSED\n"); \
+    } while (0)
+
+/* Helper functions */
+static inline void test_sleep_ms(int ms)
+{
+    slk_sleep(ms);
+}
+
+static inline uint64_t test_clock_ms()
+{
+    return slk_clock() / 1000;
+}
+
+/* Context helper - creates a new context */
+static inline slk_ctx_t* test_context_new()
+{
+    slk_ctx_t *ctx = slk_ctx_new();
+    TEST_ASSERT_NOT_NULL(ctx);
+    return ctx;
+}
+
+/* Context helper - destroys a context */
+static inline void test_context_destroy(slk_ctx_t *ctx)
+{
+    if (ctx) {
+        slk_ctx_destroy(ctx);
+    }
+}
+
+/* Socket helper - creates a socket */
+static inline slk_socket_t* test_socket_new(slk_ctx_t *ctx, int type)
+{
+    slk_socket_t *s = slk_socket(ctx, type);
+    TEST_ASSERT_NOT_NULL(s);
+    return s;
+}
+
+/* Socket helper - closes a socket */
+static inline void test_socket_close(slk_socket_t *s)
+{
+    if (s) {
+        int rc = slk_close(s);
+        TEST_SUCCESS(rc);
+    }
+}
+
+/* Socket helper - bind to endpoint */
+static inline void test_socket_bind(slk_socket_t *s, const char *endpoint)
+{
+    int rc = slk_bind(s, endpoint);
+    TEST_SUCCESS(rc);
+}
+
+/* Socket helper - connect to endpoint */
+static inline void test_socket_connect(slk_socket_t *s, const char *endpoint)
+{
+    int rc = slk_connect(s, endpoint);
+    TEST_SUCCESS(rc);
+}
+
+/* Socket helper - set routing ID */
+static inline void test_set_routing_id(slk_socket_t *s, const char *id)
+{
+    int rc = slk_setsockopt(s, SLK_ROUTING_ID, id, strlen(id));
+    TEST_SUCCESS(rc);
+}
+
+/* Socket helper - set integer option */
+static inline void test_set_int_option(slk_socket_t *s, int option, int value)
+{
+    int rc = slk_setsockopt(s, option, &value, sizeof(value));
+    TEST_SUCCESS(rc);
+}
+
+/* Socket helper - get integer option */
+static inline int test_get_int_option(slk_socket_t *s, int option)
+{
+    int value = 0;
+    size_t len = sizeof(value);
+    int rc = slk_getsockopt(s, option, &value, &len);
+    TEST_SUCCESS(rc);
+    return value;
+}
+
+/* Message helper - create new message */
+static inline slk_msg_t* test_msg_new()
+{
+    slk_msg_t *msg = slk_msg_new();
+    TEST_ASSERT_NOT_NULL(msg);
+    return msg;
+}
+
+/* Message helper - create message with data */
+static inline slk_msg_t* test_msg_new_data(const void *data, size_t size)
+{
+    slk_msg_t *msg = slk_msg_new_data(data, size);
+    TEST_ASSERT_NOT_NULL(msg);
+    return msg;
+}
+
+/* Message helper - destroy message */
+static inline void test_msg_destroy(slk_msg_t *msg)
+{
+    if (msg) {
+        slk_msg_destroy(msg);
+    }
+}
+
+/* Message helper - send message */
+static inline void test_msg_send(slk_msg_t *msg, slk_socket_t *s, int flags)
+{
+    int rc = slk_msg_send(msg, s, flags);
+    TEST_ASSERT(rc >= 0);
+}
+
+/* Message helper - receive message */
+static inline int test_msg_recv(slk_msg_t *msg, slk_socket_t *s, int flags)
+{
+    int rc = slk_msg_recv(msg, s, flags);
+    return rc;
+}
+
+/* Message helper - send simple string */
+static inline void test_send_string(slk_socket_t *s, const char *str, int flags)
+{
+    int rc = slk_send(s, str, strlen(str), flags);
+    TEST_ASSERT(rc >= 0);
+}
+
+/* Message helper - receive and verify string */
+static inline void test_recv_string(slk_socket_t *s, const char *expected, int flags)
+{
+    char buffer[256];
+    int rc = slk_recv(s, buffer, sizeof(buffer), flags);
+    TEST_ASSERT(rc >= 0);
+    TEST_ASSERT_EQ((size_t)rc, strlen(expected));
+    buffer[rc] = '\0';
+    TEST_ASSERT_STR_EQ(buffer, expected);
+}
+
+/* Poll helper - wait for socket to be readable */
+static inline int test_poll_readable(slk_socket_t *s, long timeout_ms)
+{
+    slk_pollitem_t items[] = {{s, -1, SLK_POLLIN, 0}};
+    int rc = slk_poll(items, 1, timeout_ms);
+    if (rc > 0 && (items[0].revents & SLK_POLLIN)) {
+        return 1;
+    }
+    return 0;
+}
+
+/* Poll helper - wait for socket to be writable */
+static inline int test_poll_writable(slk_socket_t *s, long timeout_ms)
+{
+    slk_pollitem_t items[] = {{s, -1, SLK_POLLOUT, 0}};
+    int rc = slk_poll(items, 1, timeout_ms);
+    if (rc > 0 && (items[0].revents & SLK_POLLOUT)) {
+        return 1;
+    }
+    return 0;
+}
+
+/* Endpoint helper - generate unique endpoint */
+static inline const char* test_endpoint_tcp()
+{
+    static char endpoint[64];
+    static int port = 15555;
+    snprintf(endpoint, sizeof(endpoint), "tcp://127.0.0.1:%d", port++);
+    return endpoint;
+}
+
+/* Endpoint helper - generate IPC endpoint (for platforms that support it) */
+static inline const char* test_endpoint_ipc()
+{
+#if defined(_WIN32)
+    static char endpoint[64];
+    static int num = 0;
+    snprintf(endpoint, sizeof(endpoint), "ipc://serverlink-test-%d", num++);
+    return endpoint;
+#else
+    static char endpoint[64];
+    static int num = 0;
+    snprintf(endpoint, sizeof(endpoint), "ipc:///tmp/serverlink-test-%d", num++);
+    return endpoint;
+#endif
+}
+
+/* Test setup/teardown helpers */
+class TestFixture {
+public:
+    slk_ctx_t *ctx;
+
+    TestFixture() : ctx(nullptr) {
+        ctx = test_context_new();
+    }
+
+    ~TestFixture() {
+        test_context_destroy(ctx);
+    }
+};
+
+#endif /* SERVERLINK_TESTUTIL_HPP */
