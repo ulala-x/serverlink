@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <stdarg.h>
 
 /* Test framework macros */
 #define TEST_ASSERT(cond) \
@@ -284,6 +285,78 @@ static inline const char* test_endpoint_ipc()
     snprintf(endpoint, sizeof(endpoint), "ipc:///tmp/serverlink-test-%d", num++);
     return endpoint;
 #endif
+}
+
+/* Sequence testing helpers */
+#define SEQ_END ((const char*)-1)
+
+/* Simplified version for common cases */
+static inline void s_send_seq_2(slk_socket_t *socket, const char *data1, const char *data2)
+{
+    int rc;
+    if (data1 == NULL) {
+        rc = slk_send(socket, "", 0, SLK_SNDMORE);
+    } else {
+        rc = slk_send(socket, data1, strlen(data1), SLK_SNDMORE);
+    }
+    TEST_ASSERT(rc >= 0);
+
+    if (data2 == NULL) {
+        rc = slk_send(socket, "", 0, 0);
+    } else {
+        rc = slk_send(socket, data2, strlen(data2), 0);
+    }
+    TEST_ASSERT(rc >= 0);
+}
+
+static inline void s_send_seq_1(slk_socket_t *socket, const char *data1)
+{
+    int rc;
+    if (data1 == NULL) {
+        rc = slk_send(socket, "", 0, 0);
+    } else {
+        rc = slk_send(socket, data1, strlen(data1), 0);
+    }
+    TEST_ASSERT(rc >= 0);
+}
+
+
+/* Simplified version for common cases */
+static inline void s_recv_seq_2(slk_socket_t *socket, const char *expected1, const char *expected2)
+{
+    char buffer[256];
+    int rc;
+
+    rc = slk_recv(socket, buffer, sizeof(buffer), 0);
+    TEST_ASSERT(rc >= 0);
+    if (expected1 == NULL) {
+        TEST_ASSERT_EQ(rc, 0);
+    } else {
+        TEST_ASSERT_EQ((size_t)rc, strlen(expected1));
+        TEST_ASSERT_MEM_EQ(buffer, expected1, rc);
+    }
+
+    rc = slk_recv(socket, buffer, sizeof(buffer), 0);
+    TEST_ASSERT(rc >= 0);
+    if (expected2 == NULL) {
+        TEST_ASSERT_EQ(rc, 0);
+    } else {
+        TEST_ASSERT_EQ((size_t)rc, strlen(expected2));
+        TEST_ASSERT_MEM_EQ(buffer, expected2, rc);
+    }
+}
+
+static inline void s_recv_seq_1(slk_socket_t *socket, const char *expected1)
+{
+    char buffer[256];
+    int rc = slk_recv(socket, buffer, sizeof(buffer), 0);
+    TEST_ASSERT(rc >= 0);
+    if (expected1 == NULL) {
+        TEST_ASSERT_EQ(rc, 0);
+    } else {
+        TEST_ASSERT_EQ((size_t)rc, strlen(expected1));
+        TEST_ASSERT_MEM_EQ(buffer, expected1, rc);
+    }
 }
 
 /* Test setup/teardown helpers */
