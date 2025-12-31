@@ -683,29 +683,31 @@ void slk::ctx_t::connect_inproc_sockets (
     // Use unused parameter to avoid warning
     (void) bind_options_;
 
+    // CRITICAL FIX: For inproc connections, we must use synchronous process_command()
+    // instead of async send_bind() to avoid timing issues where messages are flushed
+    // before the bind command is processed. This matches libzmq v4.3.5 behavior.
+
+    command_t cmd_bind_socket;
+    cmd_bind_socket.destination = bind_socket_;
+    cmd_bind_socket.type = command_t::bind;
+    cmd_bind_socket.args.bind.pipe = pending_connection_.bind_pipe;
+
+    command_t cmd_connect_socket;
+    cmd_connect_socket.destination = pending_connection_.endpoint.socket;
+    cmd_connect_socket.type = command_t::bind;
+    cmd_connect_socket.args.bind.pipe = pending_connection_.connect_pipe;
+
     if (side_ == bind_side) {
         // Bind was called after connect
-        // Attach bind_pipe to bind_socket using send_bind
-        // Note: inc_seqnum was already called in pend_connection
-        bind_socket_->send_bind (bind_socket_, pending_connection_.bind_pipe,
-                                  false);
-
-        // Attach connect_pipe to connect_socket using send_bind
-        // Note: inc_seqnum was already called in pend_connection
-        pending_connection_.endpoint.socket->send_bind (
-          pending_connection_.endpoint.socket, pending_connection_.connect_pipe,
-          false);
+        // Process bind commands synchronously to ensure pipes are attached
+        // before any messages are sent
+        bind_socket_->process_command (cmd_bind_socket);
+        pending_connection_.endpoint.socket->process_command (cmd_connect_socket);
     } else {
         // Connect was called after bind (normal case)
-        // Attach connect_pipe to connect_socket using send_bind
-        // Note: inc_seqnum was already called in find_endpoint
-        pending_connection_.endpoint.socket->send_bind (
-          pending_connection_.endpoint.socket, pending_connection_.connect_pipe,
-          false);
-
-        // Attach bind_pipe to bind_socket using send_bind
-        bind_socket_->send_bind (bind_socket_, pending_connection_.bind_pipe,
-                                  false);
+        // Process bind commands synchronously
+        pending_connection_.endpoint.socket->process_command (cmd_connect_socket);
+        bind_socket_->process_command (cmd_bind_socket);
     }
 }
 

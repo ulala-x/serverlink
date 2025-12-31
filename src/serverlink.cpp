@@ -786,6 +786,23 @@ int SL_CALL slk_poll(slk_pollitem_t *items, int nitems, long timeout)
     // This is a simplified polling implementation
     // A full implementation would integrate with the I/O subsystem
     try {
+        // CRITICAL: Process pending commands on all sockets before checking readiness
+        // This ensures that any bind/activate_read commands from inproc connections
+        // are processed, avoiding timing issues where messages are sent but the
+        // receiving socket hasn't processed the pipe attachment yet.
+        for (int i = 0; i < nitems; i++) {
+            if (items[i].socket) {
+                slk::socket_base_t *socket =
+                    reinterpret_cast<slk::socket_base_t*>(items[i].socket);
+                // Process commands with 0 timeout (non-blocking)
+                int rc = socket->process_commands(0, false);
+                if (rc != 0) {
+                    // Command processing error, propagate errno
+                    return -1;
+                }
+            }
+        }
+
         // TODO: Implement proper polling with timeout support
         (void)timeout; // Unused for now
 

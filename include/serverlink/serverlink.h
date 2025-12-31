@@ -36,6 +36,7 @@ SL_EXPORT void SL_CALL slk_version(int *major, int *minor, int *patch);
 
 /* Core routing options */
 #define SLK_ROUTING_ID          5   /* Set/get routing identity */
+#define SLK_CONNECT_ROUTING_ID  61  /* Set peer's routing ID when connecting */
 #define SLK_ROUTER_MANDATORY    33  /* Fail if peer not connected */
 #define SLK_ROUTER_HANDOVER     56  /* Transfer messages to new peer with same ID */
 #define SLK_ROUTER_NOTIFY       97  /* Enable router event notifications */

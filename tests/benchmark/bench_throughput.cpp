@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
+#include <serverlink/config.h>
 #include "bench_common.hpp"
 #include <thread>
 
@@ -7,11 +8,18 @@
 // For ROUTER-ROUTER pattern, sender must include receiver's identity
 void run_sender(slk_socket_t *socket, const char *receiver_id, const bench_params_t &params) {
     std::vector<char> data(params.message_size, 'A');
+    std::vector<char> buf(256);
     size_t receiver_id_len = strlen(receiver_id);
+
+    // Wait for READY signal from receiver to ensure handshake is complete
+    int rc = slk_recv(socket, buf.data(), buf.size(), 0);  // sender_id from receiver
+    BENCH_ASSERT(rc > 0);
+    rc = slk_recv(socket, buf.data(), buf.size(), 0);  // "READY" message
+    BENCH_ASSERT(rc > 0);
 
     for (int i = 0; i < params.message_count; i++) {
         // Send receiver identity frame first (ROUTER requirement)
-        int rc = slk_send(socket, receiver_id, receiver_id_len, SLK_SNDMORE);
+        rc = slk_send(socket, receiver_id, receiver_id_len, SLK_SNDMORE);
         BENCH_ASSERT(rc == static_cast<int>(receiver_id_len));
 
         // Send message frame
@@ -21,14 +29,23 @@ void run_sender(slk_socket_t *socket, const char *receiver_id, const bench_param
 }
 
 // Receiver thread: receives messages and measures throughput
-void run_receiver(slk_socket_t *socket, const bench_params_t &params, double *elapsed_ms) {
+void run_receiver(slk_socket_t *socket, const char *sender_id, const bench_params_t &params, double *elapsed_ms) {
     std::vector<char> buf(params.message_size + 256);  // identity + message
+    size_t sender_id_len = strlen(sender_id);
+
+    // Send READY signal to sender to complete handshake
+    const char *ready = "READY";
+    int rc = slk_send(socket, sender_id, sender_id_len, SLK_SNDMORE);
+    BENCH_ASSERT(rc == static_cast<int>(sender_id_len));
+    rc = slk_send(socket, ready, strlen(ready), 0);
+    BENCH_ASSERT(rc == static_cast<int>(strlen(ready)));
+
     stopwatch_t sw;
     sw.start();
 
     for (int i = 0; i < params.message_count; i++) {
         // Receive identity frame (ROUTER socket receives identity first)
-        int rc = slk_recv(socket, buf.data(), buf.size(), 0);
+        rc = slk_recv(socket, buf.data(), buf.size(), 0);
         BENCH_ASSERT(rc > 0);
 
         // Receive message frame
@@ -56,6 +73,17 @@ void bench_throughput_tcp(const bench_params_t &params) {
     rc = slk_setsockopt(receiver, SLK_ROUTING_ID, receiver_id, strlen(receiver_id));
     BENCH_CHECK(rc, "slk_setsockopt(receiver SLK_ROUTING_ID)");
 
+    // Set high water mark to allow buffering many messages
+    int hwm = 0;  // unlimited
+    rc = slk_setsockopt(sender, SLK_SNDHWM, &hwm, sizeof(hwm));
+    BENCH_CHECK(rc, "slk_setsockopt(sender SLK_SNDHWM)");
+    rc = slk_setsockopt(sender, SLK_RCVHWM, &hwm, sizeof(hwm));
+    BENCH_CHECK(rc, "slk_setsockopt(sender SLK_RCVHWM)");
+    rc = slk_setsockopt(receiver, SLK_SNDHWM, &hwm, sizeof(hwm));
+    BENCH_CHECK(rc, "slk_setsockopt(receiver SLK_SNDHWM)");
+    rc = slk_setsockopt(receiver, SLK_RCVHWM, &hwm, sizeof(hwm));
+    BENCH_CHECK(rc, "slk_setsockopt(receiver SLK_RCVHWM)");
+
     rc = slk_bind(receiver, "tcp://127.0.0.1:15555");
     BENCH_CHECK(rc, "slk_bind");
 
@@ -67,7 +95,7 @@ void bench_throughput_tcp(const bench_params_t &params) {
 
     // Run benchmark in separate threads
     double elapsed_ms = 0;
-    std::thread recv_thread(run_receiver, receiver, std::cref(params), &elapsed_ms);
+    std::thread recv_thread(run_receiver, receiver, sender_id, std::cref(params), &elapsed_ms);
     std::thread send_thread(run_sender, sender, receiver_id, std::cref(params));
 
     send_thread.join();
@@ -97,6 +125,17 @@ void bench_throughput_inproc(const bench_params_t &params) {
     rc = slk_setsockopt(receiver, SLK_ROUTING_ID, receiver_id, strlen(receiver_id));
     BENCH_CHECK(rc, "slk_setsockopt(receiver SLK_ROUTING_ID)");
 
+    // Set high water mark to allow buffering many messages
+    int hwm = 0;  // unlimited
+    rc = slk_setsockopt(sender, SLK_SNDHWM, &hwm, sizeof(hwm));
+    BENCH_CHECK(rc, "slk_setsockopt(sender SLK_SNDHWM)");
+    rc = slk_setsockopt(sender, SLK_RCVHWM, &hwm, sizeof(hwm));
+    BENCH_CHECK(rc, "slk_setsockopt(sender SLK_RCVHWM)");
+    rc = slk_setsockopt(receiver, SLK_SNDHWM, &hwm, sizeof(hwm));
+    BENCH_CHECK(rc, "slk_setsockopt(receiver SLK_SNDHWM)");
+    rc = slk_setsockopt(receiver, SLK_RCVHWM, &hwm, sizeof(hwm));
+    BENCH_CHECK(rc, "slk_setsockopt(receiver SLK_RCVHWM)");
+
     rc = slk_bind(receiver, "inproc://bench");
     BENCH_CHECK(rc, "slk_bind");
 
@@ -105,7 +144,7 @@ void bench_throughput_inproc(const bench_params_t &params) {
 
     // inproc doesn't need connection delay
     double elapsed_ms = 0;
-    std::thread recv_thread(run_receiver, receiver, std::cref(params), &elapsed_ms);
+    std::thread recv_thread(run_receiver, receiver, sender_id, std::cref(params), &elapsed_ms);
     std::thread send_thread(run_sender, sender, receiver_id, std::cref(params));
 
     send_thread.join();
@@ -136,6 +175,17 @@ void bench_throughput_ipc(const bench_params_t &params) {
     rc = slk_setsockopt(receiver, SLK_ROUTING_ID, receiver_id, strlen(receiver_id));
     BENCH_CHECK(rc, "slk_setsockopt(receiver SLK_ROUTING_ID)");
 
+    // Set high water mark to allow buffering many messages
+    int hwm = 0;  // unlimited
+    rc = slk_setsockopt(sender, SLK_SNDHWM, &hwm, sizeof(hwm));
+    BENCH_CHECK(rc, "slk_setsockopt(sender SLK_SNDHWM)");
+    rc = slk_setsockopt(sender, SLK_RCVHWM, &hwm, sizeof(hwm));
+    BENCH_CHECK(rc, "slk_setsockopt(sender SLK_RCVHWM)");
+    rc = slk_setsockopt(receiver, SLK_SNDHWM, &hwm, sizeof(hwm));
+    BENCH_CHECK(rc, "slk_setsockopt(receiver SLK_SNDHWM)");
+    rc = slk_setsockopt(receiver, SLK_RCVHWM, &hwm, sizeof(hwm));
+    BENCH_CHECK(rc, "slk_setsockopt(receiver SLK_RCVHWM)");
+
     rc = slk_bind(receiver, "ipc:///tmp/bench_throughput.ipc");
     BENCH_CHECK(rc, "slk_bind");
 
@@ -146,7 +196,7 @@ void bench_throughput_ipc(const bench_params_t &params) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     double elapsed_ms = 0;
-    std::thread recv_thread(run_receiver, receiver, std::cref(params), &elapsed_ms);
+    std::thread recv_thread(run_receiver, receiver, sender_id, std::cref(params), &elapsed_ms);
     std::thread send_thread(run_sender, sender, receiver_id, std::cref(params));
 
     send_thread.join();
@@ -180,7 +230,7 @@ int main() {
 
         bench_throughput_tcp(params);
         bench_throughput_inproc(params);
-#ifdef __linux__
+#if defined(SL_HAVE_IPC) && defined(__linux__)
         bench_throughput_ipc(params);
 #endif
         printf("\n");

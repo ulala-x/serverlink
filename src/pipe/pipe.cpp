@@ -116,6 +116,8 @@ void slk::pipe_t::set_peer (pipe_t *peer_)
 
 void slk::pipe_t::set_event_sink (i_pipe_events *sink_)
 {
+    SL_DEBUG_LOG("DEBUG: pipe %p set_event_sink to %p, _in_active=%d\n", (void*)this, (void*)sink_, _in_active);
+    fflush(stderr);
     // Sink can be set once only.
     slk_assert (!_sink);
     _sink = sink_;
@@ -145,14 +147,24 @@ const slk::blob_t &slk::pipe_t::get_routing_id () const
 
 bool slk::pipe_t::check_read ()
 {
-    if (unlikely (!_in_active))
+    SL_DEBUG_LOG("DEBUG: pipe %p check_read called: _in_active=%d, _state=%d\n", (void*)this, _in_active, _state);
+    fflush(stderr);
+    if (unlikely (!_in_active)) {
+        SL_DEBUG_LOG("DEBUG: pipe %p check_read: returning false due to !_in_active\n", (void*)this);
+        fflush(stderr);
         return false;
+    }
     if (unlikely (_state != active && _state != waiting_for_delimiter))
         return false;
 
     //  Check if there's an item in the pipe.
-    if (!_in_pipe->check_read ()) {
+    bool has_data = _in_pipe->check_read ();
+    SL_DEBUG_LOG("DEBUG: pipe check_read: _in_pipe->check_read() returned %d\n", has_data);
+    fflush(stderr);
+    if (!has_data) {
         _in_active = false;
+        SL_DEBUG_LOG("DEBUG: pipe check_read: no data, setting _in_active=false\n");
+        fflush(stderr);
         return false;
     }
 
@@ -250,19 +262,55 @@ void slk::pipe_t::rollback () const
 
 void slk::pipe_t::flush ()
 {
+    SL_DEBUG_LOG("DEBUG: pipe %p flush called, _state=%d, _out_pipe=%p, _peer=%p\n",
+            (void*)this, _state, (void*)_out_pipe, (void*)_peer);
+    fflush(stderr);
     //  The peer does not exist anymore at this point.
     if (_state == term_ack_sent)
         return;
 
-    if (_out_pipe && !_out_pipe->flush ())
-        send_activate_read (_peer);
+    if (_out_pipe) {
+        bool flush_result = _out_pipe->flush ();
+        SL_DEBUG_LOG("DEBUG: pipe %p flush: _out_pipe->flush() returned %d\n", (void*)this, flush_result);
+        fflush(stderr);
+        if (!flush_result) {
+            SL_DEBUG_LOG("DEBUG: pipe %p flush: reader sleeping, sending activate_read to peer %p\n",
+                    (void*)this, (void*)_peer);
+            fflush(stderr);
+            send_activate_read (_peer);
+        }
+    }
 }
 
 void slk::pipe_t::process_activate_read ()
 {
+    SL_DEBUG_LOG("DEBUG: pipe %p (thread %u) process_activate_read: _in_active=%d, _state=%d, _sink=%p, _peer=%p\n",
+            (void*)this, get_tid(), _in_active, _state, (void*)_sink, (void*)_peer);
+    fflush(stderr);
+
+    // If sink is not set yet, we can't notify it. This can happen if activate_read
+    // is sent before the pipe is attached to the socket. In this case, we just set
+    // _in_active=true so that when the sink IS set (via set_event_sink), it can
+    // check for data.
+    if (!_sink) {
+        if (!_in_active && (_state == active || _state == waiting_for_delimiter)) {
+            _in_active = true;
+            SL_DEBUG_LOG("DEBUG: pipe %p process_activate_read: _sink is NULL, just setting _in_active=true\n",
+                    (void*)this);
+            fflush(stderr);
+        }
+        return;
+    }
+
     if (!_in_active && (_state == active || _state == waiting_for_delimiter)) {
         _in_active = true;
+        SL_DEBUG_LOG("DEBUG: pipe %p process_activate_read: calling _sink->read_activated\n", (void*)this);
+        fflush(stderr);
         _sink->read_activated (this);
+    } else {
+        SL_DEBUG_LOG("DEBUG: pipe %p process_activate_read: NOT calling read_activated (_in_active=%d)\n",
+                (void*)this, _in_active);
+        fflush(stderr);
     }
 }
 
@@ -304,6 +352,7 @@ void slk::pipe_t::process_hiccup (void *pipe_)
 
 void slk::pipe_t::process_pipe_term ()
 {
+    SL_DEBUG_LOG("DEBUG: pipe process_pipe_term called, _state=%d, _delay=%d\n", _state, _delay);
     slk_assert (_state == active || _state == delimiter_received
                 || _state == term_req_sent1);
 
@@ -313,9 +362,10 @@ void slk::pipe_t::process_pipe_term ()
     //  Otherwise we'll hang up in waiting_for_delimiter state till all
     //  pending messages are read.
     if (_state == active) {
-        if (_delay)
+        if (_delay) {
+            SL_DEBUG_LOG("DEBUG: pipe process_pipe_term: setting state to waiting_for_delimiter\n");
             _state = waiting_for_delimiter;
-        else {
+        } else {
             _state = term_ack_sent;
             _out_pipe = NULL;
             send_pipe_term_ack (_peer);

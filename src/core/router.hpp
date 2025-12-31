@@ -34,6 +34,8 @@ class router_t : public routing_socket_base_t
                        bool locally_initiated_) SL_FINAL;
     int xsetsockopt (int option_, const void *optval_,
                      size_t optvallen_) SL_FINAL;
+    int xgetsockopt (int option_, void *optval_,
+                     size_t *optvallen_) SL_FINAL;
     int xsend (msg_t *msg_) SL_OVERRIDE;
     int xrecv (msg_t *msg_) SL_OVERRIDE;
     bool xhas_in () SL_OVERRIDE;

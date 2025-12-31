@@ -4,9 +4,8 @@
 #include "stream_listener_base.hpp"
 #include "../core/session_base.hpp"
 #include "../core/socket_base.hpp"
-// TODO: engines will be implemented in Phase 7
-// #include "zmtp_engine.hpp"
-// #include "raw_engine.hpp"
+#include "../protocol/zmtp_engine.hpp"
+#include "../io/io_thread.hpp"
 
 #ifndef SL_HAVE_WINDOWS
 #include <unistd.h>
@@ -74,33 +73,25 @@ int slk::stream_listener_base_t::close ()
 
 void slk::stream_listener_base_t::create_engine (fd_t fd_)
 {
-    // TODO: This will be fully implemented in Phase 7 with engines
-    // For now, this is a stub
+    const endpoint_uri_pair_t endpoint_pair (
+      get_socket_name (fd_, socket_end_local),
+      get_socket_name (fd_, socket_end_remote), endpoint_type_bind);
 
-    // const endpoint_uri_pair_t endpoint_pair (
-    //   get_socket_name (fd_, socket_end_local),
-    //   get_socket_name (fd_, socket_end_remote), endpoint_type_bind);
+    //  Create the engine object for this connection.
+    i_engine *engine =
+      new (std::nothrow) zmtp_engine_t (fd_, options, endpoint_pair);
+    alloc_assert (engine);
 
-    // i_engine *engine;
-    // if (options.raw_socket)
-    //     engine = new (std::nothrow) raw_engine_t (fd_, options, endpoint_pair);
-    // else
-    //     engine = new (std::nothrow) zmtp_engine_t (fd_, options, endpoint_pair);
-    // alloc_assert (engine);
-
-    //  Choose I/O thread to run connecter in. Given that we are already
+    //  Choose I/O thread to run session in. Given that we are already
     //  running in an I/O thread, there must be at least one available.
-    // io_thread_t *io_thread = choose_io_thread (options.affinity);
-    // slk_assert (io_thread);
+    io_thread_t *io_thread = choose_io_thread (options.affinity);
+    slk_assert (io_thread);
 
     //  Create and launch a session object.
-    // session_base_t *session =
-    //   session_base_t::create (io_thread, false, _socket, options, NULL);
-    // errno_assert (session);
-    // session->inc_seqnum ();
-    // launch_child (session);
-    // send_attach (session, engine, false);
-
-    // TODO: event system
-    // _socket->event_accepted (endpoint_pair, fd_);
+    session_base_t *session =
+      session_base_t::create (io_thread, false, _socket, options, NULL);
+    errno_assert (session);
+    session->inc_seqnum ();
+    launch_child (session);
+    send_attach (session, engine, false);
 }

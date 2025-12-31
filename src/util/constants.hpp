@@ -52,6 +52,7 @@ constexpr int SL_ROUTER_MANDATORY = 33;
 constexpr int SL_ROUTER_RAW = 41;
 constexpr int SL_PROBE_ROUTER = 51;
 constexpr int SL_ROUTER_HANDOVER = 56;
+constexpr int SL_CONNECT_ROUTING_ID = 61;  // Set peer's routing ID when connecting
 constexpr int SL_ROUTER_NOTIFY = 97;
 
 // Socket type

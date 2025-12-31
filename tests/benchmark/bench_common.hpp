@@ -98,10 +98,10 @@ inline void print_latency_result(const char *test_name,
 // Extended error checking with error code
 #define BENCH_CHECK(expr, msg) \
     do { \
-        int rc = (expr); \
-        if (rc != 0) { \
+        int __bench_rc__ = (expr); \
+        if (__bench_rc__ != 0) { \
             fprintf(stderr, "BENCH_CHECK failed: %s returned %d (%s:%d)\n", \
-                    msg, rc, __FILE__, __LINE__); \
+                    msg, __bench_rc__, __FILE__, __LINE__); \
             exit(1); \
         } \
     } while(0)

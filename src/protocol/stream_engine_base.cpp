@@ -189,9 +189,21 @@ void slk::stream_engine_base_t::terminate ()
 void slk::stream_engine_base_t::in_event ()
 {
     //  If still handshaking, receive and process the greeting message.
-    if (unlikely (_handshaking))
+    if (unlikely (_handshaking)) {
+        SL_DEBUG_LOG("DEBUG: in_event: calling handshake()\n");
         if (!handshake ())
             return;
+
+        //  Handshaking was successful.
+        //  Switch into the normal message flow.
+        SL_DEBUG_LOG("DEBUG: in_event: handshake succeeded, setting _handshaking=false\n");
+        _handshaking = false;
+
+        if (_mechanism == NULL && _has_handshake_timer) {
+            cancel_timer (handshake_timer_id);
+            _has_handshake_timer = false;
+        }
+    }
 
     slk_assert (_decoder);
 
@@ -206,7 +218,9 @@ void slk::stream_engine_base_t::in_event ()
     if (!_insize) {
         //  Retrieve the buffer and read as much data as possible.
         _decoder->get_buffer (&_inpos, &_insize);
+        SL_DEBUG_LOG("DEBUG: get_buffer returned _insize=%zu\n", _insize);
         const int rc = read (_inpos, _insize);
+        SL_DEBUG_LOG("DEBUG: read returned rc=%d\n", rc);
 
         if (rc == 0) {
             error (connection_error);
@@ -215,25 +229,31 @@ void slk::stream_engine_base_t::in_event ()
         if (rc == -1) {
             if (errno != EAGAIN)
                 error (connection_error);
+            _insize = 0;  // Reset so next in_event reads fresh data
             return;
         }
 
         //  Adjust input size
         _insize = static_cast<size_t> (rc);
+        SL_DEBUG_LOG("DEBUG: adjusted _insize=%zu\n", _insize);
     }
 
     int rc = 0;
     size_t processed = 0;
+    SL_DEBUG_LOG("DEBUG: in_event processing, _insize=%zu\n", _insize);
 
     while (_insize > 0) {
         rc = _decoder->decode (_inpos, _insize, processed);
+        SL_DEBUG_LOG("DEBUG: decode returned rc=%d, processed=%zu\n", rc, processed);
         slk_assert (processed <= _insize);
         _inpos += processed;
         _insize -= processed;
 
         if (rc == 0 || rc == -1)
             break;
+        SL_DEBUG_LOG("DEBUG: calling _process_msg with msg size=%zu\n", _decoder->msg()->size());
         rc = (this->*_process_msg) (_decoder->msg ());
+        SL_DEBUG_LOG("DEBUG: _process_msg returned %d\n", rc);
         if (rc == -1)
             break;
     }
@@ -249,7 +269,9 @@ void slk::stream_engine_base_t::in_event ()
         reset_pollin (_handle);
     }
 
+    SL_DEBUG_LOG("DEBUG: in_event: calling session->flush()\n");
     _session->flush ();
+    SL_DEBUG_LOG("DEBUG: in_event: session->flush() returned\n");
 }
 
 void slk::stream_engine_base_t::out_event ()
@@ -267,15 +289,16 @@ void slk::stream_engine_base_t::out_event ()
         _outpos = NULL;
         _outsize = _encoder->encode (&_outpos, 0);
 
-        while (_outsize < _options.out_batch_size) {
+        while (_outsize < static_cast<size_t> (_options.out_batch_size)) {
             if ((this->*_next_msg) (&_tx_msg) == -1)
                 break;
             _encoder->load_msg (&_tx_msg);
-            const unsigned char *bufptr = _outpos;
-            const size_t n = _encoder->encode (&_outpos, _options.out_batch_size - _outsize);
-            slk_assert (bufptr == _outpos || n == 0);
-            if (n == 0)
-                break;
+            unsigned char *bufptr = _outpos + _outsize;
+            const size_t n =
+              _encoder->encode (&bufptr, _options.out_batch_size - _outsize);
+            slk_assert (n > 0);
+            if (_outpos == NULL)
+                _outpos = bufptr;
             _outsize += n;
         }
 
@@ -433,13 +456,41 @@ void slk::stream_engine_base_t::set_handshake_timer ()
 int slk::stream_engine_base_t::next_handshake_command (msg_t *msg_)
 {
     slk_assert (_mechanism != NULL);
-    return _mechanism->next_handshake_command (msg_);
+
+    if (_mechanism->status () == mechanism_t::ready) {
+        mechanism_ready ();
+        return pull_and_encode (msg_);
+    }
+    if (_mechanism->status () == mechanism_t::error) {
+        errno = EPROTO;
+        return -1;
+    }
+    const int rc = _mechanism->next_handshake_command (msg_);
+    if (rc == 0)
+        msg_->set_flags (msg_t::command);
+    return rc;
 }
 
 int slk::stream_engine_base_t::process_handshake_command (msg_t *msg_)
 {
     slk_assert (_mechanism != NULL);
-    return _mechanism->process_handshake_command (msg_);
+    SL_DEBUG_LOG("DEBUG: process_handshake_command called, msg size=%zu\n", msg_->size());
+    const int rc = _mechanism->process_handshake_command (msg_);
+    SL_DEBUG_LOG("DEBUG: mechanism->process_handshake_command returned %d, status=%d\n",
+            rc, (int)_mechanism->status());
+    if (rc == 0) {
+        if (_mechanism->status () == mechanism_t::ready) {
+            SL_DEBUG_LOG("DEBUG: mechanism is ready, calling mechanism_ready()\n");
+            mechanism_ready ();
+        }
+        else if (_mechanism->status () == mechanism_t::error) {
+            errno = EPROTO;
+            return -1;
+        }
+        if (_output_stopped)
+            restart_output ();
+    }
+    return rc;
 }
 
 int slk::stream_engine_base_t::pull_msg_from_session (msg_t *msg_)
@@ -466,18 +517,24 @@ int slk::stream_engine_base_t::pull_and_encode (msg_t *msg_)
 int slk::stream_engine_base_t::decode_and_push (msg_t *msg_)
 {
     slk_assert (_mechanism != NULL);
+    SL_DEBUG_LOG("DEBUG: decode_and_push called, msg size=%zu\n", msg_->size());
 
-    if (_mechanism->decode (msg_) == -1)
+    if (_mechanism->decode (msg_) == -1) {
+        SL_DEBUG_LOG("DEBUG: decode_and_push: decode failed\n");
         return -1;
+    }
 
     if (_metadata)
         msg_->set_metadata (_metadata);
 
+    SL_DEBUG_LOG("DEBUG: decode_and_push: pushing msg to session, size=%zu\n", msg_->size());
     if (_session->push_msg (msg_) == -1) {
+        SL_DEBUG_LOG("DEBUG: decode_and_push: push_msg failed, errno=%d\n", errno);
         if (errno == EAGAIN)
             _process_msg = &stream_engine_base_t::push_one_then_decode_and_push;
         return -1;
     }
+    SL_DEBUG_LOG("DEBUG: decode_and_push: success\n");
     return 0;
 }
 
@@ -491,19 +548,71 @@ int slk::stream_engine_base_t::push_one_then_decode_and_push (msg_t *msg_)
 
 int slk::stream_engine_base_t::write_credential (msg_t *msg_)
 {
-    slk_assert (msg_->flags () & msg_t::credential);
-    const int rc = msg_->close ();
-    errno_assert (rc == 0);
-    return 0;
+    slk_assert (_mechanism != NULL);
+    slk_assert (_session != NULL);
+
+    const blob_t &credential = _mechanism->get_user_id ();
+    if (credential.size () > 0) {
+        msg_t msg;
+        int rc = msg.init_size (credential.size ());
+        slk_assert (rc == 0);
+        memcpy (msg.data (), credential.data (), credential.size ());
+        msg.set_flags (msg_t::credential);
+        rc = _session->push_msg (&msg);
+        if (rc == -1) {
+            rc = msg.close ();
+            errno_assert (rc == 0);
+            return -1;
+        }
+    }
+    _process_msg = &stream_engine_base_t::decode_and_push;
+    return decode_and_push (msg_);
 }
 
 void slk::stream_engine_base_t::mechanism_ready ()
 {
-    if (_options.heartbeat_interval > 0) {
+    SL_DEBUG_LOG("DEBUG: mechanism_ready() called\n");
+    if (_options.heartbeat_interval > 0 && !_has_heartbeat_timer) {
         add_timer (_options.heartbeat_interval, heartbeat_ivl_timer_id);
         _has_heartbeat_timer = true;
     }
 
+    //  Notify session that engine is ready - creates the pipe
+    //  MUST be called before push_msg
+    if (_has_handshake_stage) {
+        SL_DEBUG_LOG("DEBUG: calling session->engine_ready()\n");
+        _session->engine_ready ();
+    }
+
+    bool flush_session = false;
+
+    //  Push the peer's routing ID to the session
+    //  This is essential for ROUTER sockets to identify peers
+    if (_options.recv_routing_id) {
+        msg_t routing_id;
+        _mechanism->peer_routing_id (&routing_id);
+        SL_DEBUG_LOG("DEBUG: mechanism_ready: pushing routing_id, size=%zu\n", routing_id.size());
+        const int rc = _session->push_msg (&routing_id);
+        SL_DEBUG_LOG("DEBUG: mechanism_ready: push_msg returned %d\n", rc);
+        if (rc == -1 && errno == EAGAIN) {
+            // Pipe is shutting down
+            SL_DEBUG_LOG("DEBUG: mechanism_ready: pipe shutting down, returning early\n");
+            return;
+        }
+        errno_assert (rc == 0);
+        flush_session = true;
+    } else {
+        SL_DEBUG_LOG("DEBUG: mechanism_ready: recv_routing_id is false\n");
+    }
+
+    if (flush_session)
+        _session->flush ();
+
+    //  Set up function pointers for message processing
+    _next_msg = &stream_engine_base_t::pull_and_encode;
+    _process_msg = &stream_engine_base_t::write_credential;
+
+    //  Compile metadata
     if (_metadata)
         if (_metadata->drop_ref ()) {
             SL_DELETE (_metadata);
@@ -513,7 +622,7 @@ void slk::stream_engine_base_t::mechanism_ready ()
     properties_t properties;
     init_properties (properties);
 
-    //  Add ZMQ properties.
+    //  Add ZMTP properties
     properties_t::const_iterator it;
     for (it = _mechanism->get_zmtp_properties ().begin ();
          it != _mechanism->get_zmtp_properties ().end (); ++it)
@@ -524,9 +633,6 @@ void slk::stream_engine_base_t::mechanism_ready ()
         _metadata = new (std::nothrow) metadata_t (properties);
 
     _handshaking = false;
-
-    if (_has_handshake_stage)
-        _session->engine_ready ();
 }
 
 bool slk::stream_engine_base_t::init_properties (properties_t &properties_)

@@ -6,9 +6,7 @@
 #include "address.hpp"
 #include "../util/random.hpp"
 #include "../util/err.hpp"
-// TODO: engines will be implemented in Phase 7
-// #include "zmtp_engine.hpp"
-// #include "raw_engine.hpp"
+#include "../protocol/zmtp_engine.hpp"
 
 #ifndef SL_HAVE_WINDOWS
 #include <unistd.h>
@@ -151,25 +149,19 @@ void slk::stream_connecter_base_t::in_event ()
 void slk::stream_connecter_base_t::create_engine (
   fd_t fd_, const std::string &local_address_)
 {
-    // TODO: This will be fully implemented in Phase 7 with engines
-    // For now, this is a stub
+    const endpoint_uri_pair_t endpoint_pair (local_address_, _endpoint,
+                                              endpoint_type_connect);
 
     //  Create the engine object for this connection.
-    // i_engine *engine;
-    // if (options.raw_socket)
-    //     engine = new (std::nothrow) raw_engine_t (fd_, options, endpoint_pair);
-    // else
-    //     engine = new (std::nothrow) zmtp_engine_t (fd_, options, endpoint_pair);
-    // alloc_assert (engine);
+    i_engine *engine =
+      new (std::nothrow) zmtp_engine_t (fd_, options, endpoint_pair);
+    alloc_assert (engine);
 
     //  Attach the engine to the corresponding session object.
-    // send_attach (_session, engine);
+    send_attach (_session, engine);
 
     //  Shut the connecter down.
     terminate ();
-
-    // TODO: event system
-    // _socket->event_connected (endpoint_pair, fd_);
 }
 
 void slk::stream_connecter_base_t::timer_event (int id_)

@@ -428,17 +428,52 @@ int slk::socket_base_t::connect_internal (const char *endpoint_uri_)
         new_pipes[0]->set_hwms_boost (peer.options.sndhwm, peer.options.rcvhwm);
         new_pipes[1]->set_hwms_boost (options.sndhwm, options.rcvhwm);
 
-        // Save last endpoint URI
-        std::stringstream s;
-        s << protocol << "://" << address;
-        _last_endpoint = s.str ();
+        // CRITICAL FIX: Send routing IDs BEFORE sending bind command
+        // This ensures that when the peer processes the bind command and calls
+        // identify_peer(), the routing ID is already available in the pipe.
+        // Without this, identify_peer() fails and the pipe is not added to the
+        // fair queue, making messages unreadable.
+
+        // If required, send the routing id of the local socket to the peer
+        if (peer.options.recv_routing_id) {
+            msg_t routing_id_msg;
+            int rc = routing_id_msg.init_size (options.routing_id_size);
+            errno_assert (rc == 0);
+            memcpy (routing_id_msg.data (), options.routing_id, options.routing_id_size);
+            routing_id_msg.set_flags (msg_t::routing_id);
+            const bool ok = new_pipes[0]->write (&routing_id_msg);
+            slk_assert (ok);
+            new_pipes[0]->flush ();  // Flush to make routing_id available for reading
+            rc = routing_id_msg.close ();
+            errno_assert (rc == 0);
+        }
+
+        // If required, send the routing id of the peer to the local socket
+        if (options.recv_routing_id) {
+            msg_t routing_id_msg;
+            int rc = routing_id_msg.init_size (peer.options.routing_id_size);
+            errno_assert (rc == 0);
+            memcpy (routing_id_msg.data (), peer.options.routing_id, peer.options.routing_id_size);
+            routing_id_msg.set_flags (msg_t::routing_id);
+            const bool ok = new_pipes[1]->write (&routing_id_msg);
+            slk_assert (ok);
+            new_pipes[1]->flush ();  // Flush to make routing_id available for reading
+            rc = routing_id_msg.close ();
+            errno_assert (rc == 0);
+        }
+
+        // Attach remote end of the pipe to the peer socket
+        // We need to send a bind command to the peer
+        // This must come AFTER sending routing IDs
+        send_bind (peer.socket, new_pipes[1], false);
 
         // Attach local end of the pipe to this socket
         attach_pipe (new_pipes[0], false, true);
 
-        // Attach remote end of the pipe to the peer socket
-        // We need to send a bind command to the peer
-        send_bind (peer.socket, new_pipes[1], false);
+        // Save last endpoint URI
+        std::stringstream s;
+        s << protocol << "://" << address;
+        _last_endpoint = s.str ();
 
         // Add endpoint
         add_endpoint (make_unconnected_connect_endpoint_pair (_last_endpoint),
@@ -949,6 +984,12 @@ void slk::socket_base_t::check_destroy ()
 
         // Remove the socket from the context
         destroy_socket (this);
+
+        // Notify the reaper that this socket has been reaped
+        send_reaped ();
+
+        // Deallocate the socket
+        delete this;
     }
 }
 
@@ -1062,7 +1103,9 @@ int slk::routing_socket_base_t::xsetsockopt (int option_,
                                               const void *optval_,
                                               size_t optvallen_)
 {
-    if (option_ == SL_ROUTING_ID) {
+    // SL_CONNECT_ROUTING_ID sets the routing ID to assign to the peer when connecting
+    // This is different from SL_ROUTING_ID which sets our own identity
+    if (option_ == SL_CONNECT_ROUTING_ID) {
         if (optval_ && optvallen_) {
             _connect_routing_id.assign (static_cast<const char *> (optval_),
                                         optvallen_);

@@ -48,25 +48,13 @@ static void test_router_mandatory_unknown_peer()
 
     test_sleep_ms(100);
 
-    /* Try to send to non-existent peer */
-    int rc;
-    rc = slk_send(router, "UNKNOWN", 7, SLK_SNDMORE);
-    TEST_ASSERT(rc >= 0); /* Routing ID frame succeeds */
-
-    rc = slk_send(router, "", 0, SLK_SNDMORE);
-    TEST_ASSERT(rc >= 0); /* Empty delimiter succeeds */
-
-    rc = slk_send(router, "Hello", 5, 0);
-    /* With ROUTER_MANDATORY, this should fail because peer doesn't exist */
-    /* The behavior might be:
-     * - Immediate failure
-     * - Queued and failed later
-     * Depending on implementation, we check errno */
-    if (rc < 0) {
-        int err = slk_errno();
-        /* Could be EHOSTUNREACH or EAGAIN */
-        TEST_ASSERT(err == SLK_EHOSTUNREACH || err == SLK_EAGAIN || err == SLK_EPEERUNREACH);
-    }
+    /* Try to send to non-existent peer - should fail immediately
+     * with ROUTER_MANDATORY enabled. The routing ID frame fails with
+     * EHOSTUNREACH because the peer doesn't exist. */
+    int rc = slk_send(router, "UNKNOWN", 7, SLK_SNDMORE);
+    TEST_ASSERT(rc < 0);
+    int err = slk_errno();
+    TEST_ASSERT(err == SLK_EHOSTUNREACH || err == SLK_EPEERUNREACH);
 
     test_socket_close(router);
     test_context_destroy(ctx);

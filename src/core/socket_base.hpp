@@ -128,6 +128,14 @@ class socket_base_t : public own_t,
     // Socket options
     options_t options;
 
+  public:
+    // Processes commands sent to this socket (if any). If timeout is -1,
+    // returns only after at least one command was processed.
+    // If throttle argument is true, commands are processed at most once
+    // in a predefined time period.
+    // This is public so that slk_poll() can process pending commands before polling.
+    int process_commands (int timeout_, bool throttle_);
+
   private:
     // Creates new endpoint ID and adds the endpoint to the map
     void add_endpoint (const endpoint_uri_pair_t &endpoint_pair_,
@@ -168,12 +176,6 @@ class socket_base_t : public own_t,
     // Register the pipe with this socket
     void attach_pipe (pipe_t *pipe_, bool subscribe_to_all_ = false,
                       bool locally_initiated_ = false);
-
-    // Processes commands sent to this socket (if any). If timeout is -1,
-    // returns only after at least one command was processed.
-    // If throttle argument is true, commands are processed at most once
-    // in a predefined time period
-    int process_commands (int timeout_, bool throttle_);
 
     // Handlers for incoming commands
     void process_stop () SL_FINAL;
