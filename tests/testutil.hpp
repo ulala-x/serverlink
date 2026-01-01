@@ -276,23 +276,24 @@ static inline const char* test_endpoint_tcp()
     static int base_port = 0;
     static int call_count = 0;
 
-    /* Initialize base port once per process */
+    /* Initialize base port once per process using PID-based spacing */
     if (base_port == 0) {
-        srand(time(NULL) ^ getpid());
-        base_port = 49152 + (rand() % 10000);
+        /* Use PID to create well-separated port ranges per process */
+        /* Each process gets a block of 100 ports */
+        int pid_offset = (getpid() % 300) * 100;
+        base_port = 10000 + pid_offset;
     }
 
     /* Use rotating buffers to avoid overwriting previous endpoints */
     int slot = call_count % 16;
 
-    /* Each call gets a unique port: base + (call_count * 50) */
-    int port = base_port + (call_count * 50);
+    /* Each call gets a unique port: base + call_count */
+    int port = base_port + call_count;
     call_count++;
 
-    /* Wrap around if we exceed ephemeral port range */
-    if (port > 65000) {
-        base_port = 49152 + (rand() % 10000);
-        port = base_port;
+    /* Wrap around if we exceed our allocated block */
+    if (call_count >= 100) {
+        call_count = 0;
     }
 
     snprintf(endpoints[slot], sizeof(endpoints[slot]), "tcp://127.0.0.1:%d", port);
