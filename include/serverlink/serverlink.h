@@ -28,7 +28,11 @@ SL_EXPORT void SL_CALL slk_version(int *major, int *minor, int *patch);
 /*  Socket Types                                                            */
 /****************************************************************************/
 
+#define SLK_PUB    1  /* Publisher socket */
+#define SLK_SUB    2  /* Subscriber socket */
 #define SLK_ROUTER 6  /* Server-side routing socket */
+#define SLK_XPUB   9  /* Publisher socket with subscription visibility */
+#define SLK_XSUB   10 /* Subscriber socket with manual subscription management */
 
 /****************************************************************************/
 /*  Socket Options                                                          */
@@ -70,6 +74,20 @@ SL_EXPORT void SL_CALL slk_version(int *major, int *minor, int *patch);
 
 /* Monitoring options (future use) */
 #define SLK_MONITOR_EVENTS      202 /* Event mask for monitoring */
+
+/* Pub/Sub options */
+#define SLK_SUBSCRIBE           6   /* Add subscription filter */
+#define SLK_UNSUBSCRIBE         7   /* Remove subscription filter */
+#define SLK_XPUB_VERBOSE        40  /* Send all subscription messages */
+#define SLK_XPUB_VERBOSER       78  /* Send all subscription and unsubscription messages */
+#define SLK_XPUB_NODROP         69  /* Block instead of drop when HWM reached */
+#define SLK_XPUB_MANUAL         71  /* Manual subscription management mode */
+#define SLK_XPUB_MANUAL_LAST_VALUE  70  /* Manual mode with last value caching */
+#define SLK_XPUB_WELCOME_MSG    72  /* Welcome message for new subscribers */
+#define SLK_ONLY_FIRST_SUBSCRIBE    108 /* Process only first subscribe in multipart */
+#define SLK_TOPICS_COUNT        80  /* Get number of active subscriptions */
+#define SLK_INVERT_MATCHING     60  /* Invert subscription matching logic */
+#define SLK_XSUB_VERBOSE_UNSUBSCRIBE 73  /* Send all unsubscribe messages upstream */
 
 /****************************************************************************/
 /*  Message Flags                                                           */

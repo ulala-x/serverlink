@@ -396,7 +396,11 @@ slk_msg_t* SL_CALL slk_msg_new(void)
 
 slk_msg_t* SL_CALL slk_msg_new_data(const void *data, size_t size)
 {
-    CHECK_PTR(data, nullptr);
+    // Allow NULL data pointer only when size is 0 (empty message)
+    if (size > 0 && !data) {
+        set_errno(SLK_EINVAL);
+        return nullptr;
+    }
 
     try {
         slk::msg_t *msg = new slk::msg_t();
@@ -452,7 +456,10 @@ int SL_CALL slk_msg_init(slk_msg_t *msg_)
 int SL_CALL slk_msg_init_data(slk_msg_t *msg_, const void *data, size_t size)
 {
     CHECK_PTR(msg_, -1);
-    CHECK_PTR(data, -1);
+    // Allow NULL data pointer only when size is 0 (empty message)
+    if (size > 0 && !data) {
+        return set_errno(SLK_EINVAL);
+    }
 
     slk::msg_t *msg = reinterpret_cast<slk::msg_t*>(msg_);
 
@@ -655,7 +662,10 @@ int SL_CALL slk_msg_set_routing_id(slk_msg_t *msg_, const void *id, size_t size)
 int SL_CALL slk_send(slk_socket_t *socket_, const void *data, size_t len, int flags)
 {
     CHECK_PTR(socket_, -1);
-    CHECK_PTR(data, -1);
+    // Allow NULL data pointer only when len is 0 (empty message)
+    if (len > 0 && !data) {
+        return set_errno(SLK_EINVAL);
+    }
 
     slk::socket_base_t *socket = reinterpret_cast<slk::socket_base_t*>(socket_);
 
@@ -680,7 +690,11 @@ int SL_CALL slk_send(slk_socket_t *socket_, const void *data, size_t len, int fl
 int SL_CALL slk_recv(slk_socket_t *socket_, void *buf, size_t len, int flags)
 {
     CHECK_PTR(socket_, -1);
-    CHECK_PTR(buf, -1);
+    // Allow NULL buf pointer when len is 0 (discarding message content)
+    // This is valid - user may want to check if message exists without reading it
+    if (len > 0 && !buf) {
+        return set_errno(SLK_EINVAL);
+    }
 
     slk::socket_base_t *socket = reinterpret_cast<slk::socket_base_t*>(socket_);
 
@@ -698,10 +712,12 @@ int SL_CALL slk_recv(slk_socket_t *socket_, void *buf, size_t len, int flags)
 
         size_t msg_size = msg.size();
         size_t copy_size = (msg_size < len) ? msg_size : len;
-        memcpy(buf, msg.data(), copy_size);
+        if (copy_size > 0) {
+            memcpy(buf, msg.data(), copy_size);
+        }
 
         msg.close();
-        return static_cast<int>(copy_size);
+        return static_cast<int>(msg_size);  // Return actual message size, not copy size
     } catch (...) {
         return set_errno(SLK_EPROTO);
     }

@@ -55,8 +55,26 @@ constexpr int SL_ROUTER_HANDOVER = 56;
 constexpr int SL_CONNECT_ROUTING_ID = 61;  // Set peer's routing ID when connecting
 constexpr int SL_ROUTER_NOTIFY = 97;
 
-// Socket type
+// Pub/Sub options
+constexpr int SL_SUBSCRIBE = 6;
+constexpr int SL_UNSUBSCRIBE = 7;
+constexpr int SL_XPUB_VERBOSE = 40;
+constexpr int SL_XPUB_VERBOSER = 78;
+constexpr int SL_XPUB_MANUAL = 71;
+constexpr int SL_XPUB_NODROP = 69;
+constexpr int SL_XPUB_MANUAL_LAST_VALUE = 70;
+constexpr int SL_XPUB_WELCOME_MSG = 72;
+constexpr int SL_XSUB_VERBOSE_UNSUBSCRIBE = 73;
+constexpr int SL_ONLY_FIRST_SUBSCRIBE = 108;
+constexpr int SL_TOPICS_COUNT = 80;
+constexpr int SL_INVERT_MATCHING = 60;
+
+// Socket types
+constexpr int SL_PUB = 1;
+constexpr int SL_SUB = 2;
 constexpr int SL_ROUTER = 6;
+constexpr int SL_XPUB = 9;
+constexpr int SL_XSUB = 10;
 
 // Socket option flags
 constexpr int SL_DONTWAIT = 1;

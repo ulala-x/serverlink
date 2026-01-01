@@ -46,16 +46,29 @@ const slk::blob_t &slk::mechanism_t::get_user_id () const
     return _user_id;
 }
 
+const char socket_type_pub[] = "PUB";
+const char socket_type_sub[] = "SUB";
 const char socket_type_router[] = "ROUTER";
+const char socket_type_xpub[] = "XPUB";
+const char socket_type_xsub[] = "XSUB";
 
 const char *slk::mechanism_t::socket_type_string (int socket_type_)
 {
-    // ServerLink only supports ROUTER socket
-    if (socket_type_ == SL_ROUTER)
-        return socket_type_router;
-
-    slk_assert (false);
-    return "";
+    switch (socket_type_) {
+        case SL_PUB:
+            return socket_type_pub;
+        case SL_SUB:
+            return socket_type_sub;
+        case SL_ROUTER:
+            return socket_type_router;
+        case SL_XPUB:
+            return socket_type_xpub;
+        case SL_XSUB:
+            return socket_type_xsub;
+        default:
+            slk_assert (false);
+            return "";
+    }
 }
 
 const size_t name_len_size = sizeof (unsigned char);
@@ -244,13 +257,24 @@ static bool strequals (const char *actual_type_,
 bool slk::mechanism_t::check_socket_type (const char *type_,
                                           const size_t len_) const
 {
-    // ServerLink only supports ROUTER socket type
-    // ROUTER is compatible with: DEALER, ROUTER, REQ (all from client side)
-    // For simplicity, we accept any peer socket type since ServerLink is server-side only
-    // In a real implementation, you might want to enforce specific peer types
-
-    // For now, just accept the connection - we'll validate at higher layers if needed
-    (void)type_;
-    (void)len_;
-    return true;
+    switch (options.type) {
+        case SL_ROUTER:
+            // ROUTER accepts DEALER, ROUTER, REQ
+            // For now accept any peer type - validation at higher layers
+            return true;
+        case SL_PUB:
+            return strequals (type_, len_, socket_type_sub)
+                   || strequals (type_, len_, socket_type_xsub);
+        case SL_SUB:
+            return strequals (type_, len_, socket_type_pub)
+                   || strequals (type_, len_, socket_type_xpub);
+        case SL_XPUB:
+            return strequals (type_, len_, socket_type_sub)
+                   || strequals (type_, len_, socket_type_xsub);
+        case SL_XSUB:
+            return strequals (type_, len_, socket_type_pub)
+                   || strequals (type_, len_, socket_type_xpub);
+        default:
+            return false;
+    }
 }

@@ -53,6 +53,8 @@ set(SERVERLINK_SOURCES
     # Pipe sources
     src/pipe/pipe.cpp
     src/pipe/fq.cpp
+    src/pipe/dist.cpp
+    src/pipe/trie.cpp
 
     # Core sources
     src/core/options.cpp
@@ -62,6 +64,10 @@ set(SERVERLINK_SOURCES
     src/core/endpoint.cpp
     src/core/socket_base.cpp
     src/core/router.cpp
+    src/core/pub.cpp
+    src/core/sub.cpp
+    src/core/xsub.cpp
+    src/core/xpub.cpp
 
     # I/O sources
     src/io/ip.cpp

@@ -339,14 +339,47 @@ int slk::zmtp_engine_t::produce_pong_message (msg_t *msg_)
 
 int slk::zmtp_engine_t::process_command_message (msg_t *msg_)
 {
-    const unsigned char *data = static_cast<unsigned char *> (msg_->data ());
+    const uint8_t *data = static_cast<const uint8_t *> (msg_->data ());
     const size_t data_size = msg_->size ();
 
-    if (data_size >= 6) {
-        if (memcmp (data + 2, "\4PING", 5) == 0
-            || memcmp (data + 2, "\4PONG", 5) == 0) {
-            return process_heartbeat_message (msg_);
-        }
+    // Command messages have format: [cmd_name_size][cmd_name][data]
+    // cmd_name_size is the first byte and includes the size byte itself
+    if (data_size < 1)
+        return 0;
+
+    const uint8_t cmd_name_size = data[0];
+    if (data_size < static_cast<size_t> (cmd_name_size) + 1)
+        return 0;
+
+    const uint8_t *cmd_name = data + 1;
+
+    // Check for SUBSCRIBE command ("\x9SUBSCRIBE" = size 9 + "SUBSCRIBE")
+    const size_t sub_name_size = msg_t::sub_cmd_name_size - 1;  // 9
+    const size_t cancel_name_size = msg_t::cancel_cmd_name_size - 1;  // 6
+    const size_t ping_name_size = 4;  // "PING"
+
+    if (cmd_name_size == sub_name_size
+        && memcmp (cmd_name, "SUBSCRIBE", cmd_name_size) == 0) {
+        msg_->set_flags (msg_t::subscribe);
+        return 0;
+    }
+
+    if (cmd_name_size == cancel_name_size
+        && memcmp (cmd_name, "CANCEL", cmd_name_size) == 0) {
+        msg_->set_flags (msg_t::cancel);
+        return 0;
+    }
+
+    if (cmd_name_size == ping_name_size
+        && memcmp (cmd_name, "PING", cmd_name_size) == 0) {
+        msg_->set_flags (msg_t::ping);
+        return process_heartbeat_message (msg_);
+    }
+
+    if (cmd_name_size == ping_name_size
+        && memcmp (cmd_name, "PONG", cmd_name_size) == 0) {
+        msg_->set_flags (msg_t::pong);
+        return process_heartbeat_message (msg_);
     }
 
     // Unknown command - ignore

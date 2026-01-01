@@ -31,6 +31,9 @@ class fq_t
     int recvpipe (msg_t *msg_, pipe_t **pipe_);
     bool has_in ();
 
+    // Get the number of pipes (for debugging).
+    size_t size () const { return _pipes.size (); }
+
   private:
     //  Inbound pipes.
     typedef array_t<pipe_t, 1> pipes_t;

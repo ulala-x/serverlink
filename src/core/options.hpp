@@ -165,6 +165,10 @@ struct options_t
     // TCP accept() filters
     typedef std::vector<tcp_address_mask_t> tcp_accept_filters_t;
     tcp_accept_filters_t tcp_accept_filters;
+
+    // Pub/Sub options
+    bool filter;           // If true, filter messages based on subscriptions (XSUB)
+    bool invert_matching;  // If true, invert subscription matching logic
 };
 
 // Helper functions for getting/setting socket options

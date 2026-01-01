@@ -150,7 +150,9 @@ slk::options_t::options_t () :
     can_recv_disconnect_msg (false),
     hiccup_msg (),
     can_recv_hiccup_msg (false),
-    busy_poll (0)
+    busy_poll (0),
+    filter (false),
+    invert_matching (false)
 {
 }
 

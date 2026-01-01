@@ -541,6 +541,11 @@ int slk::stream_engine_base_t::decode_and_push (msg_t *msg_)
         return -1;
     }
 
+    // Process command messages (SUBSCRIBE, CANCEL, PING, PONG, etc.)
+    if (msg_->flags () & msg_t::command) {
+        process_command_message (msg_);
+    }
+
     if (_metadata)
         msg_->set_metadata (_metadata);
 

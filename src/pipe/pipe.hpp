@@ -75,8 +75,19 @@ class pipe_t SL_FINAL : public object_t,
     //  Returns true if there is at least one message to read in the pipe.
     bool check_read ();
 
+    //  Initialize the ypipe reader state, ensuring _c is set to NULL if empty.
+    //  This must be called after reading from an empty pipe to ensure subsequent
+    //  writes will trigger activate_read. Unlike check_read(), this works even
+    //  when _in_active is false.
+    void init_reader_state ();
+
     //  Reads a message to the underlying pipe.
     bool read (msg_t *msg_);
+
+    //  Force the pipe to become active and read any pending messages.
+    //  This is used as a workaround when subscription messages don't trigger
+    //  activate_read properly. Returns true if any messages were available.
+    bool force_check_and_activate ();
 
     //  Checks whether messages can be written to the pipe. If the pipe is
     //  closed or if writing the message would cause high watermark the
@@ -129,6 +140,9 @@ class pipe_t SL_FINAL : public object_t,
     void set_disconnect_msg (const std::vector<unsigned char> &disconnect_);
 
     void send_hiccup_msg (const std::vector<unsigned char> &hiccup_);
+
+    //  Get the peer pipe (the other end of the pipe pair)
+    pipe_t *get_peer () const;
 
   private:
     //  Type of the underlying lock-free pipe.

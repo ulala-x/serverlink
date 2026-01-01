@@ -15,6 +15,12 @@
 #include <time.h>
 #include <unistd.h>
 
+/* TCP settle time in milliseconds - time to wait for TCP connections to establish
+ * and messages to propagate through the network. libzmq uses 300ms. */
+#ifndef SETTLE_TIME
+#define SETTLE_TIME 300
+#endif
+
 /* Test framework macros */
 #define TEST_ASSERT(cond) \
     do { \

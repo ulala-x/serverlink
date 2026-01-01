@@ -27,6 +27,10 @@
 #include "../io/mailbox.hpp"
 
 #include "router.hpp"
+#include "pub.hpp"
+#include "sub.hpp"
+#include "xsub.hpp"
+#include "xpub.hpp"
 
 namespace slk
 {
@@ -52,6 +56,18 @@ slk::socket_base_t *slk::socket_base_t::create (int type_,
     switch (type_) {
         case SL_ROUTER:
             s = new (std::nothrow) router_t (parent_, tid_, sid_);
+            break;
+        case SL_PUB:
+            s = new (std::nothrow) pub_t (parent_, tid_, sid_);
+            break;
+        case SL_SUB:
+            s = new (std::nothrow) sub_t (parent_, tid_, sid_);
+            break;
+        case SL_XSUB:
+            s = new (std::nothrow) xsub_t (parent_, tid_, sid_);
+            break;
+        case SL_XPUB:
+            s = new (std::nothrow) xpub_t (parent_, tid_, sid_);
             break;
         default:
             errno = EINVAL;

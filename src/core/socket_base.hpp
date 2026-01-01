@@ -125,6 +125,10 @@ class socket_base_t : public own_t,
 
     int connect_internal (const char *endpoint_uri_);
 
+    // Helper to access pipes for derived classes
+    typedef array_t<pipe_t, 3> pipes_t;
+    pipes_t &get_pipes () { return _pipes; }
+
     // Socket options
     options_t options;
 
@@ -192,7 +196,6 @@ class socket_base_t : public own_t,
     i_mailbox *_mailbox;
 
     // List of attached pipes
-    typedef array_t<pipe_t, 3> pipes_t;
     pipes_t _pipes;
 
     // Reaper's poller and handle of this socket within it
