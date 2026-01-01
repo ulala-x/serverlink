@@ -287,6 +287,13 @@ int slk::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             }
             break;
 
+        case SL_MSG_T_SIZE:
+            if (is_int) {
+                *value = sizeof (msg_t);
+                return 0;
+            }
+            break;
+
         default: {
             return thread_ctx_t::get (option_, optval_, optvallen_);
         }
@@ -535,6 +542,14 @@ int slk::thread_ctx_t::get (int option_,
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = _thread_sched_policy;
+                return 0;
+            }
+            break;
+
+        case SL_THREAD_PRIORITY:
+            if (is_int) {
+                scoped_lock_t locker (_opt_sync);
+                *value = _thread_priority;
                 return 0;
             }
             break;

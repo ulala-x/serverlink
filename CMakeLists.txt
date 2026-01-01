@@ -45,6 +45,9 @@ set(SERVERLINK_SOURCES
     src/util/clock.cpp
     src/util/random.cpp
     src/util/thread.cpp
+    src/util/atomic_counter.cpp
+    src/util/timers.cpp
+    src/util/stopwatch.cpp
 
     # Message sources
     src/msg/metadata.cpp
@@ -68,6 +71,7 @@ set(SERVERLINK_SOURCES
     src/core/sub.cpp
     src/core/xsub.cpp
     src/core/xpub.cpp
+    src/core/proxy.cpp
 
     # I/O sources
     src/io/ip.cpp
@@ -76,6 +80,7 @@ set(SERVERLINK_SOURCES
     src/io/mailbox.cpp
     src/io/mailbox_safe.cpp
     src/io/poller_base.cpp
+    src/io/socket_poller.cpp
     src/io/io_thread.cpp
     src/io/io_object.cpp
     src/io/reaper.cpp

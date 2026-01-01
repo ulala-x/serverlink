@@ -18,10 +18,14 @@
 #include "core/ctx.hpp"
 #include "core/socket_base.hpp"
 #include "core/router.hpp"
+#include "core/proxy.hpp"
 #include "msg/msg.hpp"
 #include "util/err.hpp"
 #include "util/clock.hpp"
 #include "util/constants.hpp"
+#include "util/atomic_counter.hpp"
+#include "util/timers.hpp"
+#include "util/stopwatch.hpp"
 
 #ifdef SL_ENABLE_MONITORING
 #include "monitor/connection_manager.hpp"
@@ -30,6 +34,8 @@
 #include "msg/blob.hpp"
 #include <vector>
 #endif
+
+#include "io/socket_poller.hpp"
 
 // Thread-local storage for errno
 #ifdef _WIN32
@@ -1381,6 +1387,483 @@ void SL_CALL slk_sleep(int ms)
     ts.tv_nsec = (ms % 1000) * 1000000;
     nanosleep(&ts, nullptr);
 #endif
+}
+
+int SL_CALL slk_has(const char *capability)
+{
+    if (!capability) {
+        return 0;
+    }
+
+    // Check supported capabilities
+    if (strcmp(capability, "ipc") == 0) {
+#ifdef SL_HAVE_IPC
+        return 1;
+#else
+        return 0;
+#endif
+    }
+
+    // Unsupported capabilities
+    if (strcmp(capability, "curve") == 0 ||
+        strcmp(capability, "gssapi") == 0 ||
+        strcmp(capability, "pgm") == 0 ||
+        strcmp(capability, "tipc") == 0 ||
+        strcmp(capability, "norm") == 0 ||
+        strcmp(capability, "draft") == 0) {
+        return 0;
+    }
+
+    // Unknown capability
+    return 0;
+}
+
+/****************************************************************************/
+/*  Atomic Counter API                                                      */
+/****************************************************************************/
+
+void* SL_CALL slk_atomic_counter_new(void)
+{
+    return slk::atomic_counter_new();
+}
+
+void SL_CALL slk_atomic_counter_set(void *counter, int value)
+{
+    slk::atomic_counter_set(counter, value);
+}
+
+int SL_CALL slk_atomic_counter_inc(void *counter)
+{
+    return slk::atomic_counter_inc(counter);
+}
+
+int SL_CALL slk_atomic_counter_dec(void *counter)
+{
+    return slk::atomic_counter_dec(counter);
+}
+
+int SL_CALL slk_atomic_counter_value(void *counter)
+{
+    return slk::atomic_counter_value(counter);
+}
+
+void SL_CALL slk_atomic_counter_destroy(void **counter_p)
+{
+    slk::atomic_counter_destroy(counter_p);
+}
+
+/****************************************************************************/
+/*  Timer API                                                               */
+/****************************************************************************/
+
+void* SL_CALL slk_timers_new(void)
+{
+    try {
+        slk::timers_t *timers = new (std::nothrow) slk::timers_t();
+        return static_cast<void*>(timers);
+    } catch (...) {
+        errno = ENOMEM;
+        return nullptr;
+    }
+}
+
+int SL_CALL slk_timers_destroy(void **timers_p)
+{
+    if (!timers_p || !*timers_p) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    slk::timers_t *timers = static_cast<slk::timers_t*>(*timers_p);
+    if (!timers->check_tag()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    delete timers;
+    *timers_p = nullptr;
+    return 0;
+}
+
+int SL_CALL slk_timers_add(void *timers, size_t interval, slk_timer_fn handler, void *arg)
+{
+    if (!timers) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    slk::timers_t *t = static_cast<slk::timers_t*>(timers);
+    if (!t->check_tag()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    return t->add(interval, handler, arg);
+}
+
+int SL_CALL slk_timers_cancel(void *timers, int timer_id)
+{
+    if (!timers) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    slk::timers_t *t = static_cast<slk::timers_t*>(timers);
+    if (!t->check_tag()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    return t->cancel(timer_id);
+}
+
+int SL_CALL slk_timers_set_interval(void *timers, int timer_id, size_t interval)
+{
+    if (!timers) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    slk::timers_t *t = static_cast<slk::timers_t*>(timers);
+    if (!t->check_tag()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    return t->set_interval(timer_id, interval);
+}
+
+int SL_CALL slk_timers_reset(void *timers, int timer_id)
+{
+    if (!timers) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    slk::timers_t *t = static_cast<slk::timers_t*>(timers);
+    if (!t->check_tag()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    return t->reset(timer_id);
+}
+
+long SL_CALL slk_timers_timeout(void *timers)
+{
+    if (!timers) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    slk::timers_t *t = static_cast<slk::timers_t*>(timers);
+    if (!t->check_tag()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    return t->timeout();
+}
+
+int SL_CALL slk_timers_execute(void *timers)
+{
+    if (!timers) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    slk::timers_t *t = static_cast<slk::timers_t*>(timers);
+    if (!t->check_tag()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    return t->execute();
+}
+
+/****************************************************************************/
+/*  Stopwatch API                                                           */
+/****************************************************************************/
+
+void* SL_CALL slk_stopwatch_start(void)
+{
+    try {
+        slk::stopwatch_t *watch = new (std::nothrow) slk::stopwatch_t();
+        return static_cast<void*>(watch);
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+unsigned long SL_CALL slk_stopwatch_intermediate(void *watch)
+{
+    if (!watch) {
+        return 0;
+    }
+
+    slk::stopwatch_t *sw = static_cast<slk::stopwatch_t*>(watch);
+    return static_cast<unsigned long>(sw->intermediate());
+}
+
+unsigned long SL_CALL slk_stopwatch_stop(void *watch)
+{
+    if (!watch) {
+        return 0;
+    }
+
+    slk::stopwatch_t *sw = static_cast<slk::stopwatch_t*>(watch);
+    const unsigned long result = static_cast<unsigned long>(sw->stop());
+    delete sw;
+    return result;
+}
+
+/****************************************************************************/
+/*  Modern Poller API Implementation                                        */
+/****************************************************************************/
+
+// Helper function to check poller validity
+static int check_poller(void *poller_)
+{
+    if (!poller_ || !(static_cast<slk::socket_poller_t *>(poller_))->check_tag()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return 0;
+}
+
+// Helper function to check socket pointer validity
+static int check_socket(void *socket_)
+{
+    if (!socket_) {
+        errno = ENOTSOCK;
+        return -1;
+    }
+    slk::socket_base_t *s = reinterpret_cast<slk::socket_base_t *>(socket_);
+    if (!s) {
+        errno = ENOTSOCK;
+        return -1;
+    }
+    return 0;
+}
+
+// Helper function to validate events
+static int check_events(short events_)
+{
+    const short valid_events = SLK_POLLIN | SLK_POLLOUT | SLK_POLLERR;
+    if ((events_ & ~valid_events) != 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    return 0;
+}
+
+// Helper function to check file descriptor validity
+static int check_fd(slk_fd_t fd_)
+{
+#ifdef _WIN32
+    if (fd_ == INVALID_HANDLE_VALUE) {
+        errno = EBADF;
+        return -1;
+    }
+#else
+    if (fd_ < 0) {
+        errno = EBADF;
+        return -1;
+    }
+#endif
+    return 0;
+}
+
+void* SL_CALL slk_poller_new(void)
+{
+    try {
+        slk::socket_poller_t *poller = new (std::nothrow) slk::socket_poller_t;
+        if (!poller) {
+            errno = ENOMEM;
+        }
+        return poller;
+    } catch (...) {
+        errno = ENOMEM;
+        return nullptr;
+    }
+}
+
+int SL_CALL slk_poller_destroy(void **poller_p_)
+{
+    if (poller_p_) {
+        const slk::socket_poller_t *const poller =
+            static_cast<const slk::socket_poller_t *>(*poller_p_);
+        if (poller && poller->check_tag()) {
+            delete poller;
+            *poller_p_ = nullptr;
+            return 0;
+        }
+    }
+    errno = EFAULT;
+    return -1;
+}
+
+int SL_CALL slk_poller_size(void *poller_)
+{
+    if (-1 == check_poller(poller_))
+        return -1;
+
+    return (static_cast<slk::socket_poller_t *>(poller_))->size();
+}
+
+int SL_CALL slk_poller_add(void *poller_, void *socket_, void *user_data_, short events_)
+{
+    if (-1 == check_poller(poller_) || -1 == check_socket(socket_)
+        || -1 == check_events(events_))
+        return -1;
+
+    slk::socket_base_t *socket = static_cast<slk::socket_base_t *>(socket_);
+
+    return (static_cast<slk::socket_poller_t *>(poller_))
+        ->add(socket, user_data_, events_);
+}
+
+int SL_CALL slk_poller_modify(void *poller_, void *socket_, short events_)
+{
+    if (-1 == check_poller(poller_) || -1 == check_socket(socket_)
+        || -1 == check_events(events_))
+        return -1;
+
+    const slk::socket_base_t *const socket =
+        static_cast<const slk::socket_base_t *>(socket_);
+
+    return (static_cast<slk::socket_poller_t *>(poller_))
+        ->modify(socket, events_);
+}
+
+int SL_CALL slk_poller_remove(void *poller_, void *socket_)
+{
+    if (-1 == check_poller(poller_) || -1 == check_socket(socket_))
+        return -1;
+
+    slk::socket_base_t *socket = static_cast<slk::socket_base_t *>(socket_);
+
+    return (static_cast<slk::socket_poller_t *>(poller_))->remove(socket);
+}
+
+int SL_CALL slk_poller_add_fd(void *poller_, slk_fd_t fd_, void *user_data_, short events_)
+{
+    if (-1 == check_poller(poller_) || -1 == check_fd(fd_)
+        || -1 == check_events(events_))
+        return -1;
+
+    return (static_cast<slk::socket_poller_t *>(poller_))
+        ->add_fd(fd_, user_data_, events_);
+}
+
+int SL_CALL slk_poller_modify_fd(void *poller_, slk_fd_t fd_, short events_)
+{
+    if (-1 == check_poller(poller_) || -1 == check_fd(fd_)
+        || -1 == check_events(events_))
+        return -1;
+
+    return (static_cast<slk::socket_poller_t *>(poller_))
+        ->modify_fd(fd_, events_);
+}
+
+int SL_CALL slk_poller_remove_fd(void *poller_, slk_fd_t fd_)
+{
+    if (-1 == check_poller(poller_) || -1 == check_fd(fd_))
+        return -1;
+
+    return (static_cast<slk::socket_poller_t *>(poller_))->remove_fd(fd_);
+}
+
+int SL_CALL slk_poller_wait(void *poller_, slk_poller_event_t *event_, long timeout_)
+{
+    const int rc = slk_poller_wait_all(poller_, event_, 1, timeout_);
+
+    if (rc < 0 && event_) {
+        event_->socket = nullptr;
+#ifdef _WIN32
+        event_->fd = INVALID_HANDLE_VALUE;
+#else
+        event_->fd = -1;
+#endif
+        event_->user_data = nullptr;
+        event_->events = 0;
+    }
+    // wait_all returns number of events, but we return 0 for any success
+    return rc >= 0 ? 0 : rc;
+}
+
+int SL_CALL slk_poller_wait_all(void *poller_, slk_poller_event_t *events_,
+                                 int n_events_, long timeout_)
+{
+    if (-1 == check_poller(poller_))
+        return -1;
+
+    if (!events_) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (n_events_ < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    const int rc =
+        (static_cast<slk::socket_poller_t *>(poller_))
+            ->wait(reinterpret_cast<slk::socket_poller_t::event_t *>(events_),
+                   n_events_, timeout_);
+
+    return rc;
+}
+
+int SL_CALL slk_poller_fd(void *poller_, slk_fd_t *fd_)
+{
+    if (!poller_
+        || !(static_cast<slk::socket_poller_t *>(poller_)->check_tag())) {
+        errno = EFAULT;
+        return -1;
+    }
+    return static_cast<slk::socket_poller_t *>(poller_)->signaler_fd(fd_);
+}
+
+/****************************************************************************/
+/*  Proxy API                                                               */
+/****************************************************************************/
+
+int SL_CALL slk_proxy(void *frontend_, void *backend_, void *capture_)
+{
+    CHECK_PTR(frontend_, -1);
+    CHECK_PTR(backend_, -1);
+
+    try {
+        slk::socket_base_t *frontend = reinterpret_cast<slk::socket_base_t*>(frontend_);
+        slk::socket_base_t *backend = reinterpret_cast<slk::socket_base_t*>(backend_);
+        slk::socket_base_t *capture = capture_ ?
+            reinterpret_cast<slk::socket_base_t*>(capture_) : nullptr;
+
+        return slk::proxy(frontend, backend, capture);
+    } catch (...) {
+        return set_errno(SLK_EPROTO);
+    }
+}
+
+int SL_CALL slk_proxy_steerable(void *frontend_, void *backend_,
+                                 void *capture_, void *control_)
+{
+    CHECK_PTR(frontend_, -1);
+    CHECK_PTR(backend_, -1);
+
+    try {
+        slk::socket_base_t *frontend = reinterpret_cast<slk::socket_base_t*>(frontend_);
+        slk::socket_base_t *backend = reinterpret_cast<slk::socket_base_t*>(backend_);
+        slk::socket_base_t *capture = capture_ ?
+            reinterpret_cast<slk::socket_base_t*>(capture_) : nullptr;
+        slk::socket_base_t *control = control_ ?
+            reinterpret_cast<slk::socket_base_t*>(control_) : nullptr;
+
+        return slk::proxy_steerable(frontend, backend, capture, control);
+    } catch (...) {
+        return set_errno(SLK_EPROTO);
+    }
 }
 
 } // extern "C"

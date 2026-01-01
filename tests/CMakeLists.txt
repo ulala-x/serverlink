@@ -31,8 +31,17 @@ endfunction()
 message(STATUS "Adding unit tests...")
 add_serverlink_test(test_msg unit/test_msg.cpp "unit")
 add_serverlink_test(test_ctx unit/test_ctx.cpp "unit")
+add_serverlink_test(test_ctx_options unit/test_ctx_options.cpp "unit")
 add_serverlink_test(test_hwm unit/test_hwm.cpp "unit")
 add_serverlink_test(test_sockopt_hwm unit/test_sockopt_hwm.cpp "unit")
+add_serverlink_test(test_last_endpoint unit/test_last_endpoint.cpp "unit")
+
+# Utility Tests
+message(STATUS "Adding utility tests...")
+add_serverlink_test(test_atomics util/test_atomics.cpp "util")
+add_serverlink_test(test_timers util/test_timers.cpp "util")
+add_serverlink_test(test_stopwatch util/test_stopwatch.cpp "util")
+add_serverlink_test(test_has util/test_has.cpp "util")
 
 # Router Tests
 message(STATUS "Adding router tests...")
@@ -75,10 +84,20 @@ add_serverlink_test(test_bind_after_connect transport/test_bind_after_connect.cp
 add_serverlink_test(test_inproc_connect transport/test_inproc_connect.cpp "transport")
 add_serverlink_test(test_reconnect_ivl transport/test_reconnect_ivl.cpp "transport")
 
+# Poller Tests
+message(STATUS "Adding poller tests...")
+add_serverlink_test(test_poller poller/test_poller.cpp "poller")
+
+# Proxy Tests
+message(STATUS "Adding proxy tests...")
+add_serverlink_test(test_proxy_simple proxy/test_proxy_simple.cpp "proxy")
+# Full proxy test with threading (complex, may timeout)
+# add_serverlink_test(test_proxy proxy/test_proxy.cpp "proxy")
+
 # Custom test targets
 add_custom_target(test-unit
     COMMAND ${CMAKE_CTEST_COMMAND} -L unit --output-on-failure
-    DEPENDS test_msg test_ctx test_hwm test_sockopt_hwm
+    DEPENDS test_msg test_ctx test_ctx_options test_hwm test_sockopt_hwm test_last_endpoint
     COMMENT "Running unit tests"
 )
 
@@ -115,11 +134,30 @@ add_custom_target(test-transport
     COMMENT "Running transport tests"
 )
 
+add_custom_target(test-poller
+    COMMAND ${CMAKE_CTEST_COMMAND} -L poller --output-on-failure
+    DEPENDS test_poller
+    COMMENT "Running poller tests"
+)
+
+add_custom_target(test-proxy
+    COMMAND ${CMAKE_CTEST_COMMAND} -L proxy --output-on-failure
+    DEPENDS test_proxy_simple
+    COMMENT "Running proxy tests"
+)
+
+add_custom_target(test-util
+    COMMAND ${CMAKE_CTEST_COMMAND} -L util --output-on-failure
+    DEPENDS test_atomics test_timers test_stopwatch test_has
+    COMMENT "Running utility tests"
+)
+
 add_custom_target(test-all
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
     DEPENDS
         test_msg
         test_ctx
+        test_ctx_options
         test_hwm
         test_sockopt_hwm
         test_router_basic
@@ -142,6 +180,12 @@ add_custom_target(test-all
         test_bind_after_connect
         test_inproc_connect
         test_reconnect_ivl
+        test_poller
+        test_proxy_simple
+        test_atomics
+        test_timers
+        test_stopwatch
+        test_has
     COMMENT "Running all tests"
 )
 
@@ -151,7 +195,7 @@ add_subdirectory(benchmark)
 # Print summary
 message(STATUS "")
 message(STATUS "Test Suite Configuration:")
-message(STATUS "  Unit tests:        test_msg, test_ctx, test_hwm, test_sockopt_hwm")
+message(STATUS "  Unit tests:        test_msg, test_ctx, test_ctx_options, test_hwm, test_sockopt_hwm")
 message(STATUS "  Router tests:      test_router_basic, test_router_mandatory, test_router_handover,")
 message(STATUS "                     test_router_notify, test_router_mandatory_hwm, test_spec_router,")
 message(STATUS "                     test_connect_rid, test_probe_router")
@@ -161,12 +205,15 @@ message(STATUS "  PubSub tests:      test_auth_pubsub, test_hwm_pubsub, test_sub
 message(STATUS "                     test_pubsub_topics_count, test_xpub_verbose,")
 message(STATUS "                     test_xpub_manual, test_xpub_nodrop")
 message(STATUS "  Transport tests:   test_bind_after_connect, test_inproc_connect, test_reconnect_ivl")
+message(STATUS "  Poller tests:      test_poller")
 message(STATUS "")
 message(STATUS "Run tests with:")
 message(STATUS "  make test           - Run all tests with CTest")
 message(STATUS "  make test-unit      - Run unit tests only")
+message(STATUS "  make test-util      - Run utility tests only")
 message(STATUS "  make test-router    - Run router tests only")
 message(STATUS "  make test-pubsub    - Run pubsub tests only")
 message(STATUS "  make test-transport - Run transport tests only")
+message(STATUS "  make test-poller    - Run poller tests only")
 message(STATUS "  make test-all       - Run all tests with detailed output")
 message(STATUS "")

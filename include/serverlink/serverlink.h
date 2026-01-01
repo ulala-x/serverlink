@@ -45,6 +45,9 @@ SL_EXPORT void SL_CALL slk_version(int *major, int *minor, int *patch);
 #define SLK_ROUTER_HANDOVER     56  /* Transfer messages to new peer with same ID */
 #define SLK_ROUTER_NOTIFY       97  /* Enable router event notifications */
 
+/* Endpoint information */
+#define SLK_LAST_ENDPOINT       32  /* Get last bound/connected endpoint */
+
 /* Heartbeat options */
 #define SLK_HEARTBEAT_IVL       75  /* Heartbeat interval in ms */
 #define SLK_HEARTBEAT_TIMEOUT   77  /* Heartbeat timeout in ms */
@@ -114,6 +117,21 @@ SL_EXPORT void SL_CALL slk_version(int *major, int *minor, int *patch);
 
 /* Event masks (bitwise OR) */
 #define SLK_EVENT_ALL 0xFFFF
+
+/****************************************************************************/
+/*  Context Options                                                         */
+/****************************************************************************/
+
+#define SLK_IO_THREADS                  1   /* Number of I/O threads (int) */
+#define SLK_MAX_SOCKETS                 2   /* Maximum number of sockets (int) */
+#define SLK_SOCKET_LIMIT                3   /* Maximum socket limit (read-only, int) */
+#define SLK_THREAD_SCHED_POLICY         6   /* Thread scheduling policy (int) */
+#define SLK_THREAD_AFFINITY_CPU_ADD     7   /* Add CPU to thread affinity (int) */
+#define SLK_THREAD_AFFINITY_CPU_REMOVE  8   /* Remove CPU from thread affinity (int) */
+#define SLK_THREAD_PRIORITY             9   /* Thread priority (int) */
+#define SLK_THREAD_NAME_PREFIX          10  /* Thread name prefix (string/int) */
+#define SLK_MAX_MSGSZ                   13  /* Maximum message size (int) */
+#define SLK_MSG_T_SIZE                  14  /* Size of slk_msg_t (read-only, size_t) */
 
 /****************************************************************************/
 /*  Error Codes                                                             */
@@ -224,6 +242,62 @@ typedef struct slk_pollitem_t {
 SL_EXPORT int SL_CALL slk_poll(slk_pollitem_t *items, int nitems, long timeout);
 
 /****************************************************************************/
+/*  Modern Poller API (Recommended)                                         */
+/****************************************************************************/
+
+/* Platform-specific file descriptor type */
+#if defined(_WIN32)
+    typedef void* slk_fd_t;
+#else
+    typedef int slk_fd_t;
+#endif
+
+/* Poller event structure */
+typedef struct slk_poller_event_t {
+    void *socket;           /* ServerLink socket or NULL for fd */
+    slk_fd_t fd;            /* File descriptor or -1 for socket */
+    void *user_data;        /* User data associated with socket/fd */
+    short events;           /* Events that occurred */
+} slk_poller_event_t;
+
+/* Create a new poller instance */
+SL_EXPORT void* SL_CALL slk_poller_new(void);
+
+/* Destroy a poller instance */
+SL_EXPORT int SL_CALL slk_poller_destroy(void **poller_p);
+
+/* Get number of registered items in poller */
+SL_EXPORT int SL_CALL slk_poller_size(void *poller);
+
+/* Add a socket to the poller */
+SL_EXPORT int SL_CALL slk_poller_add(void *poller, void *socket, void *user_data, short events);
+
+/* Modify events for a registered socket */
+SL_EXPORT int SL_CALL slk_poller_modify(void *poller, void *socket, short events);
+
+/* Remove a socket from the poller */
+SL_EXPORT int SL_CALL slk_poller_remove(void *poller, void *socket);
+
+/* Wait for events on registered sockets (returns 0 on success, -1 on error) */
+SL_EXPORT int SL_CALL slk_poller_wait(void *poller, slk_poller_event_t *event, long timeout);
+
+/* Wait for events on all registered sockets (returns number of events, -1 on error) */
+SL_EXPORT int SL_CALL slk_poller_wait_all(void *poller, slk_poller_event_t *events,
+                                           int n_events, long timeout);
+
+/* Get the signaler file descriptor (for thread-safe sockets) */
+SL_EXPORT int SL_CALL slk_poller_fd(void *poller, slk_fd_t *fd);
+
+/* Add a raw file descriptor to the poller */
+SL_EXPORT int SL_CALL slk_poller_add_fd(void *poller, slk_fd_t fd, void *user_data, short events);
+
+/* Modify events for a registered file descriptor */
+SL_EXPORT int SL_CALL slk_poller_modify_fd(void *poller, slk_fd_t fd, short events);
+
+/* Remove a file descriptor from the poller */
+SL_EXPORT int SL_CALL slk_poller_remove_fd(void *poller, slk_fd_t fd);
+
+/****************************************************************************/
 /*  Monitoring API                                                          */
 /****************************************************************************/
 
@@ -282,6 +356,154 @@ SL_EXPORT uint64_t SL_CALL slk_clock(void);
 
 /* Sleep for specified milliseconds */
 SL_EXPORT void SL_CALL slk_sleep(int ms);
+
+/* Check if a capability is supported */
+SL_EXPORT int SL_CALL slk_has(const char *capability);
+
+/****************************************************************************/
+/*  Atomic Counter API                                                      */
+/****************************************************************************/
+
+/* Create a new atomic counter */
+SL_EXPORT void* SL_CALL slk_atomic_counter_new(void);
+
+/* Set counter value (not thread-safe) */
+SL_EXPORT void SL_CALL slk_atomic_counter_set(void *counter, int value);
+
+/* Increment counter and return old value */
+SL_EXPORT int SL_CALL slk_atomic_counter_inc(void *counter);
+
+/* Decrement counter and return new value */
+SL_EXPORT int SL_CALL slk_atomic_counter_dec(void *counter);
+
+/* Get current counter value */
+SL_EXPORT int SL_CALL slk_atomic_counter_value(void *counter);
+
+/* Destroy atomic counter */
+SL_EXPORT void SL_CALL slk_atomic_counter_destroy(void **counter_p);
+
+/****************************************************************************/
+/*  Timer API                                                               */
+/****************************************************************************/
+
+/* Timer callback function type */
+typedef void (*slk_timer_fn)(int timer_id, void *arg);
+
+/* Create a new timers object */
+SL_EXPORT void* SL_CALL slk_timers_new(void);
+
+/* Destroy timers object */
+SL_EXPORT int SL_CALL slk_timers_destroy(void **timers_p);
+
+/* Add a timer with specified interval (ms) and handler */
+SL_EXPORT int SL_CALL slk_timers_add(void *timers, size_t interval, slk_timer_fn handler, void *arg);
+
+/* Cancel a timer by ID */
+SL_EXPORT int SL_CALL slk_timers_cancel(void *timers, int timer_id);
+
+/* Set interval for an existing timer */
+SL_EXPORT int SL_CALL slk_timers_set_interval(void *timers, int timer_id, size_t interval);
+
+/* Reset a timer (restart from current time) */
+SL_EXPORT int SL_CALL slk_timers_reset(void *timers, int timer_id);
+
+/* Get timeout until next timer (returns -1 if no timers active) */
+SL_EXPORT long SL_CALL slk_timers_timeout(void *timers);
+
+/* Execute ready timers */
+SL_EXPORT int SL_CALL slk_timers_execute(void *timers);
+
+/****************************************************************************/
+/*  Stopwatch API                                                           */
+/****************************************************************************/
+
+/* Start a new stopwatch */
+SL_EXPORT void* SL_CALL slk_stopwatch_start(void);
+
+/* Get intermediate time (microseconds since start) */
+SL_EXPORT unsigned long SL_CALL slk_stopwatch_intermediate(void *watch);
+
+/* Stop stopwatch and return elapsed time (microseconds) */
+SL_EXPORT unsigned long SL_CALL slk_stopwatch_stop(void *watch);
+
+/****************************************************************************/
+/*  Proxy API                                                               */
+/****************************************************************************/
+
+/* Simple proxy - forwards messages between frontend and backend sockets
+ *
+ * The proxy connects a frontend socket to a backend socket. Conceptually,
+ * data flows from the frontend to the backend. Messages are read from the
+ * frontend and written to the backend, and vice versa.
+ *
+ * If the capture socket is not NULL, the proxy sends all messages received
+ * on both frontend and backend to the capture socket, enabling message
+ * monitoring and logging.
+ *
+ * This function blocks until an error occurs or a signal is received.
+ *
+ * Example usage:
+ *   Frontend: ROUTER socket bound to tcp://0.0.0.0:5555
+ *   Backend:  DEALER socket bound to tcp://0.0.0.0:5556
+ *   Capture:  PUB socket bound to tcp://0.0.0.0:5557 (optional)
+ *
+ * Parameters:
+ *   frontend - Frontend socket (receives from clients)
+ *   backend  - Backend socket (sends to workers)
+ *   capture  - Optional capture socket for monitoring (can be NULL)
+ *
+ * Returns:
+ *   0 on success (graceful termination)
+ *   -1 on error (sets errno)
+ */
+SL_EXPORT int SL_CALL slk_proxy(void *frontend, void *backend, void *capture);
+
+/* Steerable proxy - adds runtime control via control socket
+ *
+ * This is an extended version of slk_proxy that accepts a control socket
+ * for runtime control. The control socket must be a REQ socket (or compatible).
+ *
+ * Control commands (single-part messages):
+ *   "PAUSE"      - Stop forwarding messages (messages queue up)
+ *   "RESUME"     - Resume forwarding messages
+ *   "TERMINATE"  - Terminate the proxy and return
+ *   "STATISTICS" - Return statistics (8-part message)
+ *
+ * The STATISTICS reply is an 8-part message containing uint64_t values:
+ *   Part 0: Frontend messages received count
+ *   Part 1: Frontend bytes received
+ *   Part 2: Frontend messages sent count
+ *   Part 3: Frontend bytes sent
+ *   Part 4: Backend messages received count
+ *   Part 5: Backend bytes received
+ *   Part 6: Backend messages sent count
+ *   Part 7: Backend bytes sent
+ *
+ * Example usage with control:
+ *   void *control = slk_socket(ctx, SLK_REQ);
+ *   slk_connect(control, "inproc://proxy-control");
+ *
+ *   // In proxy thread:
+ *   void *control_rep = slk_socket(ctx, SLK_REP);
+ *   slk_bind(control_rep, "inproc://proxy-control");
+ *   slk_proxy_steerable(frontend, backend, capture, control_rep);
+ *
+ *   // In main thread:
+ *   slk_send(control, "PAUSE", 5, 0);
+ *   slk_recv(control, reply, 256, 0); // Wait for acknowledgment
+ *
+ * Parameters:
+ *   frontend - Frontend socket (receives from clients)
+ *   backend  - Backend socket (sends to workers)
+ *   capture  - Optional capture socket for monitoring (can be NULL)
+ *   control  - Optional control socket for runtime control (can be NULL)
+ *
+ * Returns:
+ *   0 on success (graceful termination via TERMINATE command)
+ *   -1 on error (sets errno)
+ */
+SL_EXPORT int SL_CALL slk_proxy_steerable(void *frontend, void *backend,
+                                           void *capture, void *control);
 
 #ifdef __cplusplus
 }

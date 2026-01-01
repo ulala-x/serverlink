@@ -44,6 +44,14 @@ class alignas(sizeof(void *)) atomic_counter_t {
     std::atomic<integer_t> _value;
 };
 
+// C API wrapper functions
+void* atomic_counter_new();
+void atomic_counter_set(void* counter, int value);
+int atomic_counter_inc(void* counter);
+int atomic_counter_dec(void* counter);
+int atomic_counter_value(void* counter);
+void atomic_counter_destroy(void** counter_p);
+
 }  // namespace slk
 
 #endif

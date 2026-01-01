@@ -87,6 +87,11 @@ class socket_base_t : public own_t,
 
     bool is_disconnected () const;
 
+    // Signaler support for thread-safe sockets (not yet implemented)
+    // These are stub methods that will be implemented when thread-safe sockets are added
+    void add_signaler (class signaler_t *signaler_) { (void)signaler_; }
+    void remove_signaler (class signaler_t *signaler_) { (void)signaler_; }
+
   protected:
     socket_base_t (class ctx_t *parent_, uint32_t tid_, int sid_,
                    bool thread_safe_ = false);

@@ -89,6 +89,7 @@ constexpr int SL_POLLERR = 4;
 constexpr int SL_RCVMORE = 13;
 constexpr int SL_FD = 14;
 constexpr int SL_EVENTS = 15;
+constexpr int SL_LAST_ENDPOINT = 32;
 
 // Context options
 constexpr int SL_IO_THREADS = 1;

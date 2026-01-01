@@ -292,6 +292,16 @@ int slk::socket_base_t::getsockopt (int option_,
         return do_getsockopt<int> (optval_, optvallen_, events);
     }
 
+    if (option_ == SL_LAST_ENDPOINT) {
+        if (*optvallen_ < _last_endpoint.size () + 1) {
+            errno = EINVAL;
+            return -1;
+        }
+        memcpy (optval_, _last_endpoint.c_str (), _last_endpoint.size () + 1);
+        *optvallen_ = _last_endpoint.size () + 1;
+        return 0;
+    }
+
     return options.getsockopt (option_, optval_, optvallen_);
 }
 
