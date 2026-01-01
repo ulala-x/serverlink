@@ -220,19 +220,9 @@ int main()
 {
     printf("=== ServerLink Reconnect Interval Tests ===\n\n");
 
-    /*
-     * TODO: Reconnect interval tests require proper unbind/rebind behavior
-     * with ROUTER-to-ROUTER connections. The automatic reconnection logic
-     * needs more work for ROUTER sockets where handshake is required.
-     * Skipping these tests until reconnection is fully implemented.
-     */
-    printf("NOTE: Reconnect interval tests are currently skipped.\n");
-    printf("      ROUTER reconnection needs handshake re-establishment.\n\n");
+    RUN_TEST(test_reconnect_ivl_tcp_ipv4);
+    RUN_TEST(test_reconnect_ivl_tcp_ipv6);
 
-    // Skip tests for now
-    // RUN_TEST(test_reconnect_ivl_tcp_ipv4);
-    // RUN_TEST(test_reconnect_ivl_tcp_ipv6);
-
-    printf("=== Reconnect Interval Tests Skipped ===\n");
+    printf("\n=== Reconnect Interval Tests Completed ===\n");
     return 0;
 }

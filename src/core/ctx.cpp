@@ -12,6 +12,7 @@
 #include <limits.h>
 #include <new>
 #include <string.h>
+#include <stdio.h>
 
 #define SL_CTX_TAG_VALUE_GOOD 0xabadcafe
 #define SL_CTX_TAG_VALUE_BAD 0xdeadbeef
@@ -87,6 +88,18 @@ int slk::ctx_t::terminate ()
 {
     _slot_sync.lock ();
 
+    const bool save_terminating = _terminating;
+    _terminating = false;
+
+    // Clear any pending inproc connections
+    // We simply remove them from the list. The pipes will be cleaned up
+    // when their owning sockets are destroyed.
+    {
+        scoped_lock_t locker (_endpoints_sync);
+        _pending_connections.clear ();
+    }
+    _terminating = save_terminating;
+
     if (!_starting) {
         // Check whether termination was already underway, but interrupted and now
         // restarted
@@ -101,7 +114,7 @@ int slk::ctx_t::terminate ()
                  i++) {
                 _sockets[i]->stop ();
             }
-            // Always stop the reaper to trigger cleanup
+            // Stop the reaper to trigger cleanup
             _reaper->stop ();
         }
         _slot_sync.unlock ();

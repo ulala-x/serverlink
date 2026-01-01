@@ -415,22 +415,18 @@ int main()
 {
     printf("=== ServerLink Inproc Connect Tests ===\n\n");
 
-    /*
-     * TODO: Inproc transport has issues with ROUTER-to-ROUTER communication.
-     * The connect_inproc_sockets function needs more work to properly handle
-     * the routing ID exchange between ROUTER sockets.
-     * Skipping these tests until inproc is fully implemented.
-     */
-    printf("NOTE: Inproc tests are currently skipped pending implementation.\n");
-    printf("      Inproc transport needs ROUTER-specific fixes.\n\n");
-
-    // Skip all tests for now
-    // RUN_TEST(test_bind_before_connect);
+    RUN_TEST(test_bind_before_connect);
+    // NOTE: The following tests cause segfault during inproc connect
+    // when connect is called before bind. The issue is in the inproc
+    // connect implementation itself, not in context termination handling.
+    // The context termination issue (Step 1) has been resolved.
+    // These tests will be addressed separately.
     // RUN_TEST(test_connect_before_bind);
     // RUN_TEST(test_multiple_connects);
     // RUN_TEST(test_routing_id);
     // RUN_TEST(test_connect_only);
 
-    printf("=== Inproc Connect Tests Skipped ===\n");
+    printf("\n=== Inproc Connect Tests Completed (1/5 tests) ===\n");
+    printf("NOTE: 4 tests disabled due to inproc connect implementation issues\n");
     return 0;
 }

@@ -74,6 +74,7 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     void process_plug () SL_FINAL;
     void process_attach (slk::i_engine *engine_) SL_FINAL;
     void process_term (int linger_) SL_FINAL;
+    void process_conn_failed () SL_FINAL;
 
     //  i_poll_events handlers.
     void timer_event (int id_) SL_FINAL;

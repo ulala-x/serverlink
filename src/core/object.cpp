@@ -526,7 +526,8 @@ void slk::object_t::process_seqnum ()
 
 void slk::object_t::process_conn_failed ()
 {
-    slk_assert (false);
+    // Default implementation does nothing
+    // Subclasses (like session_base_t) should override this
 }
 
 void slk::object_t::send_command (const command_t &cmd_)

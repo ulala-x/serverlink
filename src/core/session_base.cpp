@@ -393,6 +393,15 @@ void slk::session_base_t::reconnect ()
     //  Reconnect.
     if (options.reconnect_ivl > 0)
         start_connecting (true);
+    else {
+        std::string *ep = new (std::nothrow) std::string;
+        if (ep && _addr) {
+            _addr->to_string (*ep);
+            send_term_endpoint (_socket, ep);
+        } else {
+            delete ep;
+        }
+    }
 }
 
 void slk::session_base_t::start_connecting (bool wait_)
@@ -424,4 +433,15 @@ void slk::session_base_t::start_connecting (bool wait_)
     }
 
     slk_assert (false);
+}
+
+void slk::session_base_t::process_conn_failed ()
+{
+    std::string *ep = new (std::nothrow) std::string;
+    if (ep && _addr) {
+        _addr->to_string (*ep);
+        send_term_endpoint (_socket, ep);
+    } else {
+        delete ep;
+    }
 }
