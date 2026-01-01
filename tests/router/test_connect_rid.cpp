@@ -29,6 +29,11 @@ static void test_router_2_router(bool named)
     int rc = slk_setsockopt(rbind, SLK_LINGER, &zero, sizeof(zero));
     TEST_SUCCESS(rc);
 
+    /* Set rbind routing ID for ROUTER-to-ROUTER communication */
+    const char *rbind_rid = named ? x_routing_id : "SERVER";
+    rc = slk_setsockopt(rbind, SLK_ROUTING_ID, rbind_rid, strlen(rbind_rid));
+    TEST_SUCCESS(rc);
+
     test_socket_bind(rbind, endpoint);
 
     /* Create connection socket */
@@ -37,11 +42,8 @@ static void test_router_2_router(bool named)
     rc = slk_setsockopt(rconn1, SLK_LINGER, &zero, sizeof(zero));
     TEST_SUCCESS(rc);
 
-    /* If we're in named mode, set some identities */
+    /* If we're in named mode, set rconn1 identity */
     if (named) {
-        rc = slk_setsockopt(rbind, SLK_ROUTING_ID, x_routing_id, 1);
-        TEST_SUCCESS(rc);
-
         rc = slk_setsockopt(rconn1, SLK_ROUTING_ID, y_routing_id, 1);
         TEST_SUCCESS(rc);
     }
@@ -54,7 +56,43 @@ static void test_router_2_router(bool named)
 
     test_sleep_ms(200);
 
-    /* Send some data */
+    /* ROUTER-to-ROUTER handshake: rconn1 sends greeting to rbind */
+    /* Use CONNECT_ROUTING_ID, not rbind's actual routing ID */
+    rc = slk_send(rconn1, rconn1routing_id, strlen(rconn1routing_id), SLK_SNDMORE);
+    TEST_ASSERT(rc >= 0);
+    rc = slk_send(rconn1, "HELLO", 5, 0);
+    TEST_ASSERT(rc >= 0);
+
+    test_sleep_ms(100);
+
+    /* rbind receives the handshake */
+    TEST_ASSERT(test_poll_readable(rbind, 5000));
+    rc = slk_recv(rbind, buff, sizeof(buff), 0);  /* routing ID from rconn1 */
+    TEST_ASSERT(rc > 0);
+    int peer_routing_id_len = rc;
+    char peer_routing_id[256];
+    memcpy(peer_routing_id, buff, peer_routing_id_len);
+
+    rc = slk_recv(rbind, buff, sizeof(buff), 0);  /* "HELLO" */
+    TEST_ASSERT_EQ(rc, 5);
+
+    /* rbind responds to complete handshake */
+    rc = slk_send(rbind, peer_routing_id, peer_routing_id_len, SLK_SNDMORE);
+    TEST_ASSERT(rc >= 0);
+    rc = slk_send(rbind, "READY", 5, 0);
+    TEST_ASSERT(rc >= 0);
+
+    test_sleep_ms(100);
+
+    /* rconn1 receives handshake response */
+    TEST_ASSERT(test_poll_readable(rconn1, 5000));
+    rc = slk_recv(rconn1, buff, sizeof(buff), 0);  /* routing ID from rbind */
+    TEST_ASSERT(rc > 0);
+    rc = slk_recv(rconn1, buff, sizeof(buff), 0);  /* "READY" */
+    TEST_ASSERT_EQ(rc, 5);
+
+    /* Now send the actual test data - rconn1 sends to rbind */
+    /* Use CONNECT_ROUTING_ID */
     rc = slk_send(rconn1, rconn1routing_id, strlen(rconn1routing_id), SLK_SNDMORE);
     TEST_ASSERT(rc >= 0);
 
@@ -64,7 +102,13 @@ static void test_router_2_router(bool named)
     test_sleep_ms(100);
 
     /* Receive the routing ID */
+    TEST_ASSERT(test_poll_readable(rbind, 5000));
     int routing_id_len = slk_recv(rbind, buff, sizeof(buff), 0);
+
+    /* Save the routing ID before it gets overwritten */
+    char saved_routing_id[256];
+    memcpy(saved_routing_id, buff, routing_id_len);
+
     if (named) {
         TEST_ASSERT_EQ(routing_id_len, (int)strlen(y_routing_id));
         TEST_ASSERT_MEM_EQ(buff, y_routing_id, routing_id_len);
@@ -78,8 +122,8 @@ static void test_router_2_router(bool named)
     TEST_ASSERT_EQ(rc, (int)strlen(msg));
     TEST_ASSERT_MEM_EQ(buff, msg, rc);
 
-    /* Send some data back */
-    rc = slk_send(rbind, buff, routing_id_len, SLK_SNDMORE);
+    /* Send some data back using the saved routing ID */
+    rc = slk_send(rbind, saved_routing_id, routing_id_len, SLK_SNDMORE);
     TEST_ASSERT_EQ(rc, routing_id_len);
 
     rc = slk_send(rbind, "ok", 2, 0);
@@ -87,8 +131,10 @@ static void test_router_2_router(bool named)
 
     test_sleep_ms(100);
 
-    /* If bound socket identity naming a problem, we'll likely see something funky here */
+    /* rconn1 receives response from rbind */
+    TEST_ASSERT(test_poll_readable(rconn1, 5000));
     rc = slk_recv(rconn1, buff, sizeof(buff), 0);
+    /* Should receive the CONNECT_ROUTING_ID (how rconn1 refers to rbind) */
     TEST_ASSERT_EQ(rc, (int)strlen(rconn1routing_id));
     TEST_ASSERT_MEM_EQ(buff, rconn1routing_id, rc);
 
@@ -153,6 +199,40 @@ static void test_router_2_router_while_receiving()
 
     test_sleep_ms(200);
 
+    /* ROUTER-to-ROUTER handshake: Y to X */
+    rc = slk_send(yconn, x_routing_id, strlen(x_routing_id), SLK_SNDMORE);
+    TEST_ASSERT(rc >= 0);
+    rc = slk_send(yconn, "HELLO_X", 7, 0);
+    TEST_ASSERT(rc >= 0);
+
+    test_sleep_ms(100);
+
+    /* X receives handshake from Y */
+    TEST_ASSERT(test_poll_readable(xbind, 5000));
+    rc = slk_recv(xbind, buff, sizeof(buff), 0);  /* routing ID from Y */
+    TEST_ASSERT(rc > 0);
+    int y_rid_len = rc;
+    char y_rid[256];
+    memcpy(y_rid, buff, y_rid_len);
+
+    rc = slk_recv(xbind, buff, sizeof(buff), 0);  /* "HELLO_X" */
+    TEST_ASSERT_EQ(rc, 7);
+
+    /* X responds to Y */
+    rc = slk_send(xbind, y_rid, y_rid_len, SLK_SNDMORE);
+    TEST_ASSERT(rc >= 0);
+    rc = slk_send(xbind, "READY_X", 7, 0);
+    TEST_ASSERT(rc >= 0);
+
+    test_sleep_ms(100);
+
+    /* Y receives response */
+    TEST_ASSERT(test_poll_readable(yconn, 5000));
+    rc = slk_recv(yconn, buff, sizeof(buff), 0);  /* routing ID from X */
+    TEST_ASSERT(rc > 0);
+    rc = slk_recv(yconn, buff, sizeof(buff), 0);  /* "READY_X" */
+    TEST_ASSERT_EQ(rc, 7);
+
     /* Send some data from Y to X */
     rc = slk_send(yconn, x_routing_id, strlen(x_routing_id), SLK_SNDMORE);
     TEST_ASSERT(rc >= 0);
@@ -160,8 +240,15 @@ static void test_router_2_router_while_receiving()
     rc = slk_send(yconn, msg, strlen(msg), 0);
     TEST_ASSERT(rc >= 0);
 
-    /* Wait for the Y->X message to be received */
     test_sleep_ms(100);
+
+    /* X receives Y's message before connecting to Z */
+    TEST_ASSERT(test_poll_readable(xbind, 5000));
+    rc = slk_recv(xbind, buff, sizeof(buff), 0);  /* routing ID from Y */
+    TEST_ASSERT(rc > 0);
+    rc = slk_recv(xbind, buff, sizeof(buff), 0);  /* "hi 1" */
+    TEST_ASSERT_EQ(rc, (int)strlen(msg));
+    TEST_ASSERT_MEM_EQ(buff, msg, rc);
 
     /* Now X tries to connect to Z and send a message */
     rc = slk_setsockopt(xbind, SLK_CONNECT_ROUTING_ID, z_routing_id, strlen(z_routing_id));
@@ -169,7 +256,41 @@ static void test_router_2_router_while_receiving()
 
     test_socket_connect(xbind, z_endpoint);
 
+    test_sleep_ms(200);
+
+    /* ROUTER-to-ROUTER handshake: X to Z */
+    rc = slk_send(xbind, z_routing_id, strlen(z_routing_id), SLK_SNDMORE);
+    TEST_ASSERT(rc >= 0);
+    rc = slk_send(xbind, "HELLO_Z", 7, 0);
+    TEST_ASSERT(rc >= 0);
+
     test_sleep_ms(100);
+
+    /* Z receives handshake from X */
+    TEST_ASSERT(test_poll_readable(zbind, 5000));
+    rc = slk_recv(zbind, buff, sizeof(buff), 0);  /* routing ID from X */
+    TEST_ASSERT(rc > 0);
+    int x_rid_len = rc;
+    char x_rid[256];
+    memcpy(x_rid, buff, x_rid_len);
+
+    rc = slk_recv(zbind, buff, sizeof(buff), 0);  /* "HELLO_Z" */
+    TEST_ASSERT_EQ(rc, 7);
+
+    /* Z responds to X */
+    rc = slk_send(zbind, x_rid, x_rid_len, SLK_SNDMORE);
+    TEST_ASSERT(rc >= 0);
+    rc = slk_send(zbind, "READY_Z", 7, 0);
+    TEST_ASSERT(rc >= 0);
+
+    test_sleep_ms(100);
+
+    /* X receives response from Z */
+    TEST_ASSERT(test_poll_readable(xbind, 5000));
+    rc = slk_recv(xbind, buff, sizeof(buff), 0);  /* routing ID from Z */
+    TEST_ASSERT(rc > 0);
+    rc = slk_recv(xbind, buff, sizeof(buff), 0);  /* "READY_Z" */
+    TEST_ASSERT_EQ(rc, 7);
 
     /* Try to send some data from X to Z */
     rc = slk_send(xbind, z_routing_id, strlen(z_routing_id), SLK_SNDMORE);
@@ -187,6 +308,7 @@ static void test_router_2_router_while_receiving()
     TEST_ASSERT_EQ(slk_errno(), SLK_EAGAIN);
 
     /* The message should have been received on the Z socket */
+    TEST_ASSERT(test_poll_readable(zbind, 5000));
     rc = slk_recv(zbind, buff, sizeof(buff), 0);
     TEST_ASSERT_EQ(rc, (int)strlen(x_routing_id));
     TEST_ASSERT_MEM_EQ(buff, x_routing_id, rc);

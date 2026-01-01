@@ -250,6 +250,32 @@ int slk::socket_base_t::getsockopt (int option_,
         return do_getsockopt<int> (optval_, optvallen_, options.type);
     }
 
+    if (option_ == SL_FD) {
+        if (_mailbox == NULL) {
+            errno = EINVAL;
+            return -1;
+        }
+        // Cast to mailbox_t to access get_fd() method
+        mailbox_t *mb = static_cast<mailbox_t *> (_mailbox);
+        return do_getsockopt<fd_t> (optval_, optvallen_, mb->get_fd ());
+    }
+
+    if (option_ == SL_EVENTS) {
+        // Process commands first to ensure we have up-to-date event state
+        rc = process_commands (0, false);
+        if (unlikely (rc != 0)) {
+            return -1;
+        }
+
+        int events = 0;
+        if (has_out ())
+            events |= SL_POLLOUT;
+        if (has_in ())
+            events |= SL_POLLIN;
+
+        return do_getsockopt<int> (optval_, optvallen_, events);
+    }
+
     return options.getsockopt (option_, optval_, optvallen_);
 }
 
@@ -397,6 +423,12 @@ int slk::socket_base_t::connect_internal (const char *endpoint_uri_)
 
             // Note: We can't set HWM boost yet since peer doesn't exist
             // It will be set when the bind happens and the connection is established
+
+            // The peer doesn't exist yet so we don't know whether
+            // to send the routing id message or not. To resolve this,
+            // we always send our routing id and drop it later if
+            // the peer doesn't expect it.
+            send_routing_id (new_pipes[0], options);
 
             // Save last endpoint URI
             std::stringstream s;

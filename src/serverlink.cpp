@@ -7,6 +7,13 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <limits.h>
+
+#ifdef _WIN32
+#include <winsock2.h>
+#else
+#include <poll.h>
+#endif
 
 #include "core/ctx.hpp"
 #include "core/socket_base.hpp"
@@ -14,6 +21,15 @@
 #include "msg/msg.hpp"
 #include "util/err.hpp"
 #include "util/clock.hpp"
+#include "util/constants.hpp"
+
+#ifdef SL_ENABLE_MONITORING
+#include "monitor/connection_manager.hpp"
+#include "monitor/event_dispatcher.hpp"
+#include "monitor/peer_stats.hpp"
+#include "msg/blob.hpp"
+#include <vector>
+#endif
 
 // Thread-local storage for errno
 #ifdef _WIN32
@@ -783,8 +799,6 @@ int SL_CALL slk_poll(slk_pollitem_t *items, int nitems, long timeout)
         return set_errno(SLK_EINVAL);
     }
 
-    // This is a simplified polling implementation
-    // A full implementation would integrate with the I/O subsystem
     try {
         // CRITICAL: Process pending commands on all sockets before checking readiness
         // This ensures that any bind/activate_read commands from inproc connections
@@ -803,13 +817,8 @@ int SL_CALL slk_poll(slk_pollitem_t *items, int nitems, long timeout)
             }
         }
 
-        // TODO: Implement proper polling with timeout support
-        (void)timeout; // Unused for now
-
-        // TODO: Implement proper polling using the socket's has_in/has_out methods
-        // For now, just check immediate availability
+        // Check for immediate events (before potentially blocking in poll)
         int ready_count = 0;
-
         for (int i = 0; i < nitems; i++) {
             items[i].revents = 0;
 
@@ -829,7 +838,193 @@ int SL_CALL slk_poll(slk_pollitem_t *items, int nitems, long timeout)
             }
         }
 
-        return ready_count;
+        // If we found events or timeout is 0, return immediately
+        if (ready_count > 0 || timeout == 0) {
+            return ready_count;
+        }
+
+        // No immediate events and timeout != 0, so we need to wait using poll()
+        // Build the pollfd array for system poll() call
+#ifdef _WIN32
+        // Windows: Use select() since poll() is not available on all versions
+        fd_set readfds, writefds, exceptfds;
+        FD_ZERO(&readfds);
+        FD_ZERO(&writefds);
+        FD_ZERO(&exceptfds);
+
+        SOCKET max_fd = 0;
+        for (int i = 0; i < nitems; i++) {
+            if (items[i].socket) {
+                slk::socket_base_t *socket =
+                    reinterpret_cast<slk::socket_base_t*>(items[i].socket);
+
+                size_t fd_size = sizeof(SOCKET);
+                SOCKET fd;
+                if (socket->getsockopt(slk::SL_FD, &fd, &fd_size) == 0) {
+                    if (fd != INVALID_SOCKET) {
+                        FD_SET(fd, &readfds);
+                        FD_SET(fd, &exceptfds);
+                        if (fd > max_fd) max_fd = fd;
+                    }
+                }
+            }
+        }
+
+        struct timeval tv;
+        struct timeval *ptv = nullptr;
+        if (timeout >= 0) {
+            tv.tv_sec = static_cast<long>(timeout / 1000);
+            tv.tv_usec = static_cast<long>((timeout % 1000) * 1000);
+            ptv = &tv;
+        }
+
+        int rc = select(static_cast<int>(max_fd + 1), &readfds, nullptr, &exceptfds, ptv);
+        if (rc == SOCKET_ERROR) {
+            return set_errno(SLK_EPROTO);
+        }
+#else
+        // Unix: Use poll() system call
+        struct pollfd *pollfds = static_cast<struct pollfd*>(
+            malloc(nitems * sizeof(struct pollfd)));
+        if (!pollfds) {
+            return set_errno(SLK_ENOMEM);
+        }
+
+        int pollfd_count = 0;
+        for (int i = 0; i < nitems; i++) {
+            pollfds[i].fd = -1;
+            pollfds[i].events = 0;
+            pollfds[i].revents = 0;
+
+            if (items[i].socket) {
+                slk::socket_base_t *socket =
+                    reinterpret_cast<slk::socket_base_t*>(items[i].socket);
+
+                size_t fd_size = sizeof(slk::fd_t);
+                slk::fd_t fd;
+                if (socket->getsockopt(slk::SL_FD, &fd, &fd_size) == 0) {
+                    pollfds[i].fd = fd;
+                    pollfds[i].events = POLLIN;  // Always wait for mailbox signaling
+                    pollfd_count++;
+                }
+            } else if (items[i].fd >= 0) {
+                pollfds[i].fd = items[i].fd;
+                if (items[i].events & SLK_POLLIN)
+                    pollfds[i].events |= POLLIN;
+                if (items[i].events & SLK_POLLOUT)
+                    pollfds[i].events |= POLLOUT;
+                pollfd_count++;
+            }
+        }
+
+        // Compute timeout for poll (in milliseconds)
+        int poll_timeout;
+        if (timeout < 0) {
+            poll_timeout = -1;  // Infinite
+        } else if (timeout > INT_MAX) {
+            poll_timeout = INT_MAX;
+        } else {
+            poll_timeout = static_cast<int>(timeout);
+        }
+
+        slk::clock_t clock;
+        uint64_t now = 0;
+        uint64_t end = 0;
+
+        // For finite timeouts, track elapsed time
+        if (timeout > 0) {
+            now = clock.now_ms();
+            end = now + timeout;
+        }
+
+        while (true) {
+            int rc = poll(pollfds, pollfd_count, poll_timeout);
+
+            if (rc < 0) {
+                // Error occurred
+                if (errno == EINTR) {
+                    // Interrupted by signal, adjust timeout and retry
+                    if (timeout > 0) {
+                        now = clock.now_ms();
+                        if (now >= end) {
+                            // Timeout expired
+                            free(pollfds);
+                            return 0;
+                        }
+                        poll_timeout = static_cast<int>(end - now);
+                    }
+                    continue;
+                }
+                free(pollfds);
+                return set_errno(SLK_EPROTO);
+            } else if (rc == 0) {
+                // Timeout expired with no events
+                free(pollfds);
+                return 0;
+            }
+
+            // poll() returned, now process commands and check for actual events
+            // This two-phase approach ensures we detect ZMQ-level events correctly
+            for (int i = 0; i < nitems; i++) {
+                if (items[i].socket && pollfds[i].fd != -1) {
+                    slk::socket_base_t *socket =
+                        reinterpret_cast<slk::socket_base_t*>(items[i].socket);
+                    // Process any pending commands
+                    socket->process_commands(0, false);
+                }
+            }
+
+            // Now check for actual socket events
+            ready_count = 0;
+            for (int i = 0; i < nitems; i++) {
+                items[i].revents = 0;
+
+                if (items[i].socket) {
+                    slk::socket_base_t *socket =
+                        reinterpret_cast<slk::socket_base_t*>(items[i].socket);
+
+                    if ((items[i].events & SLK_POLLIN) && socket->has_in()) {
+                        items[i].revents |= SLK_POLLIN;
+                        ready_count++;
+                    }
+
+                    if ((items[i].events & SLK_POLLOUT) && socket->has_out()) {
+                        items[i].revents |= SLK_POLLOUT;
+                        ready_count++;
+                    }
+                } else if (items[i].fd >= 0 && pollfds[i].fd >= 0) {
+                    // Raw file descriptor
+                    if ((pollfds[i].revents & POLLIN) && (items[i].events & SLK_POLLIN))
+                        items[i].revents |= SLK_POLLIN;
+                    if ((pollfds[i].revents & POLLOUT) && (items[i].events & SLK_POLLOUT))
+                        items[i].revents |= SLK_POLLOUT;
+                    if (pollfds[i].revents & (POLLERR | POLLHUP | POLLNVAL))
+                        items[i].revents |= SLK_POLLERR;
+
+                    if (items[i].revents)
+                        ready_count++;
+                }
+            }
+
+            // If we found events, return them
+            if (ready_count > 0) {
+                free(pollfds);
+                return ready_count;
+            }
+
+            // No events found after processing, adjust timeout and retry
+            if (timeout > 0) {
+                now = clock.now_ms();
+                if (now >= end) {
+                    // Timeout expired
+                    free(pollfds);
+                    return 0;
+                }
+                poll_timeout = static_cast<int>(end - now);
+            }
+            // For infinite timeout (timeout < 0), loop continues indefinitely
+        }
+#endif
     } catch (...) {
         return set_errno(SLK_EPROTO);
     }
@@ -839,19 +1034,101 @@ int SL_CALL slk_poll(slk_pollitem_t *items, int nitems, long timeout)
 /*  Monitoring API                                                          */
 /****************************************************************************/
 
+#ifdef SL_ENABLE_MONITORING
+// Wrapper structure to bridge public API callback to internal callback
+struct monitor_callback_wrapper_t {
+    slk_monitor_fn user_callback;
+    void *user_data;
+};
+
+// Internal callback that converts event_data_t to slk_event_t
+static void internal_monitor_callback(slk::socket_base_t *socket,
+                                      const slk::event_data_t *event,
+                                      void *user_data)
+{
+    monitor_callback_wrapper_t *wrapper =
+        static_cast<monitor_callback_wrapper_t*>(user_data);
+
+    if (!wrapper || !wrapper->user_callback) {
+        return;
+    }
+
+    // Convert internal event to public API event
+    slk_event_t public_event;
+
+    // Map internal event types to public API event types
+    switch (event->type) {
+        case slk::EVENT_PEER_CONNECTED:
+            public_event.event = SLK_EVENT_CONNECTED;
+            break;
+        case slk::EVENT_PEER_DISCONNECTED:
+            public_event.event = SLK_EVENT_DISCONNECTED;
+            break;
+        case slk::EVENT_PEER_HANDSHAKE_FAILED:
+            public_event.event = SLK_EVENT_HANDSHAKE_FAIL;
+            break;
+        default:
+            return; // Unknown event type, ignore
+    }
+
+    public_event.peer_id = event->routing_id.data();
+    public_event.peer_id_len = event->routing_id.size();
+    public_event.endpoint = event->endpoint.empty() ? NULL : event->endpoint.c_str();
+    public_event.err = event->error_code;
+    public_event.timestamp = static_cast<uint64_t>(event->timestamp_us / 1000); // Convert to ms
+
+    // Call the user's callback
+    wrapper->user_callback(
+        reinterpret_cast<slk_socket_t*>(socket),
+        &public_event,
+        wrapper->user_data
+    );
+}
+#endif
+
 int SL_CALL slk_socket_monitor(slk_socket_t *socket_, slk_monitor_fn callback,
                                 void *user_data, int events)
 {
     CHECK_PTR(socket_, -1);
 
-    // Suppress unused parameter warnings
+#ifdef SL_ENABLE_MONITORING
+    slk::socket_base_t *socket = reinterpret_cast<slk::socket_base_t*>(socket_);
+
+    try {
+        // Check if this is a ROUTER socket
+        int socket_type = 0;
+        size_t type_size = sizeof(socket_type);
+        int rc = socket->getsockopt(slk::SL_TYPE, &socket_type, &type_size);
+        if (rc != 0 || socket_type != SLK_ROUTER) {
+            errno = ENOTSUP;
+            return set_errno(SLK_EPROTO);
+        }
+
+        // Cast to router_t to access monitoring methods
+        slk::router_t *router = static_cast<slk::router_t*>(socket);
+
+        // Create wrapper to bridge callback signatures
+        // Note: This wrapper is leaked intentionally as we don't have a mechanism
+        // to free it when the socket is destroyed. For production use, this should
+        // be stored in the router and freed in the destructor.
+        monitor_callback_wrapper_t *wrapper = new monitor_callback_wrapper_t();
+        wrapper->user_callback = callback;
+        wrapper->user_data = user_data;
+
+        router->set_monitor_callback(internal_monitor_callback, wrapper, events);
+
+        return 0;
+    } catch (...) {
+        return set_errno(SLK_EPROTO);
+    }
+#else
+    // Monitoring not enabled at compile time
     (void)callback;
     (void)user_data;
     (void)events;
-
-    // TODO: Implement monitoring integration with connection_manager and event_dispatcher
-    // This requires extending the socket_base interface
+    errno = ENOTSUP;
     return set_errno(SLK_EPROTO);
+#endif
 }
 
 /****************************************************************************/
@@ -889,12 +1166,58 @@ int SL_CALL slk_get_peer_stats(slk_socket_t *socket_, const void *routing_id,
     CHECK_PTR(routing_id, -1);
     CHECK_PTR(stats, -1);
 
-    // Suppress unused parameter warning
-    (void)id_len;
+#ifdef SL_ENABLE_MONITORING
+    slk::socket_base_t *socket = reinterpret_cast<slk::socket_base_t*>(socket_);
 
-    // TODO: Implement peer statistics retrieval
-    // This requires integration with connection_manager
+    try {
+        // Check if this is a ROUTER socket
+        int socket_type = 0;
+        size_t type_size = sizeof(socket_type);
+        int rc = socket->getsockopt(slk::SL_TYPE, &socket_type, &type_size);
+        if (rc != 0 || socket_type != SLK_ROUTER) {
+            errno = ENOTSUP;
+            return set_errno(SLK_EPROTO);
+        }
+
+        // Cast to router_t to access monitoring methods
+        slk::router_t *router = static_cast<slk::router_t*>(socket);
+
+        // Create blob from routing_id
+        slk::blob_t rid(static_cast<const unsigned char*>(routing_id), id_len);
+
+        // Get internal statistics
+        slk::peer_stats_t internal_stats;
+        if (!router->get_peer_statistics(rid, &internal_stats)) {
+            // Peer not found
+            errno = EHOSTUNREACH;
+            return set_errno(SLK_EHOSTUNREACH);
+        }
+
+        // Convert internal statistics to public API format
+        stats->bytes_sent = internal_stats.bytes_sent;
+        stats->bytes_received = internal_stats.bytes_recv;
+        stats->msgs_sent = internal_stats.messages_sent;
+        stats->msgs_received = internal_stats.messages_recv;
+
+        // Convert connection time from microseconds to milliseconds
+        stats->connected_time = internal_stats.connection_time / 1000;
+
+        // Convert last heartbeat from microseconds to milliseconds
+        stats->last_heartbeat = internal_stats.last_heartbeat_time / 1000;
+
+        // Set is_alive based on connection state
+        stats->is_alive = (internal_stats.state == slk::SLK_STATE_CONNECTED) ? 1 : 0;
+
+        return 0;
+    } catch (...) {
+        return set_errno(SLK_EPROTO);
+    }
+#else
+    // Monitoring not enabled at compile time
+    (void)id_len;
+    errno = ENOTSUP;
     return set_errno(SLK_EPROTO);
+#endif
 }
 
 int SL_CALL slk_get_peers(slk_socket_t *socket_, void **peer_ids, size_t *id_lens,
@@ -902,12 +1225,101 @@ int SL_CALL slk_get_peers(slk_socket_t *socket_, void **peer_ids, size_t *id_len
 {
     CHECK_PTR(socket_, -1);
     CHECK_PTR(peer_ids, -1);
-    CHECK_PTR(id_lens, -1);
     CHECK_PTR(num_peers, -1);
 
-    // TODO: Implement peer list retrieval
-    // This requires integration with connection_manager
+    // Note: id_lens can be NULL if caller only wants count
+
+#ifdef SL_ENABLE_MONITORING
+    slk::socket_base_t *socket = reinterpret_cast<slk::socket_base_t*>(socket_);
+
+    try {
+        // Check if this is a ROUTER socket
+        int socket_type = 0;
+        size_t type_size = sizeof(socket_type);
+        int rc = socket->getsockopt(slk::SL_TYPE, &socket_type, &type_size);
+        if (rc != 0 || socket_type != SLK_ROUTER) {
+            errno = ENOTSUP;
+            return set_errno(SLK_EPROTO);
+        }
+
+        // Cast to router_t to access monitoring methods
+        slk::router_t *router = static_cast<slk::router_t*>(socket);
+
+        // Get the list of connected peers
+        std::vector<slk::blob_t> peers;
+        router->get_connected_peers(&peers);
+
+        const size_t count = peers.size();
+        *num_peers = count;
+
+        if (count == 0) {
+            // No peers connected
+            *peer_ids = NULL;
+            if (id_lens) {
+                // The API design is ambiguous - id_lens is size_t* but we need to
+                // return an array. We interpret this as a pointer that will be
+                // assigned to point to the allocated array.
+                void *null_ptr = NULL;
+                memcpy(id_lens, &null_ptr, sizeof(void*));
+            }
+            return 0;
+        }
+
+        // Allocate arrays for peer IDs and their lengths
+        void **ids = static_cast<void**>(malloc(count * sizeof(void*)));
+        size_t *lens = static_cast<size_t*>(malloc(count * sizeof(size_t)));
+
+        if (!ids || !lens) {
+            free(ids);
+            free(lens);
+            return set_errno(SLK_ENOMEM);
+        }
+
+        // Copy peer routing IDs
+        for (size_t i = 0; i < count; i++) {
+            const slk::blob_t &peer_id = peers[i];
+            lens[i] = peer_id.size();
+
+            // Allocate memory for this peer ID
+            ids[i] = malloc(lens[i]);
+            if (!ids[i]) {
+                // Cleanup on allocation failure
+                for (size_t j = 0; j < i; j++) {
+                    free(ids[j]);
+                }
+                free(ids);
+                free(lens);
+                return set_errno(SLK_ENOMEM);
+            }
+
+            // Copy the routing ID data
+            memcpy(ids[i], peer_id.data(), lens[i]);
+        }
+
+        *peer_ids = ids;
+
+        // API design issue: id_lens is declared as size_t* but we need to return
+        // a pointer to an allocated array. This requires treating id_lens as size_t**
+        // We use memcpy to avoid strict aliasing violations.
+        if (id_lens) {
+            memcpy(id_lens, &lens, sizeof(size_t*));
+        }
+
+        return 0;
+    } catch (...) {
+        return set_errno(SLK_EPROTO);
+    }
+#else
+    // Monitoring not enabled at compile time
+    *num_peers = 0;
+    *peer_ids = NULL;
+    if (id_lens) {
+        void *null_ptr = NULL;
+        memcpy(id_lens, &null_ptr, sizeof(void*));
+    }
+    errno = ENOTSUP;
     return set_errno(SLK_EPROTO);
+#endif
 }
 
 void SL_CALL slk_free_peers(void **peer_ids, size_t *id_lens, size_t num_peers)

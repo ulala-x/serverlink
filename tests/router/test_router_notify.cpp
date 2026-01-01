@@ -72,8 +72,13 @@ static void test_router_notify_helper(int opt_notify)
 
     slk_socket_t *router = test_socket_new(ctx, SLK_ROUTER);
 
+    /* Set router's routing ID so peer can send to it */
+    const char *router_routing_id = "R";
+    int rc = slk_setsockopt(router, SLK_ROUTING_ID, router_routing_id, 1);
+    TEST_SUCCESS(rc);
+
     /* Set notify option */
-    int rc = slk_setsockopt(router, SLK_ROUTER_NOTIFY, &opt_notify, sizeof(opt_notify));
+    rc = slk_setsockopt(router, SLK_ROUTER_NOTIFY, &opt_notify, sizeof(opt_notify));
     TEST_SUCCESS(rc);
 
     test_socket_bind(router, endpoint);
@@ -92,23 +97,20 @@ static void test_router_notify_helper(int opt_notify)
 
     /* Connection notification msg */
     if (opt_notify & SLK_NOTIFY_CONNECT) {
-        /* TODO: ROUTER_NOTIFY connect notifications not yet implemented in ServerLink
-         * When implemented, notification should be routing-id + empty frame */
+        /* Notification should be routing-id + empty frame */
         char buf[256];
-        rc = slk_recv(router, buf, sizeof(buf), SLK_DONTWAIT);
-        if (rc > 0) {
-            /* Got notification - verify it */
-            TEST_ASSERT_EQ(buf[0], 'X');
-            rc = slk_recv(router, buf, sizeof(buf), SLK_DONTWAIT);
-            if (rc >= 0) {
-                TEST_ASSERT_EQ(rc, 0);  /* Empty frame for notification */
-            }
-        }
-        /* If no notification (EAGAIN), that's expected for now */
+        rc = slk_recv(router, buf, sizeof(buf), 0);
+        TEST_ASSERT(rc > 0);
+        TEST_ASSERT_EQ(buf[0], 'X');
+
+        rc = slk_recv(router, buf, sizeof(buf), 0);
+        TEST_ASSERT_EQ(rc, 0);  /* Empty frame for notification */
     }
 
-    /* Test message from the peer - ROUTER-to-ROUTER sends routing-id + payload (no empty delimiter) */
-    rc = slk_send(peer, "Hello", 5, 0);
+    /* Test message from the peer - ROUTER-to-ROUTER sends routing-id + payload */
+    rc = slk_send(peer, "R", 1, SLK_SNDMORE);  /* Routing ID of destination */
+    TEST_ASSERT(rc >= 0);
+    rc = slk_send(peer, "Hello", 5, 0);  /* Payload */
     TEST_ASSERT(rc >= 0);
 
     test_sleep_ms(100);
@@ -122,30 +124,23 @@ static void test_router_notify_helper(int opt_notify)
     TEST_ASSERT_EQ(rc, 5);
     TEST_ASSERT_MEM_EQ(buf, "Hello", 5);
 
-    /* Peer disconnects */
-    rc = slk_disconnect(peer, endpoint);
-    TEST_SUCCESS(rc);
+    /* Peer disconnects - close the socket to trigger disconnect notification */
+    test_socket_close(peer);
 
     /* Wait for disconnect to process */
     test_sleep_ms(200);
 
     /* Disconnection notification msg */
     if (opt_notify & SLK_NOTIFY_DISCONNECT) {
-        /* TODO: ROUTER_NOTIFY disconnect notifications not yet implemented in ServerLink
-         * When implemented, notification should be routing-id + empty frame */
-        rc = slk_recv(router, buf, sizeof(buf), SLK_DONTWAIT);
-        if (rc > 0) {
-            /* Got notification - verify it */
-            TEST_ASSERT_EQ(buf[0], 'X');
-            rc = slk_recv(router, buf, sizeof(buf), SLK_DONTWAIT);
-            if (rc >= 0) {
-                TEST_ASSERT_EQ(rc, 0);  /* Empty frame for notification */
-            }
-        }
-        /* If no notification (EAGAIN), that's expected for now */
+        /* Notification should be routing-id + empty frame */
+        rc = slk_recv(router, buf, sizeof(buf), 0);
+        TEST_ASSERT(rc > 0);
+        TEST_ASSERT_EQ(buf[0], 'X');
+
+        rc = slk_recv(router, buf, sizeof(buf), 0);
+        TEST_ASSERT_EQ(rc, 0);  /* Empty frame for notification */
     }
 
-    test_socket_close(peer);
     test_socket_close(router);
     test_context_destroy(ctx);
 }
@@ -250,21 +245,16 @@ static void test_error_during_multipart()
 
     test_sleep_ms(200);
 
-    /* TODO: ROUTER_NOTIFY disconnect notifications not yet implemented in ServerLink
-     * Should receive disconnect notification, not incomplete message */
+    /* Should receive disconnect notification, not incomplete message */
     char buf[256];
-    rc = slk_recv(router, buf, sizeof(buf), SLK_DONTWAIT);
-    if (rc > 0) {
-        /* If we get a message, it should be the disconnect notification: routing ID + empty */
-        TEST_ASSERT_EQ(buf[0], 'X');
+    rc = slk_recv(router, buf, sizeof(buf), 0);
+    TEST_ASSERT(rc > 0);
+    /* The message should be the disconnect notification: routing ID */
+    TEST_ASSERT_EQ(buf[0], 'X');
 
-        /* Second part should be empty (disconnect notification) */
-        rc = slk_recv(router, buf, sizeof(buf), SLK_DONTWAIT);
-        if (rc >= 0) {
-            TEST_ASSERT_EQ(rc, 0);  /* Empty frame for notification */
-        }
-    }
-    /* If no notification (EAGAIN), that's expected for now */
+    /* Second part should be empty (disconnect notification) */
+    rc = slk_recv(router, buf, sizeof(buf), 0);
+    TEST_ASSERT_EQ(rc, 0);  /* Empty frame for notification */
 
     test_socket_close(router);
     test_context_destroy(ctx);
@@ -273,21 +263,16 @@ static void test_error_during_multipart()
 int main()
 {
     printf("=== ServerLink ROUTER_NOTIFY Tests ===\n\n");
-    printf("NOTE: ROUTER_NOTIFY feature not yet fully implemented in ServerLink.\n");
-    printf("      Only testing socket option get/set functionality.\n\n");
     fflush(stdout);
 
     RUN_TEST(test_sockopt_router_notify);
+    RUN_TEST(test_router_notify_connect);
+    RUN_TEST(test_router_notify_disconnect);
+    RUN_TEST(test_router_notify_both);
+    RUN_TEST(test_handshake_fail);
+    RUN_TEST(test_error_during_multipart);
 
-    /* TODO: Enable these tests when ROUTER_NOTIFY is fully implemented
-     * Currently they hang because notification messages are not generated */
-    // RUN_TEST(test_router_notify_connect);
-    // RUN_TEST(test_router_notify_disconnect);
-    // RUN_TEST(test_router_notify_both);
-    // RUN_TEST(test_handshake_fail);
-    // RUN_TEST(test_error_during_multipart);
-
-    printf("\n=== ROUTER_NOTIFY Socket Option Tests Passed ===\n");
+    printf("\n=== All ROUTER_NOTIFY Tests Passed ===\n");
     fflush(stdout);
     return 0;
 }

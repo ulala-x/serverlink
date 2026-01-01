@@ -12,6 +12,8 @@
 #include <string.h>
 #include <assert.h>
 #include <stdarg.h>
+#include <time.h>
+#include <unistd.h>
 
 /* Test framework macros */
 #define TEST_ASSERT(cond) \
@@ -150,6 +152,10 @@ static inline void test_socket_close(slk_socket_t *s)
 static inline void test_socket_bind(slk_socket_t *s, const char *endpoint)
 {
     int rc = slk_bind(s, endpoint);
+    if (rc != 0) {
+        fprintf(stderr, "BIND FAILED for endpoint '%s': errno=%d (%s)\n",
+                endpoint, slk_errno(), strerror(slk_errno()));
+    }
     TEST_SUCCESS(rc);
 }
 
@@ -262,13 +268,35 @@ static inline int test_poll_writable(slk_socket_t *s, long timeout_ms)
     return 0;
 }
 
-/* Endpoint helper - generate unique endpoint */
+/* Endpoint helper - generate unique endpoint using ephemeral ports */
+/* Returns a static buffer per slot - supports up to 16 concurrent endpoints */
 static inline const char* test_endpoint_tcp()
 {
-    static char endpoint[64];
-    static int port = 15555;
-    snprintf(endpoint, sizeof(endpoint), "tcp://127.0.0.1:%d", port++);
-    return endpoint;
+    static char endpoints[16][64];
+    static int base_port = 0;
+    static int call_count = 0;
+
+    /* Initialize base port once per process */
+    if (base_port == 0) {
+        srand(time(NULL) ^ getpid());
+        base_port = 49152 + (rand() % 10000);
+    }
+
+    /* Use rotating buffers to avoid overwriting previous endpoints */
+    int slot = call_count % 16;
+
+    /* Each call gets a unique port: base + (call_count * 50) */
+    int port = base_port + (call_count * 50);
+    call_count++;
+
+    /* Wrap around if we exceed ephemeral port range */
+    if (port > 65000) {
+        base_port = 49152 + (rand() % 10000);
+        port = base_port;
+    }
+
+    snprintf(endpoints[slot], sizeof(endpoints[slot]), "tcp://127.0.0.1:%d", port);
+    return endpoints[slot];
 }
 
 /* Endpoint helper - generate IPC endpoint (for platforms that support it) */

@@ -43,12 +43,21 @@ static void test_router_mandatory_hwm()
     rc = slk_setsockopt(peer, SLK_RCVHWM, &rcvhwm, sizeof(rcvhwm));
     TEST_SUCCESS(rc);
 
+    /* Set routing ID for router and CONNECT_ROUTING_ID for peer */
+    rc = slk_setsockopt(router, SLK_ROUTING_ID, "R", 1);
+    TEST_SUCCESS(rc);
+
+    rc = slk_setsockopt(peer, SLK_CONNECT_ROUTING_ID, "R", 1);
+    TEST_SUCCESS(rc);
+
     test_socket_connect(peer, endpoint);
 
     /* Wait for connection */
     test_sleep_ms(200);
 
-    /* Get message from peer to know when connection is ready */
+    /* ROUTER-to-ROUTER handshake: peer sends to router */
+    rc = slk_send(peer, "R", 1, SLK_SNDMORE);
+    TEST_ASSERT(rc >= 0);
     rc = slk_send(peer, "Hello", 5, 0);
     TEST_ASSERT(rc >= 0);
 
@@ -60,6 +69,20 @@ static void test_router_mandatory_hwm()
     TEST_ASSERT(rc > 0);
 
     rc = slk_recv(router, buf, sizeof(buf), 0);  /* "Hello" */
+    TEST_ASSERT_EQ(rc, 5);
+
+    /* Router responds to complete handshake */
+    rc = slk_send(router, "X", 1, SLK_SNDMORE);
+    TEST_ASSERT(rc >= 0);
+    rc = slk_send(router, "Ready", 5, 0);
+    TEST_ASSERT(rc >= 0);
+
+    test_sleep_ms(100);
+
+    /* Peer receives handshake response */
+    rc = slk_recv(peer, buf, sizeof(buf), 0);  /* routing ID "R" */
+    TEST_ASSERT(rc > 0);
+    rc = slk_recv(peer, buf, sizeof(buf), 0);  /* "Ready" */
     TEST_ASSERT_EQ(rc, 5);
 
     /* Send first batch of messages */
@@ -122,13 +145,11 @@ static void test_router_mandatory_hwm()
 int main()
 {
     printf("=== ServerLink ROUTER_MANDATORY + HWM Tests ===\n\n");
-    printf("NOTE: This test is currently disabled due to timing/HWM implementation differences.\n");
-    printf("      The ROUTER_MANDATORY option itself works correctly (see test_router_mandatory).\n\n");
+    fflush(stdout);
 
-    /* TODO: Re-enable when HWM behavior is fully aligned with libzmq
-     * Currently this test hangs during peer message reception or HWM enforcement */
-    // RUN_TEST(test_router_mandatory_hwm);
+    RUN_TEST(test_router_mandatory_hwm);
 
-    printf("=== ROUTER_MANDATORY + HWM Tests Skipped ===\n");
+    printf("\n=== All ROUTER_MANDATORY + HWM Tests Passed ===\n");
+    fflush(stdout);
     return 0;
 }

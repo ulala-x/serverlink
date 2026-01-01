@@ -675,39 +675,59 @@ void slk::ctx_t::connect_inproc_sockets (
   const pending_connection_t &pending_connection_,
   side side_)
 {
-    // Attach pipes to both sockets
-    // For inproc connections, we have a pending connection with two pipes:
-    // - connect_pipe: connects to the connect socket
-    // - bind_pipe: connects to the bind socket
+    // Increment sequence number for bind socket
+    bind_socket_->inc_seqnum ();
 
-    // Use unused parameter to avoid warning
-    (void) bind_options_;
+    // Set the thread ID for bind pipe
+    pending_connection_.bind_pipe->set_tid (bind_socket_->get_tid ());
 
-    // CRITICAL FIX: For inproc connections, we must use synchronous process_command()
-    // instead of async send_bind() to avoid timing issues where messages are flushed
-    // before the bind command is processed. This matches libzmq v4.3.5 behavior.
+    // If the connect socket does not want to receive routing IDs,
+    // read and discard the routing ID message from bind pipe
+    if (!bind_options_.recv_routing_id) {
+        msg_t msg;
+        const bool ok = pending_connection_.bind_pipe->read (&msg);
+        slk_assert (ok);
+        const int rc = msg.close ();
+        errno_assert (rc == 0);
+    }
 
-    command_t cmd_bind_socket;
-    cmd_bind_socket.destination = bind_socket_;
-    cmd_bind_socket.type = command_t::bind;
-    cmd_bind_socket.args.bind.pipe = pending_connection_.bind_pipe;
+    // ServerLink only supports ROUTER sockets, so conflate is not effective.
+    // Always set HWMs with boost for inproc connections.
+    pending_connection_.connect_pipe->set_hwms_boost (bind_options_.sndhwm,
+                                                      bind_options_.rcvhwm);
+    pending_connection_.bind_pipe->set_hwms_boost (
+      pending_connection_.endpoint.options.sndhwm,
+      pending_connection_.endpoint.options.rcvhwm);
 
-    command_t cmd_connect_socket;
-    cmd_connect_socket.destination = pending_connection_.endpoint.socket;
-    cmd_connect_socket.type = command_t::bind;
-    cmd_connect_socket.args.bind.pipe = pending_connection_.connect_pipe;
+    pending_connection_.connect_pipe->set_hwms (
+      pending_connection_.endpoint.options.rcvhwm,
+      pending_connection_.endpoint.options.sndhwm);
+    pending_connection_.bind_pipe->set_hwms (bind_options_.rcvhwm,
+                                             bind_options_.sndhwm);
 
+    // Send bind command and inproc_connected signal based on which side initiated
     if (side_ == bind_side) {
         // Bind was called after connect
-        // Process bind commands synchronously to ensure pipes are attached
-        // before any messages are sent
-        bind_socket_->process_command (cmd_bind_socket);
-        pending_connection_.endpoint.socket->process_command (cmd_connect_socket);
+        command_t cmd;
+        cmd.type = command_t::bind;
+        cmd.args.bind.pipe = pending_connection_.bind_pipe;
+        bind_socket_->process_command (cmd);
+        bind_socket_->send_inproc_connected (
+          pending_connection_.endpoint.socket);
     } else {
         // Connect was called after bind (normal case)
-        // Process bind commands synchronously
-        pending_connection_.endpoint.socket->process_command (cmd_connect_socket);
-        bind_socket_->process_command (cmd_bind_socket);
+        pending_connection_.connect_pipe->send_bind (
+          bind_socket_, pending_connection_.bind_pipe, false);
+    }
+
+    // When a ctx is terminated all pending inproc connection will be
+    // connected, but the socket will already be closed and the pipe will be
+    // in waiting_for_delimiter state, which means no more writes can be done
+    // and the routing id write fails and causes an assert. Check if the socket
+    // is open before sending.
+    if (pending_connection_.endpoint.options.recv_routing_id
+        && pending_connection_.endpoint.socket->check_tag ()) {
+        send_routing_id (pending_connection_.bind_pipe, bind_options_);
     }
 }
 

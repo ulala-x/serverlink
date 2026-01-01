@@ -441,6 +441,19 @@ void slk::stream_engine_base_t::error (error_reason_t reason_)
         reason_ = timeout_error;
 
     slk_assert (_session);
+
+    //  Send disconnect notification if ROUTER_NOTIFY is enabled
+    //  Only send if handshake was completed (not in handshaking state)
+    if ((_options.router_notify & SL_NOTIFY_DISCONNECT) && !_handshaking) {
+        //  Rollback any incomplete messages in the pipe
+        _session->rollback ();
+
+        //  Send disconnect notification (empty message)
+        msg_t disconnect_notification;
+        disconnect_notification.init ();
+        _session->push_msg (&disconnect_notification);
+    }
+
     // Event notification removed - not needed for simplified ServerLink
     _session->engine_error (_handshaking == false, reason_);
     unplug ();
@@ -607,6 +620,19 @@ void slk::stream_engine_base_t::mechanism_ready ()
         flush_session = true;
     } else {
         SL_DEBUG_LOG("DEBUG: mechanism_ready: recv_routing_id is false\n");
+    }
+
+    //  Send connect notification if ROUTER_NOTIFY is enabled
+    if (_options.router_notify & SL_NOTIFY_CONNECT) {
+        msg_t connect_notification;
+        connect_notification.init ();
+        const int rc = _session->push_msg (&connect_notification);
+        if (rc == -1 && errno == EAGAIN) {
+            // Pipe is shutting down
+            return;
+        }
+        errno_assert (rc == 0);
+        flush_session = true;
     }
 
     if (flush_session)

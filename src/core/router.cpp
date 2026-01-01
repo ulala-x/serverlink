@@ -363,6 +363,7 @@ int slk::router_t::xrecv (msg_t *msg_)
                 _terminate_current_in = false;
             }
             _current_in = NULL;
+            _routing_id_sent = false;
         }
         return 0;
     }
