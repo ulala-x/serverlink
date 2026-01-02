@@ -27,8 +27,40 @@
 namespace slk
 {
 
+// Network initialization status
+#ifdef _WIN32
+static bool s_network_initialized = false;
+#endif
+
+bool initialize_network ()
+{
+#ifdef _WIN32
+    if (s_network_initialized)
+        return true;
+
+    const WORD version_requested = MAKEWORD (2, 2);
+    WSADATA wsa_data;
+    const int rc = WSAStartup (version_requested, &wsa_data);
+    slk_assert (rc == 0);
+    slk_assert (LOBYTE (wsa_data.wVersion) == 2
+                && HIBYTE (wsa_data.wVersion) == 2);
+    s_network_initialized = true;
+#endif
+    return true;
+}
+
+// Ensure network is initialized before any socket operations
+static bool ensure_network_initialized ()
+{
+    static bool initialized = initialize_network ();
+    return initialized;
+}
+
 fd_t open_socket (int domain_, int type_, int protocol_)
 {
+    // Ensure network is initialized (WSAStartup on Windows)
+    ensure_network_initialized ();
+
     int rc;
 
     // Set SOCK_CLOEXEC if available
@@ -100,19 +132,6 @@ void make_socket_noninheritable (fd_t sock_)
 #else
     SL_UNUSED (sock_);
 #endif
-}
-
-bool initialize_network ()
-{
-#ifdef _WIN32
-    const WORD version_requested = MAKEWORD (2, 2);
-    WSADATA wsa_data;
-    const int rc = WSAStartup (version_requested, &wsa_data);
-    slk_assert (rc == 0);
-    slk_assert (LOBYTE (wsa_data.wVersion) == 2
-                && HIBYTE (wsa_data.wVersion) == 2);
-#endif
-    return true;
 }
 
 void shutdown_network ()
