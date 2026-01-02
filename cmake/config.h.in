@@ -5,6 +5,7 @@
 #define SERVERLINK_CONFIG_H
 
 /* Platform I/O multiplexing support */
+#cmakedefine SL_HAVE_WEPOLL @SL_HAVE_WEPOLL@
 #cmakedefine SL_HAVE_EPOLL @SL_HAVE_EPOLL@
 #cmakedefine SL_HAVE_KQUEUE @SL_HAVE_KQUEUE@
 #cmakedefine SL_HAVE_SELECT @SL_HAVE_SELECT@
@@ -39,7 +40,11 @@
 #cmakedefine SL_ENABLE_MONITORING
 
 /* Determine the best I/O poller to use */
-#if SL_HAVE_EPOLL
+/* Priority: wepoll (Windows) > epoll (Linux) > kqueue (BSD/macOS) > select (fallback) */
+#if SL_HAVE_WEPOLL
+    #define SL_USE_WEPOLL 1
+    #define SL_POLLER_NAME "wepoll"
+#elif SL_HAVE_EPOLL
     #define SL_USE_EPOLL 1
     #define SL_POLLER_NAME "epoll"
 #elif SL_HAVE_KQUEUE

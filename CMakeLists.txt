@@ -134,7 +134,10 @@ set(SERVERLINK_SOURCES
 )
 
 # Platform-specific I/O sources
-if(SL_HAVE_EPOLL)
+# Priority: wepoll (Windows) > epoll (Linux) > kqueue (BSD/macOS) > select (fallback)
+if(SL_HAVE_WEPOLL)
+    list(APPEND SERVERLINK_SOURCES src/io/wepoll.cpp)
+elseif(SL_HAVE_EPOLL)
     list(APPEND SERVERLINK_SOURCES src/io/epoll.cpp)
 elseif(SL_HAVE_KQUEUE)
     list(APPEND SERVERLINK_SOURCES src/io/kqueue.cpp)

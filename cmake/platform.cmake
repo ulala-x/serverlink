@@ -130,6 +130,14 @@ endif()
 
 # =============================================================================
 
+# Detect Windows event polling (WSAEventSelect-based)
+if(WIN32)
+    set(SL_HAVE_WEPOLL 1)
+    message(STATUS "Windows event polling (wepoll) support detected")
+else()
+    set(SL_HAVE_WEPOLL 0)
+endif()
+
 # Detect epoll (Linux)
 check_include_file("sys/epoll.h" HAVE_EPOLL)
 if(HAVE_EPOLL)
@@ -152,7 +160,10 @@ endif()
 set(SL_HAVE_SELECT 1)
 
 # Determine which poller to use and set name
-if(SL_HAVE_EPOLL)
+# Priority order: wepoll (Windows) > epoll (Linux) > kqueue (BSD/macOS) > select (fallback)
+if(SL_HAVE_WEPOLL)
+    set(SL_POLLER_NAME "wepoll")
+elseif(SL_HAVE_EPOLL)
     set(SL_POLLER_NAME "epoll")
 elseif(SL_HAVE_KQUEUE)
     set(SL_POLLER_NAME "kqueue")
@@ -258,6 +269,8 @@ endif()
 
 # Summary
 message(STATUS "Platform configuration summary:")
+message(STATUS "  I/O Poller:      ${SL_POLLER_NAME}")
+message(STATUS "  wepoll:          ${SL_HAVE_WEPOLL}")
 message(STATUS "  epoll:           ${SL_HAVE_EPOLL}")
 message(STATUS "  kqueue:          ${SL_HAVE_KQUEUE}")
 message(STATUS "  select:          ${SL_HAVE_SELECT}")
