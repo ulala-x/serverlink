@@ -13,7 +13,13 @@
 #include <assert.h>
 #include <stdarg.h>
 #include <time.h>
+
+#ifdef _WIN32
+#include <process.h>  /* For _getpid */
+#define getpid _getpid
+#else
 #include <unistd.h>
+#endif
 
 /* TCP settle time in milliseconds - time to wait for TCP connections to establish
  * and messages to propagate through the network. libzmq uses 300ms. */

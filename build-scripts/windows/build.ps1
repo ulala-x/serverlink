@@ -73,7 +73,7 @@ try {
         -DCMAKE_BUILD_TYPE="$BuildType" `
         -DBUILD_SHARED_LIBS="$BuildShared" `
         -DBUILD_TESTS=ON `
-        -DBUILD_EXAMPLES=ON `
+        -DBUILD_EXAMPLES=OFF `
         -DCMAKE_INSTALL_PREFIX="$DistDir"
 
     if ($LASTEXITCODE -ne 0) {
