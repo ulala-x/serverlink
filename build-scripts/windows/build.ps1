@@ -144,8 +144,14 @@ try {
         if (Test-Path $LibFile) {
             Write-Host "Shared library: $LibFile"
             Write-Host ""
-            Write-Host "DLL dependencies:"
-            dumpbin /DEPENDENTS $LibFile 2>$null
+            # Try to show DLL dependencies if dumpbin is available
+            $dumpbin = Get-Command "dumpbin" -ErrorAction SilentlyContinue
+            if ($dumpbin) {
+                Write-Host "DLL dependencies:"
+                dumpbin /DEPENDENTS $LibFile 2>$null
+            } else {
+                Write-Host "Note: dumpbin not found, skipping dependency listing"
+            }
         }
     } else {
         $LibFile = Join-Path $DistDir "lib\serverlink.lib"
