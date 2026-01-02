@@ -9,6 +9,7 @@
 #include "../pipe/dist.hpp"
 #include "../pipe/fq.hpp"
 #include "../pipe/trie.hpp"
+#include "../pattern/pattern_trie.hpp"
 
 namespace slk
 {
@@ -56,6 +57,9 @@ class xsub_t : public socket_base_t
 
     // The repository of subscriptions
     trie_with_size_t _subscriptions;
+
+    // The repository of pattern subscriptions (glob patterns)
+    pattern_trie_t _pattern_subscriptions;
 
     // If true, send all unsubscription messages upstream, not just
     // unique ones

@@ -46,6 +46,7 @@ const slk::blob_t &slk::mechanism_t::get_user_id () const
     return _user_id;
 }
 
+const char socket_type_pair[] = "PAIR";
 const char socket_type_pub[] = "PUB";
 const char socket_type_sub[] = "SUB";
 const char socket_type_router[] = "ROUTER";
@@ -55,6 +56,8 @@ const char socket_type_xsub[] = "XSUB";
 const char *slk::mechanism_t::socket_type_string (int socket_type_)
 {
     switch (socket_type_) {
+        case SL_PAIR:
+            return socket_type_pair;
         case SL_PUB:
             return socket_type_pub;
         case SL_SUB:

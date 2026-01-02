@@ -7,10 +7,12 @@
 
 #include "xpub.hpp"
 #include "../pipe/pipe.hpp"
+#include "../pubsub/pubsub_registry.hpp"
 #include "../util/err.hpp"
 #include "../msg/msg.hpp"
 #include "../util/macros.hpp"
 #include "../pipe/mtrie_impl.hpp"  // Required for template instantiation
+#include "ctx.hpp"
 
 slk::xpub_t::xpub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     socket_base_t (parent_, tid_, sid_),
@@ -122,10 +124,28 @@ void slk::xpub_t::xread_activated (pipe_t *pipe_)
                     // TODO reconsider what to do if rm_result == mtrie_t::not_found
                     notify =
                       rm_result != mtrie_t<pipe_t>::values_remain || _verbose_unsubs;
+
+                    // Update registry for introspection
+                    if (rm_result != mtrie_t<pipe_t>::values_remain) {
+                        pubsub_registry_t *registry =
+                            get_ctx()->get_pubsub_registry();
+                        if (registry) {
+                            std::string channel(reinterpret_cast<const char*>(data), size);
+                            registry->unregister_subscription(channel);
+                        }
+                    }
                 } else {
                     const bool first_added =
                       _subscriptions.add (data, size, pipe_);
                     notify = first_added || _verbose_subs;
+
+                    // Update registry for introspection (count every subscription)
+                    pubsub_registry_t *registry =
+                        get_ctx()->get_pubsub_registry();
+                    if (registry) {
+                        std::string channel(reinterpret_cast<const char*>(data), size);
+                        registry->register_subscription(channel);
+                    }
                 }
             }
 

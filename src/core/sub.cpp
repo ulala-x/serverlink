@@ -25,9 +25,15 @@ int slk::sub_t::xsetsockopt (int option_,
                              const void *optval_,
                              size_t optvallen_)
 {
-    if (option_ != SL_SUBSCRIBE && option_ != SL_UNSUBSCRIBE) {
+    if (option_ != SL_SUBSCRIBE && option_ != SL_UNSUBSCRIBE
+        && option_ != SL_PSUBSCRIBE && option_ != SL_PUNSUBSCRIBE) {
         errno = EINVAL;
         return -1;
+    }
+
+    // Pattern subscriptions are handled directly by xsub_t
+    if (option_ == SL_PSUBSCRIBE || option_ == SL_PUNSUBSCRIBE) {
+        return xsub_t::xsetsockopt (option_, optval_, optvallen_);
     }
 
     // Create the subscription message

@@ -58,6 +58,8 @@ constexpr int SL_ROUTER_NOTIFY = 97;
 // Pub/Sub options
 constexpr int SL_SUBSCRIBE = 6;
 constexpr int SL_UNSUBSCRIBE = 7;
+constexpr int SL_PSUBSCRIBE = 81;
+constexpr int SL_PUNSUBSCRIBE = 82;
 constexpr int SL_XPUB_VERBOSE = 40;
 constexpr int SL_XPUB_VERBOSER = 78;
 constexpr int SL_XPUB_MANUAL = 71;
@@ -70,6 +72,7 @@ constexpr int SL_TOPICS_COUNT = 80;
 constexpr int SL_INVERT_MATCHING = 60;
 
 // Socket types
+constexpr int SL_PAIR = 0;
 constexpr int SL_PUB = 1;
 constexpr int SL_SUB = 2;
 constexpr int SL_ROUTER = 6;

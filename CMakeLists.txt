@@ -13,7 +13,7 @@ option(BUILD_EXAMPLES "Build examples" ON)
 option(SL_ENABLE_MONITORING "Enable performance monitoring features" OFF)
 
 # C++ standard
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -59,6 +59,18 @@ set(SERVERLINK_SOURCES
     src/pipe/dist.cpp
     src/pipe/trie.cpp
 
+    # Pattern sources
+    src/pattern/glob_pattern.cpp
+    src/pattern/pattern_trie.cpp
+
+    # Pub/Sub sources
+    src/pubsub/pubsub_registry.cpp
+    src/pubsub/shard_hash.cpp
+    src/pubsub/sharded_pubsub.cpp
+    src/pubsub/pubsub_broker.cpp
+    src/pubsub/cluster_node.cpp
+    src/pubsub/pubsub_cluster.cpp
+
     # Core sources
     src/core/options.cpp
     src/core/object.cpp
@@ -66,6 +78,7 @@ set(SERVERLINK_SOURCES
     src/core/ctx.cpp
     src/core/endpoint.cpp
     src/core/socket_base.cpp
+    src/core/pair.cpp
     src/core/router.cpp
     src/core/pub.cpp
     src/core/sub.cpp

@@ -35,6 +35,7 @@ add_serverlink_test(test_ctx_options unit/test_ctx_options.cpp "unit")
 add_serverlink_test(test_hwm unit/test_hwm.cpp "unit")
 add_serverlink_test(test_sockopt_hwm unit/test_sockopt_hwm.cpp "unit")
 add_serverlink_test(test_last_endpoint unit/test_last_endpoint.cpp "unit")
+add_serverlink_test(test_pair unit/test_pair.cpp "unit")
 
 # Utility Tests
 message(STATUS "Adding utility tests...")
@@ -42,6 +43,11 @@ add_serverlink_test(test_atomics util/test_atomics.cpp "util")
 add_serverlink_test(test_timers util/test_timers.cpp "util")
 add_serverlink_test(test_stopwatch util/test_stopwatch.cpp "util")
 add_serverlink_test(test_has util/test_has.cpp "util")
+
+# Pattern Tests
+message(STATUS "Adding pattern tests...")
+add_serverlink_test(test_glob_pattern pattern/test_glob_pattern.cpp "pattern")
+add_serverlink_test(test_pattern_trie pattern/test_pattern_trie.cpp "pattern")
 
 # Router Tests
 message(STATUS "Adding router tests...")
@@ -72,6 +78,13 @@ add_serverlink_test(test_pubsub_topics_count pubsub/test_pubsub_topics_count.cpp
 add_serverlink_test(test_xpub_verbose pubsub/test_xpub_verbose.cpp "pubsub")
 add_serverlink_test(test_xpub_manual pubsub/test_xpub_manual.cpp "pubsub")
 add_serverlink_test(test_xpub_nodrop pubsub/test_xpub_nodrop.cpp "pubsub")
+add_serverlink_test(test_psubscribe pubsub/test_psubscribe.cpp "pubsub")
+add_serverlink_test(test_introspection pubsub/test_introspection.cpp "pubsub")
+add_serverlink_test(test_sharded_pubsub pubsub/test_sharded_pubsub.cpp "pubsub")
+add_serverlink_test(test_pubsub_broker pubsub/test_pubsub_broker.cpp "pubsub")
+add_serverlink_test(test_pubsub_cluster pubsub/test_pubsub_cluster.cpp "pubsub")
+# TODO: Fix concurrency test to properly use XPUB with async draining
+# add_serverlink_test(test_registry_concurrent pubsub/test_registry_concurrent.cpp "pubsub")
 
 # Debug test (not part of regular test suite)
 add_executable(debug_xpub_manual debug_xpub_manual.cpp)
@@ -124,7 +137,8 @@ add_custom_target(test-monitor
 add_custom_target(test-pubsub
     COMMAND ${CMAKE_CTEST_COMMAND} -L pubsub --output-on-failure
     DEPENDS test_auth_pubsub test_hwm_pubsub test_sub_forward test_pubsub_topics_count
-            test_xpub_verbose test_xpub_manual test_xpub_nodrop
+            test_xpub_verbose test_xpub_manual test_xpub_nodrop test_psubscribe
+            test_introspection test_sharded_pubsub test_pubsub_broker test_pubsub_cluster
     COMMENT "Running pubsub tests"
 )
 
@@ -152,6 +166,12 @@ add_custom_target(test-util
     COMMENT "Running utility tests"
 )
 
+add_custom_target(test-pattern
+    COMMAND ${CMAKE_CTEST_COMMAND} -L pattern --output-on-failure
+    DEPENDS test_glob_pattern test_pattern_trie
+    COMMENT "Running pattern matching tests"
+)
+
 add_custom_target(test-all
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
     DEPENDS
@@ -177,6 +197,11 @@ add_custom_target(test-all
         test_xpub_verbose
         test_xpub_manual
         test_xpub_nodrop
+        test_psubscribe
+        test_introspection
+        test_sharded_pubsub
+        test_pubsub_broker
+        test_pubsub_cluster
         test_bind_after_connect
         test_inproc_connect
         test_reconnect_ivl
@@ -186,6 +211,8 @@ add_custom_target(test-all
         test_timers
         test_stopwatch
         test_has
+        test_glob_pattern
+        test_pattern_trie
     COMMENT "Running all tests"
 )
 

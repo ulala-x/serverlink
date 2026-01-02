@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "../util/macros.hpp"
+#include "../util/constants.hpp"
 #include "xsub.hpp"
 #include "../util/err.hpp"
 
@@ -91,6 +92,47 @@ int slk::xsub_t::xsetsockopt (int option_,
             return -1;
         }
         _verbose_unsubs = (*static_cast<const int *> (optval_) != 0);
+        return 0;
+    }
+    else if (option_ == SL_PSUBSCRIBE) {
+        // Add pattern subscription
+        const unsigned char *pattern = static_cast<const unsigned char *> (optval_);
+        bool added = _pattern_subscriptions.add (pattern, optvallen_);
+
+        // When first pattern is added, subscribe to empty prefix (receive all messages)
+        // This ensures we receive messages for pattern matching
+        if (added && _pattern_subscriptions.num_patterns () == 1) {
+            bool first_sub = _subscriptions.add (NULL, 0);
+            if (first_sub) {
+                // Send subscription message for empty prefix to all upstream peers
+                msg_t msg;
+                int rc = msg.init_subscribe (0, NULL);
+                errno_assert (rc == 0);
+                _dist.send_to_all (&msg);
+                msg.close ();
+            }
+        }
+
+        return 0;
+    }
+    else if (option_ == SL_PUNSUBSCRIBE) {
+        // Remove pattern subscription
+        const unsigned char *pattern = static_cast<const unsigned char *> (optval_);
+        bool removed = _pattern_subscriptions.rm (pattern, optvallen_);
+
+        // When last pattern is removed, unsubscribe from empty prefix
+        if (removed && _pattern_subscriptions.num_patterns () == 0) {
+            bool last_unsub = _subscriptions.rm (NULL, 0);
+            if (last_unsub) {
+                // Send unsubscription message for empty prefix to all upstream peers
+                msg_t msg;
+                int rc = msg.init_cancel (0, NULL);
+                errno_assert (rc == 0);
+                _dist.send_to_all (&msg);
+                msg.close ();
+            }
+        }
+
         return 0;
     }
     errno = EINVAL;
@@ -257,8 +299,41 @@ bool slk::xsub_t::xhas_in ()
 
 bool slk::xsub_t::match (msg_t *msg_)
 {
-    const bool matching = _subscriptions.check (
+    bool has_patterns = (_pattern_subscriptions.num_patterns () > 0);
+
+    // Check prefix-based subscriptions first
+    bool prefix_match = _subscriptions.check (
       static_cast<unsigned char *> (msg_->data ()), msg_->size ());
+
+    // Check pattern subscriptions
+    bool pattern_match = false;
+    if (has_patterns) {
+        pattern_match = _pattern_subscriptions.check (
+          static_cast<unsigned char *> (msg_->data ()), msg_->size ());
+    }
+
+    // If we have pattern subscriptions and this message matches the empty prefix
+    // (which we subscribe to for pattern matching), only accept if it matches a pattern
+    bool matching;
+    if (has_patterns && prefix_match) {
+        // Check if this is matching due to empty prefix subscription
+        // by checking if there are any non-empty prefix subscriptions
+        bool has_non_empty_prefixes = (_subscriptions.num_prefixes () > 1);
+
+        if (has_non_empty_prefixes) {
+            // We have both prefix and pattern subscriptions
+            // Accept if either matches
+            matching = prefix_match || pattern_match;
+        } else {
+            // Only have empty prefix (for patterns)
+            // Accept only if pattern matches
+            matching = pattern_match;
+        }
+    } else {
+        // No patterns, or no prefix match
+        // Standard behavior: accept if prefix matches OR pattern matches
+        matching = prefix_match || pattern_match;
+    }
 
     return matching ^ options.invert_matching;
 }
