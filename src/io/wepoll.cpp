@@ -75,6 +75,7 @@ wepoll_t::handle_t wepoll_t::add_fd (fd_t fd_, i_poll_events *events_)
     pe->events = events_;
     pe->pollin = false;
     pe->pollout = false;
+    pe->in_update_events = false;
 
     // Create Windows event object for this socket
     pe->event = WSACreateEvent ();
@@ -165,6 +166,11 @@ void wepoll_t::update_socket_events (poll_entry_t *pe_)
     if (pe_->fd == retired_fd)
         return;
 
+    // Prevent recursive calls during in_event() processing
+    if (pe_->in_update_events)
+        return;
+    pe_->in_update_events = true;
+
     long events = FD_CLOSE;  // Always monitor for close events
 
     if (pe_->pollin)
@@ -176,6 +182,30 @@ void wepoll_t::update_socket_events (poll_entry_t *pe_)
     // Associate the event object with the socket and specify event types
     const int rc = WSAEventSelect (pe_->fd, pe_->event, events);
     wsa_assert (rc != SOCKET_ERROR);
+
+    // CRITICAL FIX for Windows WSAEventSelect edge-triggered behavior:
+    // WSAEventSelect is edge-triggered. If we had a pending event (e.g., FD_READ)
+    // that arrived between the last WSAEnumNetworkEvents and this WSAEventSelect
+    // call, the event will be LOST because the edge already triggered.
+    //
+    // This commonly happens during TCP handshake when we call reset_pollout()
+    // after sending greeting - the peer's response may have arrived but the
+    // FD_READ event is lost when we re-register the socket.
+    //
+    // Solution: After calling WSAEventSelect, manually check if there's pending
+    // data using ioctlsocket(FIONREAD) and trigger in_event() if needed.
+    // The guard flag prevents infinite recursion.
+    if (pe_->pollin && pe_->events != nullptr) {
+        u_long bytes_available = 0;
+        const int check_rc = ioctlsocket (pe_->fd, FIONREAD, &bytes_available);
+        if (check_rc != SOCKET_ERROR && bytes_available > 0) {
+            // Directly trigger in_event to process pending data
+            // This is safe because in_update_events guard prevents recursion
+            pe_->events->in_event ();
+        }
+    }
+
+    pe_->in_update_events = false;
 }
 
 void wepoll_t::process_events (const std::vector<poll_entry_t *> &signaled_entries_)

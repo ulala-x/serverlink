@@ -64,6 +64,7 @@ class wepoll_t final : public worker_poller_base_t
         slk::i_poll_events *events;
         bool pollin;              // Monitoring for read events
         bool pollout;             // Monitoring for write events
+        bool in_update_events;    // Guard against recursive update_socket_events calls
     };
 
     // Update WSAEventSelect for a socket based on pollin/pollout flags
