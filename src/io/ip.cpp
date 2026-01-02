@@ -49,17 +49,11 @@ bool initialize_network ()
     return true;
 }
 
-// Ensure network is initialized before any socket operations
-static bool ensure_network_initialized ()
-{
-    static bool initialized = initialize_network ();
-    return initialized;
-}
-
 fd_t open_socket (int domain_, int type_, int protocol_)
 {
     // Ensure network is initialized (WSAStartup on Windows)
-    ensure_network_initialized ();
+    // initialize_network() is idempotent - checks s_network_initialized internally
+    initialize_network ();
 
     int rc;
 
