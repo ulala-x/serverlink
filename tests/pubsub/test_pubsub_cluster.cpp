@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include <unistd.h>
 
 #define ASSERT_EQ(a, b) assert((a) == (b))
 #define ASSERT_NE(a, b) assert((a) != (b))
@@ -122,7 +121,7 @@ void test_subscribe_publish()
     ASSERT_EQ(rc, 0);
 
     // Give time for subscription to propagate
-    usleep(50000); // 50ms
+    slk_sleep(50); // 50ms
 
     // Publish a message
     const char *msg = "Hello, cluster!";
@@ -165,7 +164,7 @@ void test_pattern_subscription()
     ASSERT_EQ(rc, 0);
 
     // Give time for subscription to propagate
-    usleep(50000); // 50ms
+    slk_sleep(50); // 50ms
 
     // Publish to matching channel
     const char *msg = "Breaking news!";
@@ -216,7 +215,7 @@ void test_hash_tag()
     ASSERT_EQ(rc, 0);
 
     // Give time for subscription to propagate
-    usleep(50000); // 50ms
+    slk_sleep(50); // 50ms
 
     // Publish to both channels (should route to same node)
     const char *msg1 = "New message";

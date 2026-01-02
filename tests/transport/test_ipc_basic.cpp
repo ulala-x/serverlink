@@ -4,8 +4,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "../testutil.hpp"
+#ifndef _WIN32
 #include <sys/types.h>
 #include <unistd.h>
+#endif
 
 /*
  * IPC (Inter-Process Communication) Transport Tests
@@ -21,6 +23,7 @@
 #define HAS_IPC_SUPPORT 0
 #endif
 
+#if HAS_IPC_SUPPORT
 /* Helper: Generate unique IPC endpoint using process ID and counter */
 static const char* get_unique_ipc_endpoint()
 {
@@ -44,15 +47,12 @@ static void cleanup_ipc_socket(const char *endpoint)
         unlink(path);  /* Remove socket file, ignore errors */
     }
 }
+#endif /* HAS_IPC_SUPPORT */
 
+#if HAS_IPC_SUPPORT
 /* Test 1: Basic PAIR socket communication over IPC */
 static void test_ipc_pair_basic()
 {
-#if !HAS_IPC_SUPPORT
-    printf("  NOTE: IPC transport not supported on this platform, skipping test\n");
-    return;
-#endif
-
     /* Use raw API calls instead of helpers to debug */
     slk_ctx_t *ctx = slk_ctx_new();
     if (!ctx) {
@@ -193,11 +193,6 @@ cleanup:
 /* Test 2: ROUTER-DEALER communication over IPC with routing IDs */
 static void test_ipc_router_dealer()
 {
-#if !HAS_IPC_SUPPORT
-    printf("  NOTE: IPC transport not supported on this platform, skipping test\n");
-    return;
-#endif
-
     slk_ctx_t *ctx = test_context_new();
     const char *endpoint = get_unique_ipc_endpoint();
 
@@ -289,11 +284,6 @@ static void test_ipc_router_dealer()
 /* Test 3: PUB-SUB communication over IPC */
 static void test_ipc_pubsub()
 {
-#if !HAS_IPC_SUPPORT
-    printf("  NOTE: IPC transport not supported on this platform, skipping test\n");
-    return;
-#endif
-
     slk_ctx_t *ctx = test_context_new();
     const char *endpoint = get_unique_ipc_endpoint();
 
@@ -364,11 +354,6 @@ static void test_ipc_pubsub()
 /* Test 4: Multipart message transmission over IPC */
 static void test_ipc_multipart()
 {
-#if !HAS_IPC_SUPPORT
-    printf("  NOTE: IPC transport not supported on this platform, skipping test\n");
-    return;
-#endif
-
     slk_ctx_t *ctx = test_context_new();
     const char *endpoint = get_unique_ipc_endpoint();
 
@@ -432,11 +417,6 @@ static void test_ipc_multipart()
 /* Test 5: Error handling - invalid paths and permissions */
 static void test_ipc_error_handling()
 {
-#if !HAS_IPC_SUPPORT
-    printf("  NOTE: IPC transport not supported on this platform, skipping test\n");
-    return;
-#endif
-
     slk_ctx_t *ctx = test_context_new();
 
     /* Test 1: Path too long (exceeds sun_path limit) */
@@ -522,11 +502,6 @@ static void test_ipc_error_handling()
 /* Test 6: Multiple clients connecting to one server over IPC */
 static void test_ipc_multiple_clients()
 {
-#if !HAS_IPC_SUPPORT
-    printf("  NOTE: IPC transport not supported on this platform, skipping test\n");
-    return;
-#endif
-
     slk_ctx_t *ctx = test_context_new();
     const char *endpoint = get_unique_ipc_endpoint();
 
@@ -626,11 +601,6 @@ static void test_ipc_multiple_clients()
 /* Test 7: IPC socket cleanup after close */
 static void test_ipc_socket_cleanup()
 {
-#if !HAS_IPC_SUPPORT
-    printf("  NOTE: IPC transport not supported on this platform, skipping test\n");
-    return;
-#endif
-
     slk_ctx_t *ctx = test_context_new();
     const char *endpoint = get_unique_ipc_endpoint();
 
@@ -664,6 +634,7 @@ static void test_ipc_socket_cleanup()
     test_context_destroy(ctx);
     cleanup_ipc_socket(endpoint);
 }
+#endif /* HAS_IPC_SUPPORT */
 
 /* Main test runner */
 int main()
@@ -676,8 +647,7 @@ int main()
     printf("IPC transport is not supported on this platform.\n");
     printf("These tests are only available on Unix-like systems.\n");
     return 0;
-#endif
-
+#else
     RUN_TEST(test_ipc_pair_basic);
     RUN_TEST(test_ipc_router_dealer);
     RUN_TEST(test_ipc_pubsub);
@@ -688,4 +658,5 @@ int main()
     printf("NOTE: Advanced IPC tests (multipart, error handling, multiple clients, cleanup)\n");
     printf("      are available but disabled to avoid test timeout issues.\n");
     return 0;
+#endif
 }

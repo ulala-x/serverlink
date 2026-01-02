@@ -3,7 +3,6 @@
 
 #include "../testutil.hpp"
 #include <string.h>
-#include <unistd.h>
 
 // Test basic pattern subscription with PUB/SUB
 static void test_psubscribe_basic()
@@ -25,7 +24,7 @@ static void test_psubscribe_basic()
     TEST_SUCCESS(slk_setsockopt(sub, SLK_PSUBSCRIBE, "news.*", 6));
 
     // Give time for subscription to propagate
-    usleep(50000); // 50ms
+    slk_sleep(50); // 50ms
 
     // Publish messages
     TEST_ASSERT(slk_send(pub, "news.sports", 11, 0) == 11);
@@ -69,9 +68,9 @@ static void test_punsubscribe()
 
     // Subscribe then unsubscribe
     TEST_SUCCESS(slk_setsockopt(sub, SLK_PSUBSCRIBE, "event.*", 7));
-    usleep(50000);
+    slk_sleep(50);
     TEST_SUCCESS(slk_setsockopt(sub, SLK_PUNSUBSCRIBE, "event.*", 7));
-    usleep(50000);
+    slk_sleep(50);
 
     // Publish message
     TEST_ASSERT(slk_send(pub, "event.login", 11, 0) == 11);
@@ -103,7 +102,7 @@ static void test_multiple_patterns()
     // Subscribe to multiple patterns
     TEST_SUCCESS(slk_setsockopt(sub, SLK_PSUBSCRIBE, "user.?", 6));
     TEST_SUCCESS(slk_setsockopt(sub, SLK_PSUBSCRIBE, "event.*", 7));
-    usleep(50000);
+    slk_sleep(50);
 
     // Publish messages
     TEST_ASSERT(slk_send(pub, "user.1", 6, 0) == 6);
@@ -148,7 +147,7 @@ static void test_pattern_char_class()
 
     // Subscribe to pattern with character class
     TEST_SUCCESS(slk_setsockopt(sub, SLK_PSUBSCRIBE, "id.[0-9]", 8));
-    usleep(50000);
+    slk_sleep(50);
 
     // Publish messages
     TEST_ASSERT(slk_send(pub, "id.5", 4, 0) == 4);
@@ -188,7 +187,7 @@ static void test_mixed_subscriptions()
     // Mix prefix subscription and pattern subscription
     TEST_SUCCESS(slk_setsockopt(sub, SLK_SUBSCRIBE, "data.", 5)); // Prefix
     TEST_SUCCESS(slk_setsockopt(sub, SLK_PSUBSCRIBE, "event.*", 7)); // Pattern
-    usleep(50000);
+    slk_sleep(50);
 
     // Publish messages
     TEST_ASSERT(slk_send(pub, "data.123", 8, 0) == 8); // Matches prefix

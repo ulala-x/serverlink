@@ -3,7 +3,6 @@
 
 #include "../testutil.hpp"
 #include <string.h>
-#include <unistd.h>
 
 // Test 1: Basic broker lifecycle (create/destroy)
 static void test_create_destroy()
@@ -39,7 +38,7 @@ static void test_start_stop()
     TEST_ASSERT_EQ(0, rc);
 
     // Give it time to start
-    usleep(50000);  // 50ms
+    slk_sleep(50);  // 50ms
 
     // Stop broker
     rc = slk_pubsub_broker_stop(broker);
@@ -95,7 +94,7 @@ static void test_single_pubsub()
     // Give broker time to bind
     printf("[DEBUG] test_single_pubsub: sleeping 100ms\n");
     fflush(stdout);
-    usleep(100000);  // 100ms
+    slk_sleep(100);  // 100ms
     printf("[DEBUG] test_single_pubsub: sleep done\n");
     fflush(stdout);
 
@@ -145,7 +144,7 @@ static void test_single_pubsub()
     fflush(stdout);
 
     // Wait for subscriptions to propagate
-    usleep(200000);  // 200ms
+    slk_sleep(200);  // 200ms
 
     // Send message
     const char *msg = "Hello, Broker!";
@@ -180,7 +179,7 @@ static void test_multiple_pubsub()
 
     int rc = slk_pubsub_broker_start(broker);
     TEST_ASSERT_EQ(0, rc);
-    usleep(100000);  // 100ms
+    slk_sleep(100);  // 100ms
 
     // Create 3 publishers
     slk_socket_t *publishers[3];
@@ -203,7 +202,7 @@ static void test_multiple_pubsub()
     }
 
     // Wait for subscriptions
-    usleep(200000);  // 200ms
+    slk_sleep(200);  // 200ms
 
     // Each publisher sends a message
     for (int i = 0; i < 3; i++) {
@@ -245,7 +244,7 @@ static void test_topic_filtering()
 
     int rc = slk_pubsub_broker_start(broker);
     TEST_ASSERT_EQ(0, rc);
-    usleep(100000);  // 100ms
+    slk_sleep(100);  // 100ms
 
     // Create publisher
     slk_socket_t *pub = slk_socket(ctx, SLK_PUB);
@@ -270,7 +269,7 @@ static void test_topic_filtering()
     TEST_ASSERT_EQ(0, rc);
 
     // Wait for subscriptions
-    usleep(200000);  // 200ms
+    slk_sleep(200);  // 200ms
 
     // Send news message
     const char *news_msg = "news: Breaking story";
@@ -326,7 +325,7 @@ static void test_inproc_transport()
 
     int rc = slk_pubsub_broker_start(broker);
     TEST_ASSERT_EQ(0, rc);
-    usleep(100000);  // 100ms
+    slk_sleep(100);  // 100ms
 
     // Create publisher
     slk_socket_t *pub = slk_socket(ctx, SLK_PUB);
@@ -343,7 +342,7 @@ static void test_inproc_transport()
     TEST_ASSERT_EQ(0, rc);
 
     // Wait for connection
-    usleep(200000);  // 200ms
+    slk_sleep(200);  // 200ms
 
     // Send and receive
     const char *msg = "Inproc test";
