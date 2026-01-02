@@ -10,7 +10,7 @@
 #include "../util/err.hpp"
 #include "../msg/msg.hpp"
 #include "../util/macros.hpp"
-#include "../pipe/mtrie_impl.hpp"
+#include "../pipe/mtrie_impl.hpp"  // Required for template instantiation
 
 slk::xpub_t::xpub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     socket_base_t (parent_, tid_, sid_),
@@ -240,26 +240,17 @@ int slk::xpub_t::xgetsockopt (int option_, void *optval_, size_t *optvallen_)
             return -1;
         }
 
-        // CRITICAL: Process any pending commands (like 'bind') before checking subscriptions.
-        // For inproc connections, the bind command may be pending in the mailbox and
-        // needs to be processed to attach the pipe before we can read from it.
+        // Process any pending commands (like 'bind' or 'activate_read') before
+        // checking subscriptions. This ensures the subscription trie is up-to-date
+        // with all messages that have been sent but not yet processed.
+        //
+        // NOTE: With the fix to fq_t::attach() removing the premature check_read()
+        // call, the natural ypipe activation protocol should handle subscription
+        // delivery correctly. However, we still need process_commands() here to
+        // handle any pending attach/bind operations that may add new pipes.
         process_commands (0, false);
 
-        // Before returning the count, process any pending subscription messages
-        // from all pipes. This is necessary because subscription messages may be
-        // buffered in pipes and not yet processed by xread_activated.
-        // We force each pipe to check for pending data and activate if found.
-        // Note: We iterate through all attached pipes, not just _dist (output pipes only)
-        pipes_t &pipes = get_pipes ();
-        for (pipes_t::size_type i = 0; i != pipes.size (); ++i) {
-            pipe_t *pipe = pipes[i];
-            if (pipe) {
-                // Force check will set the pipe active and call read_activated
-                // if there's any pending data. This triggers xread_activated.
-                pipe->force_check_and_activate ();
-            }
-        }
-
+        // Return the current subscription count from the trie.
         *static_cast<int *> (optval_) =
             static_cast<int> (_subscriptions.num_prefixes ());
         *optvallen_ = sizeof (int);

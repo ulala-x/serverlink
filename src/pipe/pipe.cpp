@@ -169,44 +169,6 @@ bool slk::pipe_t::check_read ()
     return true;
 }
 
-void slk::pipe_t::init_reader_state ()
-{
-    //  Initialize the underlying ypipe's reader state.
-    //  This ensures that _c is set to NULL if the pipe is empty,
-    //  which marks the reader as "asleep" so that flush() will
-    //  correctly send activate_read when new messages arrive.
-    //
-    //  Unlike check_read(), this function works even when _in_active
-    //  is false, which is necessary after xread_activated() has been
-    //  called on an empty pipe.
-    if (_state == active || _state == waiting_for_delimiter) {
-        bool had_data = _in_pipe->check_read ();
-        fprintf(stderr, "[INIT_READER] pipe=%p, had_data=%d, _in_active=%d\n", (void*)this, had_data, _in_active);
-        fflush(stderr);
-    }
-}
-
-bool slk::pipe_t::force_check_and_activate ()
-{
-    // Check state
-    if (unlikely (_state != active && _state != waiting_for_delimiter))
-        return false;
-
-    // Check if there's data in the underlying pipe
-    const bool has_data = _in_pipe->check_read ();
-    if (!has_data)
-        return false;
-
-    // There's data available. Set pipe active and notify sink.
-    // Note: We always call read_activated if there's data, even if pipe
-    // was already active. This ensures pending messages are processed.
-    _in_active = true;
-    if (_sink)
-        _sink->read_activated (this);
-
-    return true;
-}
-
 bool slk::pipe_t::read (msg_t *msg_)
 {
     if (unlikely (!_in_active))
