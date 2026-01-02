@@ -330,22 +330,22 @@ jobs:
             - **ROUTER socket pattern** - Fair-queueing, identity-based routing
             - **PUB/SUB pattern** - Topic-based publish/subscribe with pattern matching
             - **Multiple transports** - inproc, TCP, IPC (Unix)
-            - **Cross-platform I/O** - epoll (Linux), wepoll (Windows), kqueue (macOS/BSD)
+            - **Cross-platform I/O** - epoll (Linux), select (Windows), kqueue (macOS/BSD)
             - **C++20 features** - Concepts, ranges, span, constexpr, spaceship operator
-            - **46 tests** - Comprehensive test coverage
+            - **47 tests** - Comprehensive test coverage
 
             ### Downloads
             | Platform | Architecture | I/O Backend | File |
             |----------|--------------|-------------|------|
             | Linux | x64 | epoll | `serverlink-linux-x64.zip` |
             | Linux | ARM64 | epoll | `serverlink-linux-arm64.zip` |
-            | Windows | x64 | wepoll | `serverlink-windows-x64.zip` |
-            | Windows | ARM64 | wepoll | `serverlink-windows-arm64.zip` |
+            | Windows | x64 | select | `serverlink-windows-x64.zip` |
+            | Windows | ARM64 | select | `serverlink-windows-arm64.zip` |
             | macOS | x64 (Intel) | kqueue | `serverlink-macos-x64.zip` |
             | macOS | ARM64 (Apple Silicon) | kqueue | `serverlink-macos-arm64.zip` |
 
             ### Verification
-            All builds have been tested with 46 automated tests.
+            All builds have been tested with 47 automated tests.
             See `checksums.txt` for SHA256 verification.
           files: |
             artifacts/serverlink-linux-x64.zip
