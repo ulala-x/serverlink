@@ -8,6 +8,7 @@
 #include <vector>
 #include <memory>
 #include <mutex>
+#include <serverlink/serverlink_export.h>
 #include "glob_pattern.hpp"
 #include "../util/macros.hpp"
 
@@ -17,7 +18,7 @@ namespace slk
 // Uses std::shared_mutex for reader-writer lock pattern
 // - Multiple threads can check patterns concurrently (shared lock)
 // - Pattern add/remove operations use exclusive lock
-class pattern_trie_t
+class SL_EXPORT pattern_trie_t
 {
   public:
     pattern_trie_t ();

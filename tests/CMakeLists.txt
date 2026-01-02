@@ -85,6 +85,8 @@ add_serverlink_test(test_xpub_manual pubsub/test_xpub_manual.cpp "pubsub")
 add_serverlink_test(test_xpub_nodrop pubsub/test_xpub_nodrop.cpp "pubsub")
 add_serverlink_test(test_psubscribe pubsub/test_psubscribe.cpp "pubsub")
 add_serverlink_test(test_introspection pubsub/test_introspection.cpp "pubsub")
+# Increase timeout for introspection test - it can be slow on macOS ARM64 runners
+set_tests_properties(test_introspection PROPERTIES TIMEOUT 60)
 add_serverlink_test(test_sharded_pubsub pubsub/test_sharded_pubsub.cpp "pubsub")
 add_serverlink_test(test_pubsub_broker pubsub/test_pubsub_broker.cpp "pubsub")
 add_serverlink_test(test_pubsub_cluster pubsub/test_pubsub_cluster.cpp "pubsub")

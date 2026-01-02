@@ -6,6 +6,7 @@
 
 #include <string>
 #include <vector>
+#include <serverlink/serverlink_export.h>
 #include "../util/macros.hpp"
 
 namespace slk
@@ -21,7 +22,7 @@ namespace slk
 // Immutable design (no locks needed):
 // - Pattern is compiled once during construction
 // - All methods are const and thread-safe
-class glob_pattern_t
+class SL_EXPORT glob_pattern_t
 {
   public:
     // Construct a glob pattern from a string

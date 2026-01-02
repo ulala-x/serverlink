@@ -181,7 +181,8 @@ int wsa_error_to_errno(int errcode_);
 
 // C++20 std::format-based assertion helpers (optional, for cleaner code)
 // These are only used in error paths (non-performance-critical)
-#if SL_HAVE_STD_FORMAT && defined(__cplusplus) && __cplusplus >= 202002L
+// Note: MSVC uses _MSVC_LANG instead of __cplusplus for proper C++ version detection
+#if SL_HAVE_STD_FORMAT && defined(__cplusplus) && (__cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L))
 
 namespace slk {
 

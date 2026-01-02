@@ -3,7 +3,9 @@
 
 #include <serverlink/config.h>
 
-#if SL_HAVE_STD_FORMAT
+// Check for C++20 std::format support
+// Note: MSVC uses _MSVC_LANG instead of __cplusplus for proper C++ version detection
+#if SL_HAVE_STD_FORMAT && (__cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L))
 
 #include "../../src/util/err.hpp"
 #include "../../src/util/macros.hpp"
@@ -52,13 +54,13 @@ int main() {
     return 0;
 }
 
-#else  // !SL_HAVE_STD_FORMAT
+#else  // !SL_HAVE_STD_FORMAT or !C++20
 
 #include <iostream>
 
 int main() {
-    std::cout << "std::format not available, skipping tests\n";
+    std::cout << "std::format not available or not C++20, skipping tests\n";
     return 0;
 }
 
-#endif  // SL_HAVE_STD_FORMAT
+#endif  // SL_HAVE_STD_FORMAT && C++20
