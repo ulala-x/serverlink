@@ -267,7 +267,7 @@ find_package(Threads REQUIRED)
 
 # Platform-specific link libraries
 if(WIN32)
-    set(PLATFORM_LIBS ws2_32 wsock32)
+    set(PLATFORM_LIBS ws2_32 wsock32 iphlpapi)
 else()
     set(PLATFORM_LIBS ${CMAKE_THREAD_LIBS_INIT})
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
