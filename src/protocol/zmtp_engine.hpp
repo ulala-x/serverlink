@@ -19,13 +19,10 @@
 
 namespace slk
 {
-//  Protocol revisions
-enum
-{
-    ZMTP_1_0 = 0,
-    ZMTP_2_0 = 1,
-    ZMTP_3_x = 3
-};
+// C++20: Protocol revisions as inline constexpr for type safety and compile-time evaluation
+inline constexpr int ZMTP_1_0 = 0;
+inline constexpr int ZMTP_2_0 = 1;
+inline constexpr int ZMTP_3_x = 3;
 
 class io_thread_t;
 class session_base_t;
@@ -34,7 +31,7 @@ class mechanism_t;
 //  This engine handles any socket with SOCK_STREAM semantics,
 //  e.g. TCP socket or an UNIX domain socket.
 
-class zmtp_engine_t SL_FINAL : public stream_engine_base_t
+class zmtp_engine_t final : public stream_engine_base_t
 {
   public:
     zmtp_engine_t (fd_t fd_,
@@ -78,13 +75,14 @@ class zmtp_engine_t SL_FINAL : public stream_engine_base_t
     //  Need to store PING payload for PONG
     msg_t _pong_msg;
 
-    static const size_t signature_size = 10;
+    // C++20: Use static constexpr for compile-time size constants
+    static constexpr size_t signature_size = 10;
 
     //  Size of ZMTP/1.0 and ZMTP/2.0 greeting message
-    static const size_t v2_greeting_size = 12;
+    static constexpr size_t v2_greeting_size = 12;
 
     //  Size of ZMTP/3.0 greeting message
-    static const size_t v3_greeting_size = 64;
+    static constexpr size_t v3_greeting_size = 64;
 
     //  Expected greeting size.
     size_t _greeting_size;

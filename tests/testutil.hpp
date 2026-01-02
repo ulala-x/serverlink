@@ -275,30 +275,32 @@ static inline int test_poll_writable(slk_socket_t *s, long timeout_ms)
 }
 
 /* Endpoint helper - generate unique endpoint using ephemeral ports */
-/* Returns a static buffer per slot - supports up to 16 concurrent endpoints */
+/* Returns a static buffer per slot - supports up to 32 concurrent endpoints */
 static inline const char* test_endpoint_tcp()
 {
-    static char endpoints[16][64];
+    static char endpoints[32][64];
     static int base_port = 0;
     static int call_count = 0;
 
-    /* Initialize base port once per process using PID-based spacing */
+    /* Initialize base port once per process using PID and time-based spacing */
     if (base_port == 0) {
-        /* Use PID to create well-separated port ranges per process */
-        /* Each process gets a block of 100 ports */
-        int pid_offset = (getpid() % 300) * 100;
-        base_port = 10000 + pid_offset;
+        /* Use PID and timestamp to create well-separated port ranges per process
+         * This ensures different test processes and runs get different port ranges
+         * Port range: 15000-55000 (safe ephemeral range, well below 65535) */
+        int pid_offset = (getpid() % 400) * 100;   /* 0-39900 */
+        int time_offset = ((unsigned int)time(NULL) % 100);  /* 0-99 */
+        base_port = 15000 + (pid_offset + time_offset) % 40000;  /* 15000-54999 */
     }
 
     /* Use rotating buffers to avoid overwriting previous endpoints */
-    int slot = call_count % 16;
+    int slot = call_count % 32;
 
     /* Each call gets a unique port: base + call_count */
     int port = base_port + call_count;
     call_count++;
 
     /* Wrap around if we exceed our allocated block */
-    if (call_count >= 100) {
+    if (call_count >= 1000) {
         call_count = 0;
     }
 

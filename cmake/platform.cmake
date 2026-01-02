@@ -4,6 +4,131 @@
 include(CheckIncludeFile)
 include(CheckSymbolExists)
 include(CheckCSourceCompiles)
+include(CheckCXXSourceCompiles)
+
+# =============================================================================
+# C++20 Feature Detection
+# =============================================================================
+
+# Check for C++20 concepts support
+check_cxx_source_compiles("
+#include <concepts>
+template<typename T>
+concept Addable = requires(T a, T b) { a + b; };
+int main() { return 0; }
+" SL_HAVE_CONCEPTS)
+if(SL_HAVE_CONCEPTS)
+    message(STATUS "C++20 concepts support detected")
+else()
+    message(WARNING "C++20 concepts NOT available")
+endif()
+
+# Check for C++20 ranges support
+check_cxx_source_compiles("
+#include <ranges>
+#include <vector>
+int main() {
+    std::vector<int> v{1,2,3};
+    auto r = v | std::views::filter([](int i){ return i > 1; });
+    return 0;
+}
+" SL_HAVE_RANGES)
+if(SL_HAVE_RANGES)
+    message(STATUS "C++20 ranges support detected")
+else()
+    message(WARNING "C++20 ranges NOT available")
+endif()
+
+# Check for C++20 std::span support
+check_cxx_source_compiles("
+#include <span>
+int main() {
+    int arr[] = {1, 2, 3};
+    std::span<int> s(arr);
+    return s.size();
+}
+" SL_HAVE_SPAN)
+if(SL_HAVE_SPAN)
+    message(STATUS "C++20 std::span support detected")
+else()
+    message(WARNING "C++20 std::span NOT available")
+endif()
+
+# Check for C++20 std::format support
+check_cxx_source_compiles("
+#include <format>
+#include <string>
+int main() {
+    std::string s = std::format(\"{}\", 42);
+    return 0;
+}
+" SL_HAVE_STD_FORMAT)
+if(SL_HAVE_STD_FORMAT)
+    message(STATUS "C++20 std::format support detected")
+else()
+    message(STATUS "C++20 std::format NOT available (will use fallback)")
+endif()
+
+# Check for C++20 source_location support
+check_cxx_source_compiles("
+#include <source_location>
+int main() {
+    auto loc = std::source_location::current();
+    return loc.line();
+}
+" SL_HAVE_SOURCE_LOCATION)
+if(SL_HAVE_SOURCE_LOCATION)
+    message(STATUS "C++20 source_location support detected")
+endif()
+
+# Check for C++20 three-way comparison (spaceship operator)
+check_cxx_source_compiles("
+#include <compare>
+struct X {
+    int value;
+    auto operator<=>(const X&) const = default;
+};
+int main() {
+    X a{1}, b{2};
+    return (a <=> b) < 0 ? 0 : 1;
+}
+" SL_HAVE_THREE_WAY_COMPARISON)
+if(SL_HAVE_THREE_WAY_COMPARISON)
+    message(STATUS "C++20 three-way comparison support detected")
+endif()
+
+# Check for C++20 [[likely]]/[[unlikely]] attributes
+check_cxx_source_compiles("
+int main() {
+    bool condition = true;
+    if (condition) [[likely]] {
+        return 0;
+    } else [[unlikely]] {
+        return 1;
+    }
+}
+" SL_HAVE_LIKELY)
+if(SL_HAVE_LIKELY)
+    message(STATUS "C++20 [[likely]]/[[unlikely]] attributes support detected")
+else()
+    message(STATUS "C++20 [[likely]]/[[unlikely]] NOT available (will use __builtin_expect)")
+endif()
+
+# Check for C++20 consteval/constinit support
+check_cxx_source_compiles("
+#include <atomic>
+consteval int square(int n) { return n * n; }
+constinit int x = square(5);
+constinit std::atomic<int> counter{0};
+int main() { return x - 25; }
+" SL_HAVE_CONSTEVAL)
+if(SL_HAVE_CONSTEVAL)
+    message(STATUS "C++20 consteval/constinit support detected")
+else()
+    message(STATUS "C++20 consteval/constinit NOT available (will use constexpr)")
+endif()
+
+# =============================================================================
 
 # Detect epoll (Linux)
 check_include_file("sys/epoll.h" HAVE_EPOLL)

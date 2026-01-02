@@ -22,7 +22,7 @@ class stream_listener_base_t : public own_t, public io_object_t
     stream_listener_base_t (slk::io_thread_t *io_thread_,
                             slk::socket_base_t *socket_,
                             const options_t &options_);
-    ~stream_listener_base_t () SL_OVERRIDE;
+    ~stream_listener_base_t () override;
 
     // Get the bound address for use with wildcards
     int get_local_address (std::string &addr_) const;
@@ -33,8 +33,8 @@ class stream_listener_base_t : public own_t, public io_object_t
 
   private:
     //  Handlers for incoming commands.
-    void process_plug () SL_FINAL;
-    void process_term (int linger_) SL_FINAL;
+    void process_plug () final;
+    void process_term (int linger_) final;
 
   protected:
     //  Close the listening socket.

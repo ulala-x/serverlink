@@ -20,7 +20,7 @@ class ctx_t;  // Forward declaration
 class poller_base_t
 {
   public:
-    poller_base_t () SL_DEFAULT;
+    poller_base_t () = default;
     virtual ~poller_base_t ();
 
     // Methods from the poller concept

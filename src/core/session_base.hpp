@@ -40,10 +40,10 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     void engine_ready ();
 
     //  i_pipe_events interface implementation.
-    void read_activated (slk::pipe_t *pipe_) SL_FINAL;
-    void write_activated (slk::pipe_t *pipe_) SL_FINAL;
-    void hiccuped (slk::pipe_t *pipe_) SL_FINAL;
-    void pipe_terminated (slk::pipe_t *pipe_) SL_FINAL;
+    void read_activated (slk::pipe_t *pipe_) final;
+    void write_activated (slk::pipe_t *pipe_) final;
+    void hiccuped (slk::pipe_t *pipe_) final;
+    void pipe_terminated (slk::pipe_t *pipe_) final;
 
     //  Delivers a message. Returns 0 if successful; -1 otherwise.
     //  The function takes ownership of the message.
@@ -63,7 +63,7 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
                     slk::socket_base_t *socket_,
                     const options_t &options_,
                     address_t *addr_);
-    ~session_base_t () SL_OVERRIDE;
+    ~session_base_t () override;
 
   private:
     void start_connecting (bool wait_);
@@ -71,13 +71,13 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     void reconnect ();
 
     //  Handlers for incoming commands.
-    void process_plug () SL_FINAL;
-    void process_attach (slk::i_engine *engine_) SL_FINAL;
-    void process_term (int linger_) SL_FINAL;
-    void process_conn_failed () SL_FINAL;
+    void process_plug () final;
+    void process_attach (slk::i_engine *engine_) final;
+    void process_term (int linger_) final;
+    void process_conn_failed () final;
 
     //  i_poll_events handlers.
-    void timer_event (int id_) SL_FINAL;
+    void timer_event (int id_) final;
 
     //  Remove any half processed messages. Flush unflushed messages.
     //  Call this function when engine disconnect to get rid of leftovers.

@@ -21,22 +21,22 @@ class xpub_t : public socket_base_t
 {
   public:
     xpub_t (ctx_t *parent_, uint32_t tid_, int sid_);
-    ~xpub_t () SL_OVERRIDE;
+    ~xpub_t () override;
 
     // Implementations of virtual functions from socket_base_t
     void xattach_pipe (pipe_t *pipe_,
                        bool subscribe_to_all_ = false,
-                       bool locally_initiated_ = false) SL_OVERRIDE;
-    int xsend (msg_t *msg_) SL_FINAL;
-    bool xhas_out () SL_FINAL;
-    int xrecv (msg_t *msg_) SL_OVERRIDE;
-    bool xhas_in () SL_OVERRIDE;
-    void xread_activated (pipe_t *pipe_) SL_FINAL;
-    void xwrite_activated (pipe_t *pipe_) SL_FINAL;
+                       bool locally_initiated_ = false) override;
+    int xsend (msg_t *msg_) final;
+    bool xhas_out () final;
+    int xrecv (msg_t *msg_) override;
+    bool xhas_in () override;
+    void xread_activated (pipe_t *pipe_) final;
+    void xwrite_activated (pipe_t *pipe_) final;
     int
-    xsetsockopt (int option_, const void *optval_, size_t optvallen_) SL_FINAL;
-    int xgetsockopt (int option_, void *optval_, size_t *optvallen_) SL_FINAL;
-    void xpipe_terminated (pipe_t *pipe_) SL_FINAL;
+    xsetsockopt (int option_, const void *optval_, size_t optvallen_) final;
+    int xgetsockopt (int option_, void *optval_, size_t *optvallen_) final;
+    void xpipe_terminated (pipe_t *pipe_) final;
 
   private:
     // Function to be applied to the trie to send all the subscriptions

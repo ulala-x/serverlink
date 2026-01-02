@@ -17,25 +17,25 @@ class alignas(sizeof(void *)) atomic_counter_t {
   public:
     typedef uint32_t integer_t;
 
-    atomic_counter_t(integer_t value = 0) SL_NOEXCEPT : _value(value) {}
+    atomic_counter_t(integer_t value = 0) noexcept : _value(value) {}
 
     // Set counter value (not thread-safe).
-    void set(integer_t value) SL_NOEXCEPT { _value = value; }
+    void set(integer_t value) noexcept { _value = value; }
 
     // Atomic addition. Returns the old value.
-    integer_t add(integer_t increment) SL_NOEXCEPT
+    integer_t add(integer_t increment) noexcept
     {
         return _value.fetch_add(increment, std::memory_order_acq_rel);
     }
 
     // Atomic subtraction. Returns false if the counter drops to zero.
-    bool sub(integer_t decrement) SL_NOEXCEPT
+    bool sub(integer_t decrement) noexcept
     {
         const integer_t old = _value.fetch_sub(decrement, std::memory_order_acq_rel);
         return old - decrement != 0;
     }
 
-    integer_t get() const SL_NOEXCEPT
+    integer_t get() const noexcept
     {
         return _value.load(std::memory_order_relaxed);
     }

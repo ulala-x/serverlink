@@ -16,7 +16,7 @@
 
 namespace slk
 {
-class mailbox_t SL_FINAL : public i_mailbox
+class mailbox_t final : public i_mailbox
 {
   public:
     mailbox_t ();
@@ -30,7 +30,7 @@ class mailbox_t SL_FINAL : public i_mailbox
 
 #ifdef HAVE_FORK
     // Close file descriptors in forked child process
-    void forked () SL_FINAL
+    void forked () final
     {
         _signaler.forked ();
     }

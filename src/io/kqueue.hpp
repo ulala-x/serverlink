@@ -23,13 +23,13 @@ class ctx_t;
 
 // Socket polling mechanism using BSD/macOS kqueue
 
-class kqueue_t SL_FINAL : public worker_poller_base_t
+class kqueue_t final : public worker_poller_base_t
 {
   public:
     typedef void *handle_t;
 
     kqueue_t (ctx_t *ctx_);
-    ~kqueue_t () SL_OVERRIDE;
+    ~kqueue_t () override;
 
     // "poller" concept
     handle_t add_fd (fd_t fd_, slk::i_poll_events *events_);
@@ -44,7 +44,7 @@ class kqueue_t SL_FINAL : public worker_poller_base_t
 
   private:
     // Main event loop
-    void loop () SL_OVERRIDE;
+    void loop () override;
 
     // Helper methods for kevent manipulation
     void kevent_add (fd_t fd_, short filter_, void *udata_);

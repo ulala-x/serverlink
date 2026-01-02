@@ -16,12 +16,6 @@
         p_object = nullptr; \
     } while (0)
 
-// C++11 keywords - always available since we require C++11
-#define SL_NOEXCEPT noexcept
-#define SL_OVERRIDE override
-#define SL_FINAL final
-#define SL_DEFAULT = default
-
 // Non-copyable and non-movable class macro
 #define SL_NON_COPYABLE_NOR_MOVABLE(classname) \
   public: \
@@ -32,8 +26,21 @@
 
 // Debug logging - only enabled when explicitly requested
 #ifdef SL_ENABLE_DEBUG_LOG
-    #include <cstdio>
-    #define SL_DEBUG_LOG(...) fprintf(stderr, __VA_ARGS__)
+    #include <serverlink/config.h>
+    #if SL_HAVE_STD_FORMAT
+        #include <format>
+        #include <iostream>
+        // std::format-based debug logging (C++20)
+        // Note: Only used in debug builds, not performance-critical
+        template<typename... Args>
+        inline void sl_debug_log_impl(std::format_string<Args...> fmt, Args&&... args) {
+            std::cerr << std::format(fmt, std::forward<Args>(args)...);
+        }
+        #define SL_DEBUG_LOG(...) ::sl_debug_log_impl(__VA_ARGS__)
+    #else
+        #include <cstdio>
+        #define SL_DEBUG_LOG(...) fprintf(stderr, __VA_ARGS__)
+    #endif
 #else
     #define SL_DEBUG_LOG(...)
 #endif

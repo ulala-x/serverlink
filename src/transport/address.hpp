@@ -24,11 +24,12 @@ class inproc_address_t;
 
 namespace protocol_name
 {
-static const char tcp[] = "tcp";
+// C++20: Use inline constexpr for compile-time string constants
+inline constexpr char tcp[] = "tcp";
 #if defined SL_HAVE_IPC
-static const char ipc[] = "ipc";
+inline constexpr char ipc[] = "ipc";
 #endif
-static const char inproc[] = "inproc";
+inline constexpr char inproc[] = "inproc";
 }
 
 struct address_t

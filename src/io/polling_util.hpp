@@ -98,8 +98,8 @@ inline size_t valid_pollset_bytes (const fd_set &pollset_)
            - reinterpret_cast<const char *> (&pollset_);
 }
 
-// Default pollitems for fast allocation
-#define SL_POLLITEMS_DFLT 16
+// C++20: Default pollitems for fast allocation (inline constexpr for type safety)
+inline constexpr size_t SL_POLLITEMS_DFLT = 16;
 
 class optimized_fd_set_t
 {
@@ -128,7 +128,8 @@ inline size_t valid_pollset_bytes (const fd_set & /*pollset_*/)
     return sizeof (fd_set);
 }
 
-#define SL_POLLITEMS_DFLT 16
+// C++20: Default pollitems for fast allocation (inline constexpr for type safety)
+inline constexpr size_t SL_POLLITEMS_DFLT = 16;
 
 class optimized_fd_set_t
 {

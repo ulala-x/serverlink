@@ -106,14 +106,14 @@ void slk::dist_t::pipe_terminated (pipe_t *pipe_)
 void slk::dist_t::activated (pipe_t *pipe_)
 {
     // Move the pipe from passive to eligible state.
-    if (_eligible < _pipes.size ()) {
+    if (_eligible < _pipes.size ()) SL_LIKELY_ATTR {
         _pipes.swap (_pipes.index (pipe_), _eligible);
         _eligible++;
     }
 
     // If there's no message being sent at the moment, move it to
     // the active state.
-    if (!_more && _active < _pipes.size ()) {
+    if (!_more && _active < _pipes.size ()) SL_LIKELY_ATTR {
         _pipes.swap (_eligible - 1, _active);
         _active++;
     }
@@ -145,7 +145,7 @@ int slk::dist_t::send_to_matching (msg_t *msg_)
 void slk::dist_t::distribute (msg_t *msg_)
 {
     // If there are no matching pipes available, simply drop the message.
-    if (_matching == 0) {
+    if (_matching == 0) SL_UNLIKELY_ATTR {
         int rc = msg_->close ();
         errno_assert (rc == 0);
         rc = msg_->init ();
@@ -153,11 +153,11 @@ void slk::dist_t::distribute (msg_t *msg_)
         return;
     }
 
-    if (msg_->is_vsm ()) {
+    if (msg_->is_vsm ()) SL_LIKELY_ATTR {
         for (pipes_t::size_type i = 0; i < _matching;) {
-            if (!write (_pipes[i], msg_)) {
+            if (!write (_pipes[i], msg_)) SL_UNLIKELY_ATTR {
                 // Use same index again because entry will have been removed.
-            } else {
+            } else SL_LIKELY_ATTR {
                 ++i;
             }
         }
@@ -173,14 +173,14 @@ void slk::dist_t::distribute (msg_t *msg_)
     // Push copy of the message to each matching pipe.
     int failed = 0;
     for (pipes_t::size_type i = 0; i < _matching;) {
-        if (!write (_pipes[i], msg_)) {
+        if (!write (_pipes[i], msg_)) SL_UNLIKELY_ATTR {
             ++failed;
             // Use same index again because entry will have been removed.
-        } else {
+        } else SL_LIKELY_ATTR {
             ++i;
         }
     }
-    if (unlikely (failed))
+    if (unlikely (failed)) SL_UNLIKELY_ATTR
         msg_->rm_refs (failed);
 
     // Detach the original message from the data buffer. Note that we don't
@@ -196,7 +196,7 @@ bool slk::dist_t::has_out ()
 
 bool slk::dist_t::write (pipe_t *pipe_, msg_t *msg_)
 {
-    if (!pipe_->write (msg_)) {
+    if (!pipe_->write (msg_)) SL_UNLIKELY_ATTR {
         _pipes.swap (_pipes.index (pipe_), _matching - 1);
         _matching--;
         _pipes.swap (_pipes.index (pipe_), _active - 1);
@@ -205,7 +205,7 @@ bool slk::dist_t::write (pipe_t *pipe_, msg_t *msg_)
         _eligible--;
         return false;
     }
-    if (!(msg_->flags () & msg_t::more))
+    if (!(msg_->flags () & msg_t::more)) SL_LIKELY_ATTR
         pipe_->flush ();
     return true;
 }

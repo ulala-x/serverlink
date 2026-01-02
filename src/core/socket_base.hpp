@@ -70,15 +70,15 @@ class socket_base_t : public own_t,
 
     // i_poll_events implementation. This interface is used when socket
     // is handled by the poller in the reaper thread
-    void in_event () SL_FINAL;
-    void out_event () SL_FINAL;
-    void timer_event (int id_) SL_FINAL;
+    void in_event () final;
+    void out_event () final;
+    void timer_event (int id_) final;
 
     // i_pipe_events interface implementation
-    void read_activated (pipe_t *pipe_) SL_FINAL;
-    void write_activated (pipe_t *pipe_) SL_FINAL;
-    void hiccuped (pipe_t *pipe_) SL_FINAL;
-    void pipe_terminated (pipe_t *pipe_) SL_FINAL;
+    void read_activated (pipe_t *pipe_) final;
+    void write_activated (pipe_t *pipe_) final;
+    void hiccuped (pipe_t *pipe_) final;
+    void pipe_terminated (pipe_t *pipe_) final;
 
     // Query the state of a specific peer. The default implementation
     // always returns an ENOTSUP error
@@ -95,7 +95,7 @@ class socket_base_t : public own_t,
   protected:
     socket_base_t (class ctx_t *parent_, uint32_t tid_, int sid_,
                    bool thread_safe_ = false);
-    virtual ~socket_base_t () SL_OVERRIDE;
+    virtual ~socket_base_t () override;
 
     // Concrete algorithms for the x- methods are to be defined by
     // individual socket types
@@ -126,7 +126,7 @@ class socket_base_t : public own_t,
     virtual void xpipe_terminated (pipe_t *pipe_) = 0;
 
     // Delay actual destruction of the socket
-    void process_destroy () SL_FINAL;
+    void process_destroy () final;
 
     int connect_internal (const char *endpoint_uri_);
 
@@ -187,10 +187,10 @@ class socket_base_t : public own_t,
                       bool locally_initiated_ = false);
 
     // Handlers for incoming commands
-    void process_stop () SL_FINAL;
-    void process_bind (pipe_t *pipe_) SL_FINAL;
-    void process_term (int linger_) SL_FINAL;
-    void process_term_endpoint (std::string *endpoint_) SL_FINAL;
+    void process_stop () final;
+    void process_bind (pipe_t *pipe_) final;
+    void process_term (int linger_) final;
+    void process_term_endpoint (std::string *endpoint_) final;
 
     void update_pipe_options (int option_);
 
@@ -236,12 +236,12 @@ class routing_socket_base_t : public socket_base_t
 {
   protected:
     routing_socket_base_t (class ctx_t *parent_, uint32_t tid_, int sid_);
-    ~routing_socket_base_t () SL_OVERRIDE;
+    ~routing_socket_base_t () override;
 
     // methods from socket_base_t
     int xsetsockopt (int option_, const void *optval_,
-                     size_t optvallen_) SL_OVERRIDE;
-    void xwrite_activated (pipe_t *pipe_) SL_FINAL;
+                     size_t optvallen_) override;
+    void xwrite_activated (pipe_t *pipe_) final;
 
     // own methods
     std::string extract_connect_routing_id ();

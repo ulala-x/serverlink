@@ -6,11 +6,21 @@
 
 #include "../util/macros.hpp"
 #include "../util/err.hpp"
+#include "../util/config.hpp"
 
 #include <stdlib.h>
 #include <string.h>
-#include <algorithm>
 #include <ios>
+
+#if SL_HAVE_SPAN
+#include <span>
+#endif
+
+#if SL_HAVE_THREE_WAY_COMPARISON
+#include <compare>
+#else
+#include <algorithm>  // for std::min in C++17 fallback
+#endif
 
 // C++11 is required, so we always have move semantics
 #define SL_HAS_MOVE_SEMANTICS
@@ -72,13 +82,59 @@ struct blob_t
     //  Returns a pointer to the data of the blob_t.
     unsigned char *data () { return _data; }
 
-    //  Defines an order relationship on blob_t.
+#if SL_HAVE_SPAN
+    //  Returns a span view over the blob data (mutable).
+    [[nodiscard]] std::span<unsigned char> span () noexcept
+    {
+        return std::span<unsigned char> (_data, _size);
+    }
+
+    //  Returns a span view over the blob data (const).
+    [[nodiscard]] std::span<const unsigned char> span () const noexcept
+    {
+        return std::span<const unsigned char> (_data, _size);
+    }
+#endif
+
+#if SL_HAVE_THREE_WAY_COMPARISON
+    //  C++20 three-way comparison operator
+    //  Provides all six comparison operators (==, !=, <, <=, >, >=)
+    [[nodiscard]] std::strong_ordering operator<=>(const blob_t &other_) const noexcept
+    {
+        // First compare sizes
+        if (auto cmp = _size <=> other_._size; cmp != 0) {
+            return cmp;
+        }
+        // If sizes are equal and zero, they're equal
+        if (_size == 0) {
+            return std::strong_ordering::equal;
+        }
+        // Otherwise compare contents lexicographically
+        const int result = memcmp (_data, other_._data, _size);
+        if (result < 0) {
+            return std::strong_ordering::less;
+        }
+        if (result > 0) {
+            return std::strong_ordering::greater;
+        }
+        return std::strong_ordering::equal;
+    }
+
+    //  Equality comparison (required with <=> for optimal code generation)
+    [[nodiscard]] bool operator==(const blob_t &other_) const noexcept
+    {
+        return _size == other_._size &&
+               (_size == 0 || memcmp (_data, other_._data, _size) == 0);
+    }
+#else
+    //  Legacy C++17 fallback: defines an order relationship on blob_t.
     bool operator<(blob_t const &other_) const
     {
         const int cmpres =
           memcmp (_data, other_._data, std::min (_size, other_._size));
         return cmpres < 0 || (cmpres == 0 && _size < other_._size);
     }
+#endif
 
     //  Sets a blob_t to a deep copy of another blob_t.
     void set_deep_copy (blob_t const &other_)
@@ -127,13 +183,13 @@ struct blob_t
     blob_t (const blob_t &) = delete;
     blob_t &operator= (const blob_t &) = delete;
 
-    blob_t (blob_t &&other_) SL_NOEXCEPT : _data (other_._data),
-                                            _size (other_._size),
-                                            _owned (other_._owned)
+    blob_t (blob_t &&other_) noexcept : _data (other_._data),
+                                        _size (other_._size),
+                                        _owned (other_._owned)
     {
         other_._owned = false;
     }
-    blob_t &operator= (blob_t &&other_) SL_NOEXCEPT
+    blob_t &operator= (blob_t &&other_) noexcept
     {
         if (this != &other_) {
             clear ();

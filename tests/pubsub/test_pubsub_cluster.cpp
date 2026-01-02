@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /* ServerLink - Cluster Pub/Sub Tests */
 
-#include "../../include/serverlink/serverlink.h"
+#include "../testutil.hpp"
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
@@ -51,18 +51,20 @@ void test_add_remove_nodes()
     slk_ctx_t *ctx = slk_ctx_new();
     ASSERT_NE(ctx, nullptr);
 
-    // Create test servers
-    slk_socket_t *server1 = create_test_server(ctx, "tcp://127.0.0.1:15001");
-    slk_socket_t *server2 = create_test_server(ctx, "tcp://127.0.0.1:15002");
+    // Create test servers with dynamic ports
+    const char *endpoint1 = test_endpoint_tcp();
+    const char *endpoint2 = test_endpoint_tcp();
+    slk_socket_t *server1 = create_test_server(ctx, endpoint1);
+    slk_socket_t *server2 = create_test_server(ctx, endpoint2);
 
     slk_pubsub_cluster_t *cluster = slk_pubsub_cluster_new(ctx);
     ASSERT_NE(cluster, nullptr);
 
     // Add nodes
-    int rc = slk_pubsub_cluster_add_node(cluster, "tcp://127.0.0.1:15001");
+    int rc = slk_pubsub_cluster_add_node(cluster, endpoint1);
     ASSERT_EQ(rc, 0);
 
-    rc = slk_pubsub_cluster_add_node(cluster, "tcp://127.0.0.1:15002");
+    rc = slk_pubsub_cluster_add_node(cluster, endpoint2);
     ASSERT_EQ(rc, 0);
 
     // Check node list
@@ -75,7 +77,7 @@ void test_add_remove_nodes()
     slk_pubsub_cluster_nodes_free(nodes, count);
 
     // Remove a node
-    rc = slk_pubsub_cluster_remove_node(cluster, "tcp://127.0.0.1:15001");
+    rc = slk_pubsub_cluster_remove_node(cluster, endpoint1);
     ASSERT_EQ(rc, 0);
 
     rc = slk_pubsub_cluster_nodes(cluster, &nodes, &count);
@@ -104,14 +106,15 @@ void test_subscribe_publish()
     slk_ctx_t *ctx = slk_ctx_new();
     ASSERT_NE(ctx, nullptr);
 
-    // Create test server
-    slk_socket_t *server = create_test_server(ctx, "tcp://127.0.0.1:15003");
+    // Create test server with dynamic port
+    const char *endpoint = test_endpoint_tcp();
+    slk_socket_t *server = create_test_server(ctx, endpoint);
 
     slk_pubsub_cluster_t *cluster = slk_pubsub_cluster_new(ctx);
     ASSERT_NE(cluster, nullptr);
 
     // Add node
-    int rc = slk_pubsub_cluster_add_node(cluster, "tcp://127.0.0.1:15003");
+    int rc = slk_pubsub_cluster_add_node(cluster, endpoint);
     ASSERT_EQ(rc, 0);
 
     // Subscribe to a channel
@@ -141,18 +144,20 @@ void test_pattern_subscription()
     slk_ctx_t *ctx = slk_ctx_new();
     ASSERT_NE(ctx, nullptr);
 
-    // Create test servers
-    slk_socket_t *server1 = create_test_server(ctx, "tcp://127.0.0.1:15004");
-    slk_socket_t *server2 = create_test_server(ctx, "tcp://127.0.0.1:15005");
+    // Create test servers with dynamic ports
+    const char *endpoint1 = test_endpoint_tcp();
+    const char *endpoint2 = test_endpoint_tcp();
+    slk_socket_t *server1 = create_test_server(ctx, endpoint1);
+    slk_socket_t *server2 = create_test_server(ctx, endpoint2);
 
     slk_pubsub_cluster_t *cluster = slk_pubsub_cluster_new(ctx);
     ASSERT_NE(cluster, nullptr);
 
     // Add nodes
-    int rc = slk_pubsub_cluster_add_node(cluster, "tcp://127.0.0.1:15004");
+    int rc = slk_pubsub_cluster_add_node(cluster, endpoint1);
     ASSERT_EQ(rc, 0);
 
-    rc = slk_pubsub_cluster_add_node(cluster, "tcp://127.0.0.1:15005");
+    rc = slk_pubsub_cluster_add_node(cluster, endpoint2);
     ASSERT_EQ(rc, 0);
 
     // Pattern subscribe (should propagate to all nodes)
@@ -187,18 +192,20 @@ void test_hash_tag()
     slk_ctx_t *ctx = slk_ctx_new();
     ASSERT_NE(ctx, nullptr);
 
-    // Create test servers
-    slk_socket_t *server1 = create_test_server(ctx, "tcp://127.0.0.1:15006");
-    slk_socket_t *server2 = create_test_server(ctx, "tcp://127.0.0.1:15007");
+    // Create test servers with dynamic ports
+    const char *endpoint1 = test_endpoint_tcp();
+    const char *endpoint2 = test_endpoint_tcp();
+    slk_socket_t *server1 = create_test_server(ctx, endpoint1);
+    slk_socket_t *server2 = create_test_server(ctx, endpoint2);
 
     slk_pubsub_cluster_t *cluster = slk_pubsub_cluster_new(ctx);
     ASSERT_NE(cluster, nullptr);
 
     // Add nodes
-    int rc = slk_pubsub_cluster_add_node(cluster, "tcp://127.0.0.1:15006");
+    int rc = slk_pubsub_cluster_add_node(cluster, endpoint1);
     ASSERT_EQ(rc, 0);
 
-    rc = slk_pubsub_cluster_add_node(cluster, "tcp://127.0.0.1:15007");
+    rc = slk_pubsub_cluster_add_node(cluster, endpoint2);
     ASSERT_EQ(rc, 0);
 
     // Subscribe with hash tag (channels with same tag go to same node)
@@ -236,12 +243,13 @@ void test_multiple_subscriptions()
     slk_ctx_t *ctx = slk_ctx_new();
     ASSERT_NE(ctx, nullptr);
 
-    slk_socket_t *server = create_test_server(ctx, "tcp://127.0.0.1:15008");
+    const char *endpoint = test_endpoint_tcp();
+    slk_socket_t *server = create_test_server(ctx, endpoint);
 
     slk_pubsub_cluster_t *cluster = slk_pubsub_cluster_new(ctx);
     ASSERT_NE(cluster, nullptr);
 
-    int rc = slk_pubsub_cluster_add_node(cluster, "tcp://127.0.0.1:15008");
+    int rc = slk_pubsub_cluster_add_node(cluster, endpoint);
     ASSERT_EQ(rc, 0);
 
     // Subscribe to multiple channels

@@ -24,16 +24,16 @@ class stream_connecter_base_t : public own_t, public io_object_t
                              address_t *addr_,
                              bool delayed_start_);
 
-    ~stream_connecter_base_t () SL_OVERRIDE;
+    ~stream_connecter_base_t () override;
 
   protected:
     //  Handlers for incoming commands.
-    void process_plug () SL_FINAL;
-    void process_term (int linger_) SL_OVERRIDE;
+    void process_plug () final;
+    void process_term (int linger_) override;
 
     //  Handlers for I/O events.
-    void in_event () SL_OVERRIDE;
-    void timer_event (int id_) SL_OVERRIDE;
+    void in_event () override;
+    void timer_event (int id_) override;
 
     //  Internal function to create the engine after connection was established.
     virtual void create_engine (fd_t fd, const std::string &local_address_);

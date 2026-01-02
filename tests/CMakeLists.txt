@@ -36,6 +36,10 @@ add_serverlink_test(test_hwm unit/test_hwm.cpp "unit")
 add_serverlink_test(test_sockopt_hwm unit/test_sockopt_hwm.cpp "unit")
 add_serverlink_test(test_last_endpoint unit/test_last_endpoint.cpp "unit")
 add_serverlink_test(test_pair unit/test_pair.cpp "unit")
+add_serverlink_test(test_tcp_keepalive unit/test_tcp_keepalive.cpp "unit")
+add_serverlink_test(test_error_handling unit/test_error_handling.cpp "unit")
+add_serverlink_test(test_span_api unit/test_span_api.cpp "unit")
+add_serverlink_test(test_format_helpers unit/test_format_helpers.cpp "unit")
 
 # Utility Tests
 message(STATUS "Adding utility tests...")
@@ -63,11 +67,12 @@ add_serverlink_test(test_probe_router router/test_probe_router.cpp "router")
 # Integration Tests
 message(STATUS "Adding integration tests...")
 add_serverlink_test(test_router_to_router integration/test_router_to_router.cpp "integration")
-add_serverlink_test(test_xpub_simple integration/test_xpub_simple.cpp "integration")
+# add_serverlink_test(test_xpub_simple integration/test_xpub_simple.cpp "integration")  # TODO: Create this test
 
 # Monitor Tests
 message(STATUS "Adding monitor tests...")
 add_serverlink_test(test_peer_stats monitor/test_peer_stats.cpp "monitor")
+add_serverlink_test(test_heartbeat monitor/test_heartbeat.cpp "monitor")
 
 # PubSub Tests
 message(STATUS "Adding pubsub tests...")
@@ -87,15 +92,16 @@ add_serverlink_test(test_pubsub_cluster pubsub/test_pubsub_cluster.cpp "pubsub")
 # add_serverlink_test(test_registry_concurrent pubsub/test_registry_concurrent.cpp "pubsub")
 
 # Debug test (not part of regular test suite)
-add_executable(debug_xpub_manual debug_xpub_manual.cpp)
-target_include_directories(debug_xpub_manual PRIVATE ${TEST_INCLUDE_DIRS})
-target_link_libraries(debug_xpub_manual PRIVATE serverlink)
+# add_executable(debug_xpub_manual debug_xpub_manual.cpp)  # TODO: Create this file if needed
+# target_include_directories(debug_xpub_manual PRIVATE ${TEST_INCLUDE_DIRS})
+# target_link_libraries(debug_xpub_manual PRIVATE serverlink)
 
 # Transport Tests
 message(STATUS "Adding transport tests...")
 add_serverlink_test(test_bind_after_connect transport/test_bind_after_connect.cpp "transport")
 add_serverlink_test(test_inproc_connect transport/test_inproc_connect.cpp "transport")
 add_serverlink_test(test_reconnect_ivl transport/test_reconnect_ivl.cpp "transport")
+add_serverlink_test(test_ipc_basic transport/test_ipc_basic.cpp "transport")
 
 # Poller Tests
 message(STATUS "Adding poller tests...")
@@ -110,7 +116,7 @@ add_serverlink_test(test_proxy_simple proxy/test_proxy_simple.cpp "proxy")
 # Custom test targets
 add_custom_target(test-unit
     COMMAND ${CMAKE_CTEST_COMMAND} -L unit --output-on-failure
-    DEPENDS test_msg test_ctx test_ctx_options test_hwm test_sockopt_hwm test_last_endpoint
+    DEPENDS test_msg test_ctx test_ctx_options test_hwm test_sockopt_hwm test_last_endpoint test_span_api
     COMMENT "Running unit tests"
 )
 
@@ -144,7 +150,7 @@ add_custom_target(test-pubsub
 
 add_custom_target(test-transport
     COMMAND ${CMAKE_CTEST_COMMAND} -L transport --output-on-failure
-    DEPENDS test_bind_after_connect test_inproc_connect test_reconnect_ivl
+    DEPENDS test_bind_after_connect test_inproc_connect test_reconnect_ivl test_ipc_basic
     COMMENT "Running transport tests"
 )
 
@@ -180,6 +186,7 @@ add_custom_target(test-all
         test_ctx_options
         test_hwm
         test_sockopt_hwm
+        test_span_api
         test_router_basic
         test_router_mandatory
         test_router_handover
@@ -205,6 +212,7 @@ add_custom_target(test-all
         test_bind_after_connect
         test_inproc_connect
         test_reconnect_ivl
+        test_ipc_basic
         test_poller
         test_proxy_simple
         test_atomics
@@ -231,7 +239,7 @@ message(STATUS "  Monitor tests:     test_peer_stats")
 message(STATUS "  PubSub tests:      test_auth_pubsub, test_hwm_pubsub, test_sub_forward,")
 message(STATUS "                     test_pubsub_topics_count, test_xpub_verbose,")
 message(STATUS "                     test_xpub_manual, test_xpub_nodrop")
-message(STATUS "  Transport tests:   test_bind_after_connect, test_inproc_connect, test_reconnect_ivl")
+message(STATUS "  Transport tests:   test_bind_after_connect, test_inproc_connect, test_reconnect_ivl, test_ipc_basic")
 message(STATUS "  Poller tests:      test_poller")
 message(STATUS "")
 message(STATUS "Run tests with:")

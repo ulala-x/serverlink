@@ -17,20 +17,39 @@
 #include <netdb.h>
 #endif
 
+#include <serverlink/config.h>
+
+// C++20 std::format for error messages (non-critical path)
+#if SL_HAVE_STD_FORMAT
+#include <format>
+#include <iostream>
+#endif
+
 #include "likely.hpp"
 
 // EPROTO is not used by OpenBSD and maybe other platforms.
+// Keep as macro since it's used with system errno
 #ifndef EPROTO
 #define EPROTO 0
 #endif
 
-// ServerLink-specific error codes
-#define SL_EFSM          156
-#define SL_ENOCOMPATPROTO 157
-#define SL_ETERM         158
-#define SL_EMTHREAD      159
+namespace slk {
 
-// Backward compatibility aliases (for internal use)
+// ServerLink-specific error codes (C++20 inline constexpr)
+// These are inside slk namespace for type-safe usage
+inline constexpr int SL_EFSM = 156;
+inline constexpr int SL_ENOCOMPATPROTO = 157;
+inline constexpr int SL_ETERM = 158;
+inline constexpr int SL_EMTHREAD = 159;
+
+}  // namespace slk
+
+// Macros for global errno compatibility (outside namespace)
+// These allow error codes to be used in switch cases and with errno
+#define SL_EFSM slk::SL_EFSM
+#define SL_ENOCOMPATPROTO slk::SL_ENOCOMPATPROTO
+#define SL_ETERM slk::SL_ETERM
+#define SL_EMTHREAD slk::SL_EMTHREAD
 #define ETERM SL_ETERM
 
 namespace slk {
@@ -67,9 +86,9 @@ int wsa_error_to_errno(int errcode_);
 // Provides convenient way to check WSA-style errors on Windows.
 #define wsa_assert(x) \
     do { \
-        if (unlikely(!(x))) { \
+        if (!(x)) SL_UNLIKELY_ATTR { \
             const char *errstr = slk::wsa_error(); \
-            if (errstr != nullptr) { \
+            if (errstr != nullptr) SL_UNLIKELY_ATTR { \
                 fprintf(stderr, "Assertion failed: %s [%i] (%s:%d)\n", \
                         errstr, WSAGetLastError(), __FILE__, __LINE__); \
                 fflush(stderr); \
@@ -93,7 +112,7 @@ int wsa_error_to_errno(int errcode_);
 // Provides convenient way to check GetLastError-style errors on Windows.
 #define win_assert(x) \
     do { \
-        if (unlikely(!(x))) { \
+        if (!(x)) SL_UNLIKELY_ATTR { \
             char errstr[256]; \
             slk::win_error(errstr, 256); \
             fprintf(stderr, "Assertion failed: %s (%s:%d)\n", errstr, \
@@ -108,7 +127,7 @@ int wsa_error_to_errno(int errcode_);
 // This macro works in exactly the same way as the normal assert.
 #define slk_assert(x) \
     do { \
-        if (unlikely(!(x))) { \
+        if (!(x)) SL_UNLIKELY_ATTR { \
             fprintf(stderr, "Assertion failed: %s (%s:%d)\n", #x, __FILE__, \
                     __LINE__); \
             fflush(stderr); \
@@ -119,7 +138,7 @@ int wsa_error_to_errno(int errcode_);
 // Provides convenient way to check for errno-style errors.
 #define errno_assert(x) \
     do { \
-        if (unlikely(!(x))) { \
+        if (!(x)) SL_UNLIKELY_ATTR { \
             const char *errstr = strerror(errno); \
             fprintf(stderr, "%s (%s:%d)\n", errstr, __FILE__, __LINE__); \
             fflush(stderr); \
@@ -130,7 +149,7 @@ int wsa_error_to_errno(int errcode_);
 // Provides convenient way to check for POSIX errors.
 #define posix_assert(x) \
     do { \
-        if (unlikely(x)) { \
+        if (x) SL_UNLIKELY_ATTR { \
             const char *errstr = strerror(x); \
             fprintf(stderr, "%s (%s:%d)\n", errstr, __FILE__, __LINE__); \
             fflush(stderr); \
@@ -141,7 +160,7 @@ int wsa_error_to_errno(int errcode_);
 // Provides convenient way to check for errors from getaddrinfo.
 #define gai_assert(x) \
     do { \
-        if (unlikely(x)) { \
+        if (x) SL_UNLIKELY_ATTR { \
             const char *errstr = gai_strerror(x); \
             fprintf(stderr, "%s (%s:%d)\n", errstr, __FILE__, __LINE__); \
             fflush(stderr); \
@@ -152,12 +171,39 @@ int wsa_error_to_errno(int errcode_);
 // Provides convenient way to check whether memory allocation have succeeded.
 #define alloc_assert(x) \
     do { \
-        if (unlikely(!(x))) { \
+        if (!(x)) SL_UNLIKELY_ATTR { \
             fprintf(stderr, "FATAL ERROR: OUT OF MEMORY (%s:%d)\n", __FILE__, \
                     __LINE__); \
             fflush(stderr); \
             slk::slk_abort("FATAL ERROR: OUT OF MEMORY"); \
         } \
     } while (false)
+
+// C++20 std::format-based assertion helpers (optional, for cleaner code)
+// These are only used in error paths (non-performance-critical)
+#if SL_HAVE_STD_FORMAT && defined(__cplusplus) && __cplusplus >= 202002L
+
+namespace slk {
+
+// Helper for formatted assertion messages
+template<typename... Args>
+inline void assert_fail_formatted(std::format_string<Args...> fmt, Args&&... args) {
+    std::cerr << std::format(fmt, std::forward<Args>(args)...) << std::endl;
+    std::cerr.flush();
+}
+
+}  // namespace slk
+
+// Modern C++20 formatted assertion (for new code)
+// Example: slk_assert_fmt(x > 0, "Invalid value: x={}", x);
+#define slk_assert_fmt(condition, ...) \
+    do { \
+        if (!(condition)) SL_UNLIKELY_ATTR { \
+            ::slk::assert_fail_formatted(__VA_ARGS__); \
+            ::slk::slk_abort(#condition); \
+        } \
+    } while (false)
+
+#endif  // SL_HAVE_STD_FORMAT
 
 #endif

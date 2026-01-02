@@ -20,25 +20,25 @@ class xsub_t : public socket_base_t
 {
   public:
     xsub_t (ctx_t *parent_, uint32_t tid_, int sid_);
-    ~xsub_t () SL_OVERRIDE;
+    ~xsub_t () override;
 
   protected:
     // Overrides of functions from socket_base_t
     void xattach_pipe (pipe_t *pipe_,
                        bool subscribe_to_all_,
-                       bool locally_initiated_) SL_FINAL;
+                       bool locally_initiated_) final;
     int xsetsockopt (int option_,
                      const void *optval_,
-                     size_t optvallen_) SL_OVERRIDE;
-    int xgetsockopt (int option_, void *optval_, size_t *optvallen_) SL_FINAL;
-    int xsend (msg_t *msg_) SL_OVERRIDE;
-    bool xhas_out () SL_OVERRIDE;
-    int xrecv (msg_t *msg_) SL_FINAL;
-    bool xhas_in () SL_FINAL;
-    void xread_activated (pipe_t *pipe_) SL_FINAL;
-    void xwrite_activated (pipe_t *pipe_) SL_FINAL;
-    void xhiccuped (pipe_t *pipe_) SL_FINAL;
-    void xpipe_terminated (pipe_t *pipe_) SL_FINAL;
+                     size_t optvallen_) override;
+    int xgetsockopt (int option_, void *optval_, size_t *optvallen_) final;
+    int xsend (msg_t *msg_) override;
+    bool xhas_out () override;
+    int xrecv (msg_t *msg_) final;
+    bool xhas_in () final;
+    void xread_activated (pipe_t *pipe_) final;
+    void xwrite_activated (pipe_t *pipe_) final;
+    void xhiccuped (pipe_t *pipe_) final;
+    void xpipe_terminated (pipe_t *pipe_) final;
 
   private:
     // Check whether the message matches at least one subscription

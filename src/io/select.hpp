@@ -29,13 +29,13 @@ class ctx_t;
 // Socket polling mechanism using select (cross-platform fallback)
 // Note: select has limitations (FD_SETSIZE) but provides maximum portability
 
-class select_t SL_FINAL : public worker_poller_base_t
+class select_t final : public worker_poller_base_t
 {
   public:
     typedef fd_t handle_t;  // select uses fd directly as handle
 
     select_t (ctx_t *ctx_);
-    ~select_t () SL_OVERRIDE;
+    ~select_t () override;
 
     // "poller" concept
     handle_t add_fd (fd_t fd_, slk::i_poll_events *events_);
@@ -50,7 +50,7 @@ class select_t SL_FINAL : public worker_poller_base_t
 
   private:
     // Main event loop
-    void loop () SL_OVERRIDE;
+    void loop () override;
 
     // Helper method to update max_fd
     void update_max_fd ();

@@ -14,9 +14,10 @@
 #include <limits.h>
 
 // Poll event constants - these match the public API defines
-static const short SLK_POLLIN = slk::SL_POLLIN;
-static const short SLK_POLLOUT = slk::SL_POLLOUT;
-static const short SLK_POLLERR = slk::SL_POLLERR;
+// C++20: Use inline constexpr for compile-time constants
+inline constexpr short SLK_POLLIN = slk::SL_POLLIN;
+inline constexpr short SLK_POLLOUT = slk::SL_POLLOUT;
+inline constexpr short SLK_POLLERR = slk::SL_POLLERR;
 
 static bool is_thread_safe (const slk::socket_base_t &socket_)
 {

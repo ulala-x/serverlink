@@ -15,7 +15,7 @@ static void test_bind_last_endpoint()
     slk_socket_t *sock = test_socket_new(ctx, SLK_ROUTER);
 
     // Bind to an endpoint
-    const char *endpoint = "tcp://127.0.0.1:15555";
+    const char *endpoint = test_endpoint_tcp();
     int rc = slk_bind(sock, endpoint);
     assert(rc == 0);
 
@@ -47,13 +47,12 @@ static void test_connect_last_endpoint()
     slk_socket_t *client = test_socket_new(ctx, SLK_ROUTER);
 
     // Server binds
-    const char *bind_endpoint = "tcp://127.0.0.1:15556";
-    int rc = slk_bind(server, bind_endpoint);
+    const char *endpoint = test_endpoint_tcp();
+    int rc = slk_bind(server, endpoint);
     assert(rc == 0);
 
     // Client connects
-    const char *connect_endpoint = "tcp://127.0.0.1:15556";
-    rc = slk_connect(client, connect_endpoint);
+    rc = slk_connect(client, endpoint);
     assert(rc == 0);
 
     // Get client's last endpoint
@@ -62,11 +61,13 @@ static void test_connect_last_endpoint()
     rc = slk_getsockopt(client, SLK_LAST_ENDPOINT, client_ep, &len);
     assert(rc == 0);
 
-    printf("  Connected to: %s\n", connect_endpoint);
+    printf("  Connected to: %s\n", endpoint);
     printf("  Last endpoint: %s\n", client_ep);
 
-    // Verify the last endpoint contains the connect address
-    assert(strstr(client_ep, "127.0.0.1:15556") != NULL);
+    // Verify the last endpoint contains the connect address (extract port from endpoint)
+    const char *port_start = strrchr(endpoint, ':');
+    assert(port_start != NULL);
+    assert(strstr(client_ep, port_start) != NULL);
 
     test_socket_close(client);
     test_socket_close(server);
@@ -147,7 +148,7 @@ static void test_buffer_too_small()
     slk_socket_t *sock = test_socket_new(ctx, SLK_ROUTER);
 
     // Bind to an endpoint
-    const char *endpoint = "tcp://127.0.0.1:15557";
+    const char *endpoint = test_endpoint_tcp();
     int rc = slk_bind(sock, endpoint);
     assert(rc == 0);
 

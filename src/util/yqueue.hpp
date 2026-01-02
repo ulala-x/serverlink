@@ -10,6 +10,11 @@
 #include "err.hpp"
 #include "atomic_ptr.hpp"
 #include "macros.hpp"
+#include <serverlink/config.h>
+
+#if SL_HAVE_CONCEPTS
+#include "concepts.hpp"
+#endif
 
 namespace slk {
 
@@ -22,11 +27,15 @@ namespace slk {
 // pop on the empty queue and that both threads don't access the same
 // element in unsynchronised manner.
 //
-// T is the type of the object in the queue.
+// T is the type of the object in the queue (must satisfy YPipeable concept).
 // N is granularity of the queue (how many pushes have to be done till
 // actual memory allocation is required).
 
+#if SL_HAVE_CONCEPTS
+template <YPipeable T, int N>
+#else
 template <typename T, int N>
+#endif
 class yqueue_t {
   public:
     // Create the queue.

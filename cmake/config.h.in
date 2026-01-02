@@ -25,6 +25,16 @@
 /* IPC (Unix Domain Sockets) support */
 #cmakedefine SL_HAVE_IPC @SL_HAVE_IPC@
 
+/* C++20 Feature Support */
+#cmakedefine01 SL_HAVE_CONCEPTS
+#cmakedefine01 SL_HAVE_RANGES
+#cmakedefine01 SL_HAVE_SPAN
+#cmakedefine01 SL_HAVE_STD_FORMAT
+#cmakedefine01 SL_HAVE_SOURCE_LOCATION
+#cmakedefine01 SL_HAVE_THREE_WAY_COMPARISON
+#cmakedefine01 SL_HAVE_LIKELY
+#cmakedefine01 SL_HAVE_CONSTEVAL
+
 /* Performance monitoring */
 #cmakedefine SL_ENABLE_MONITORING
 

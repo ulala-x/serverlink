@@ -23,7 +23,7 @@ struct i_engine
         timeout_error
     };
 
-    virtual ~i_engine () SL_DEFAULT;
+    virtual ~i_engine () = default;
 
     //  Indicate if the engine has an handshake stage.
     //  If engine has handshake stage, engine must call session.engine_ready when the handshake is complete.

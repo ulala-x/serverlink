@@ -13,7 +13,7 @@ namespace slk
 class i_mailbox
 {
   public:
-    virtual ~i_mailbox () SL_DEFAULT;
+    virtual ~i_mailbox () = default;
 
     virtual void send (const command_t &cmd_) = 0;
     virtual int recv (command_t *cmd_, int timeout_) = 0;

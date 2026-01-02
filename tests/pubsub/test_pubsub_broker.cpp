@@ -11,9 +11,9 @@ static void test_create_destroy()
     slk_ctx_t *ctx = slk_ctx_new();
     TEST_ASSERT_NOT_NULL(ctx);
 
-    slk_pubsub_broker_t *broker = slk_pubsub_broker_new(ctx,
-        "tcp://127.0.0.1:15555",  // Frontend (publishers)
-        "tcp://127.0.0.1:15556"); // Backend (subscribers)
+    const char *frontend = test_endpoint_tcp();
+    const char *backend = test_endpoint_tcp();
+    slk_pubsub_broker_t *broker = slk_pubsub_broker_new(ctx, frontend, backend);
     TEST_ASSERT_NOT_NULL(broker);
 
     int rc = slk_pubsub_broker_destroy(&broker);
@@ -29,9 +29,9 @@ static void test_start_stop()
     slk_ctx_t *ctx = slk_ctx_new();
     TEST_ASSERT_NOT_NULL(ctx);
 
-    slk_pubsub_broker_t *broker = slk_pubsub_broker_new(ctx,
-        "tcp://127.0.0.1:15557",
-        "tcp://127.0.0.1:15558");
+    const char *frontend = test_endpoint_tcp();
+    const char *backend = test_endpoint_tcp();
+    slk_pubsub_broker_t *broker = slk_pubsub_broker_new(ctx, frontend, backend);
     TEST_ASSERT_NOT_NULL(broker);
 
     // Start broker in background
@@ -69,9 +69,9 @@ static void test_single_pubsub()
 
     printf("[DEBUG] test_single_pubsub: about to create broker\n");
     fflush(stdout);
-    slk_pubsub_broker_t *broker = slk_pubsub_broker_new(ctx,
-        "tcp://127.0.0.1:15559",
-        "tcp://127.0.0.1:15560");
+    const char *frontend = test_endpoint_tcp();
+    const char *backend = test_endpoint_tcp();
+    slk_pubsub_broker_t *broker = slk_pubsub_broker_new(ctx, frontend, backend);
     printf("[DEBUG] test_single_pubsub: broker created\n");
     fflush(stdout);
     printf("[DEBUG] test_single_pubsub: about to assert broker not null\n");
@@ -114,7 +114,7 @@ static void test_single_pubsub()
     }
     printf("[DEBUG] test_single_pubsub: about to connect PUB socket\n");
     fflush(stdout);
-    rc = slk_connect(pub, "tcp://127.0.0.1:15559");
+    rc = slk_connect(pub, frontend);
     printf("[DEBUG] test_single_pubsub: connect returned %d\n", rc);
     fflush(stdout);
     TEST_ASSERT_EQ(0, rc);
@@ -128,7 +128,7 @@ static void test_single_pubsub()
     TEST_ASSERT_NOT_NULL(sub);
     printf("[DEBUG] test_single_pubsub: about to connect SUB socket\n");
     fflush(stdout);
-    rc = slk_connect(sub, "tcp://127.0.0.1:15560");
+    rc = slk_connect(sub, backend);
     printf("[DEBUG] test_single_pubsub: SUB connect returned %d\n", rc);
     fflush(stdout);
     TEST_ASSERT_EQ(0, rc);
@@ -173,9 +173,9 @@ static void test_multiple_pubsub()
     slk_ctx_t *ctx = slk_ctx_new();
     TEST_ASSERT_NOT_NULL(ctx);
 
-    slk_pubsub_broker_t *broker = slk_pubsub_broker_new(ctx,
-        "tcp://127.0.0.1:15561",
-        "tcp://127.0.0.1:15562");
+    const char *frontend = test_endpoint_tcp();
+    const char *backend = test_endpoint_tcp();
+    slk_pubsub_broker_t *broker = slk_pubsub_broker_new(ctx, frontend, backend);
     TEST_ASSERT_NOT_NULL(broker);
 
     int rc = slk_pubsub_broker_start(broker);
@@ -187,7 +187,7 @@ static void test_multiple_pubsub()
     for (int i = 0; i < 3; i++) {
         publishers[i] = slk_socket(ctx, SLK_PUB);
         TEST_ASSERT_NOT_NULL(publishers[i]);
-        rc = slk_connect(publishers[i], "tcp://127.0.0.1:15561");
+        rc = slk_connect(publishers[i], frontend);
         TEST_ASSERT_EQ(0, rc);
     }
 
@@ -196,7 +196,7 @@ static void test_multiple_pubsub()
     for (int i = 0; i < 3; i++) {
         subscribers[i] = slk_socket(ctx, SLK_SUB);
         TEST_ASSERT_NOT_NULL(subscribers[i]);
-        rc = slk_connect(subscribers[i], "tcp://127.0.0.1:15562");
+        rc = slk_connect(subscribers[i], backend);
         TEST_ASSERT_EQ(0, rc);
         rc = slk_setsockopt(subscribers[i], SLK_SUBSCRIBE, "", 0);
         TEST_ASSERT_EQ(0, rc);
@@ -238,9 +238,9 @@ static void test_topic_filtering()
     slk_ctx_t *ctx = slk_ctx_new();
     TEST_ASSERT_NOT_NULL(ctx);
 
-    slk_pubsub_broker_t *broker = slk_pubsub_broker_new(ctx,
-        "tcp://127.0.0.1:15563",
-        "tcp://127.0.0.1:15564");
+    const char *frontend = test_endpoint_tcp();
+    const char *backend = test_endpoint_tcp();
+    slk_pubsub_broker_t *broker = slk_pubsub_broker_new(ctx, frontend, backend);
     TEST_ASSERT_NOT_NULL(broker);
 
     int rc = slk_pubsub_broker_start(broker);
@@ -250,13 +250,13 @@ static void test_topic_filtering()
     // Create publisher
     slk_socket_t *pub = slk_socket(ctx, SLK_PUB);
     TEST_ASSERT_NOT_NULL(pub);
-    rc = slk_connect(pub, "tcp://127.0.0.1:15563");
+    rc = slk_connect(pub, frontend);
     TEST_ASSERT_EQ(0, rc);
 
     // Create subscriber for "news" topic
     slk_socket_t *sub_news = slk_socket(ctx, SLK_SUB);
     TEST_ASSERT_NOT_NULL(sub_news);
-    rc = slk_connect(sub_news, "tcp://127.0.0.1:15564");
+    rc = slk_connect(sub_news, backend);
     TEST_ASSERT_EQ(0, rc);
     rc = slk_setsockopt(sub_news, SLK_SUBSCRIBE, "news", 4);
     TEST_ASSERT_EQ(0, rc);
@@ -264,7 +264,7 @@ static void test_topic_filtering()
     // Create subscriber for "sports" topic
     slk_socket_t *sub_sports = slk_socket(ctx, SLK_SUB);
     TEST_ASSERT_NOT_NULL(sub_sports);
-    rc = slk_connect(sub_sports, "tcp://127.0.0.1:15564");
+    rc = slk_connect(sub_sports, backend);
     TEST_ASSERT_EQ(0, rc);
     rc = slk_setsockopt(sub_sports, SLK_SUBSCRIBE, "sports", 6);
     TEST_ASSERT_EQ(0, rc);
@@ -370,9 +370,9 @@ static void test_statistics()
     slk_ctx_t *ctx = slk_ctx_new();
     TEST_ASSERT_NOT_NULL(ctx);
 
-    slk_pubsub_broker_t *broker = slk_pubsub_broker_new(ctx,
-        "tcp://127.0.0.1:15565",
-        "tcp://127.0.0.1:15566");
+    const char *frontend = test_endpoint_tcp();
+    const char *backend = test_endpoint_tcp();
+    slk_pubsub_broker_t *broker = slk_pubsub_broker_new(ctx, frontend, backend);
     TEST_ASSERT_NOT_NULL(broker);
 
     size_t msg_count = 0;

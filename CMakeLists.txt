@@ -12,8 +12,8 @@ option(BUILD_TESTS "Build test suite" ON)
 option(BUILD_EXAMPLES "Build examples" ON)
 option(SL_ENABLE_MONITORING "Enable performance monitoring features" OFF)
 
-# C++ standard
-set(CMAKE_CXX_STANDARD 17)
+# C++ standard - C++20 for modern features (concepts, ranges, span, etc.)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 

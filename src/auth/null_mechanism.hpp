@@ -14,7 +14,7 @@ class session_base_t;
 
 // NULL mechanism - no authentication, just a simple handshake
 // ZAP authentication has been removed from ServerLink
-class null_mechanism_t SL_FINAL : public mechanism_base_t
+class null_mechanism_t final : public mechanism_base_t
 {
   public:
     null_mechanism_t (session_base_t *session_,

@@ -9,7 +9,7 @@
 
 namespace slk
 {
-class tcp_connecter_t SL_FINAL : public stream_connecter_base_t
+class tcp_connecter_t final : public stream_connecter_base_t
 {
   public:
     //  If 'delayed_start' is true connecter first waits for a while,

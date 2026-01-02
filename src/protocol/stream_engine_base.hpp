@@ -33,22 +33,22 @@ class stream_engine_base_t : public io_object_t, public i_engine
                           const options_t &options_,
                           const endpoint_uri_pair_t &endpoint_uri_pair_,
                           bool has_handshake_stage_);
-    ~stream_engine_base_t () SL_OVERRIDE;
+    ~stream_engine_base_t () override;
 
     //  i_engine interface implementation.
-    bool has_handshake_stage () SL_FINAL { return _has_handshake_stage; };
+    bool has_handshake_stage () final { return _has_handshake_stage; };
     void plug (slk::io_thread_t *io_thread_,
-               slk::session_base_t *session_) SL_FINAL;
-    void terminate () SL_FINAL;
-    bool restart_input () SL_FINAL;
-    void restart_output () SL_FINAL;
-    void zap_msg_available () SL_FINAL;
-    const endpoint_uri_pair_t &get_endpoint () const SL_FINAL;
+               slk::session_base_t *session_) final;
+    void terminate () final;
+    bool restart_input () final;
+    void restart_output () final;
+    void zap_msg_available () final;
+    const endpoint_uri_pair_t &get_endpoint () const final;
 
     //  i_poll_events interface implementation.
-    void in_event () SL_FINAL;
-    void out_event () SL_OVERRIDE;
-    void timer_event (int id_) SL_FINAL;
+    void in_event () final;
+    void out_event () override;
+    void timer_event (int id_) final;
 
   protected:
     typedef metadata_t::dict_t properties_t;

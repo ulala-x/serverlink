@@ -9,7 +9,7 @@
 
 namespace slk
 {
-class tcp_listener_t SL_FINAL : public stream_listener_base_t
+class tcp_listener_t final : public stream_listener_base_t
 {
   public:
     tcp_listener_t (slk::io_thread_t *io_thread_,

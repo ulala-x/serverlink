@@ -42,13 +42,13 @@ kqueue_t::handle_t kqueue_t::add_fd (fd_t fd_, i_poll_events *events_)
     poll_entry_t *pe = new (std::nothrow) poll_entry_t;
     alloc_assert (pe);
 
-    // Clear structure
-    memset (pe, 0, sizeof (poll_entry_t));
-
-    pe->fd = fd_;
-    pe->flag_pollin = false;
-    pe->flag_pollout = false;
-    pe->events = events_;
+    // C++20: Use designated initializers for clear, efficient initialization
+    *pe = poll_entry_t{
+        .fd = fd_,
+        .flag_pollin = false,
+        .flag_pollout = false,
+        .events = events_
+    };
 
     // Increase the load metric of the thread
     adjust_load (1);

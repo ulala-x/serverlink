@@ -7,18 +7,27 @@
 #include "atomic_ptr.hpp"
 #include "yqueue.hpp"
 #include "ypipe_base.hpp"
+#include <serverlink/config.h>
+
+#if SL_HAVE_CONCEPTS
+#include "concepts.hpp"
+#endif
 
 namespace slk {
 
 // Lock-free queue implementation.
 // Only a single thread can read from the pipe at any specific moment.
 // Only a single thread can write to the pipe at any specific moment.
-// T is the type of the object in the queue.
+// T is the type of the object in the queue (must satisfy YPipeable concept).
 // N is granularity of the pipe, i.e. how many items are needed to
 // perform next memory allocation.
 
+#if SL_HAVE_CONCEPTS
+template <YPipeable T, int N>
+#else
 template <typename T, int N>
-class ypipe_t SL_FINAL : public ypipe_base_t<T> {
+#endif
+class ypipe_t final : public ypipe_base_t<T> {
   public:
     // Initialises the pipe.
     ypipe_t()
@@ -35,7 +44,7 @@ class ypipe_t SL_FINAL : public ypipe_base_t<T> {
     // set to true the item is assumed to be continued by items
     // subsequently written to the pipe. Incomplete items are never
     // flushed down the stream.
-    void write(const T &value, bool incomplete) SL_OVERRIDE
+    void write(const T &value, bool incomplete) override
     {
         // Place the value to the queue, add new terminator element.
         _queue.back() = value;
@@ -48,9 +57,9 @@ class ypipe_t SL_FINAL : public ypipe_base_t<T> {
 
     // Pop an incomplete item from the pipe. Returns true if such
     // item exists, false otherwise.
-    bool unwrite(T *value) SL_OVERRIDE
+    bool unwrite(T *value) override
     {
-        if (_f == &_queue.back())
+        if (_f == &_queue.back()) SL_UNLIKELY_ATTR
             return false;
         _queue.unpush();
         *value = _queue.back();
@@ -60,14 +69,15 @@ class ypipe_t SL_FINAL : public ypipe_base_t<T> {
     // Flush all the completed items into the pipe. Returns false if
     // the reader thread is sleeping. In that case, caller is obliged to
     // wake the reader up before using the pipe again.
-    bool flush() SL_OVERRIDE
+    bool flush() override
     {
         // If there are no un-flushed items, do nothing.
+        // In high-throughput scenarios, we typically have items to flush
         if (_w == _f)
             return true;
 
         // Try to set 'c' to 'f'.
-        if (_c.cas(_w, _f) != _w) {
+        if (_c.cas(_w, _f) != _w) SL_UNLIKELY_ATTR {
             // Compare-and-swap was unsuccessful because 'c' is NULL.
             // This means that the reader is asleep. Therefore we don't
             // care about thread-safeness and update c in non-atomic
@@ -85,10 +95,11 @@ class ypipe_t SL_FINAL : public ypipe_base_t<T> {
     }
 
     // Check whether item is available for reading.
-    bool check_read() SL_OVERRIDE
+    bool check_read() override
     {
         // Was the value prefetched already? If so, return.
-        if (&_queue.front() != _r && _r)
+        // This is the fast path - data is already available
+        if (&_queue.front() != _r && _r) SL_LIKELY_ATTR
             return true;
 
         // There's no prefetched value, so let us prefetch more values.
@@ -97,7 +108,7 @@ class ypipe_t SL_FINAL : public ypipe_base_t<T> {
         _r = _c.cas(&_queue.front(), nullptr);
 
         // If there are no elements prefetched, exit.
-        if (&_queue.front() == _r || !_r)
+        if (&_queue.front() == _r || !_r) SL_UNLIKELY_ATTR
             return false;
 
         // There was at least one value prefetched.
@@ -105,10 +116,10 @@ class ypipe_t SL_FINAL : public ypipe_base_t<T> {
     }
 
     // Reads an item from the pipe. Returns false if there is no value.
-    bool read(T *value) SL_OVERRIDE
+    bool read(T *value) override
     {
         // Try to prefetch a value.
-        if (!check_read())
+        if (!check_read()) SL_UNLIKELY_ATTR
             return false;
 
         // There was at least one value prefetched.
@@ -119,7 +130,7 @@ class ypipe_t SL_FINAL : public ypipe_base_t<T> {
 
     // Applies the function fn to the first element in the pipe
     // and returns the value returned by the fn.
-    bool probe(bool (*fn)(const T &)) SL_OVERRIDE
+    bool probe(bool (*fn)(const T &)) override
     {
         const bool rc = check_read();
         slk_assert(rc);

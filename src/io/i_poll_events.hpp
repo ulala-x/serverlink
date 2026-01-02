@@ -12,7 +12,7 @@ namespace slk
 
 struct i_poll_events
 {
-    virtual ~i_poll_events () SL_DEFAULT;
+    virtual ~i_poll_events () = default;
 
     // Called by I/O thread when file descriptor is ready for reading
     virtual void in_event () = 0;

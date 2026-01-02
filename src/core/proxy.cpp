@@ -18,7 +18,8 @@ namespace slk
 
 // Burst size for forwarding messages in a single iteration
 // This improves throughput by batching message forwarding
-static const unsigned int proxy_burst_size = 1000;
+// C++20: Use inline constexpr for compile-time constant
+inline constexpr unsigned int proxy_burst_size = 1000;
 
 // Statistics structures
 struct stats_socket

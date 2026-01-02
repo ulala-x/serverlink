@@ -16,16 +16,16 @@ template <typename T>
 class atomic_ptr_t {
   public:
     // Initialise atomic pointer
-    atomic_ptr_t() SL_NOEXCEPT : _ptr(nullptr) {}
+    atomic_ptr_t() noexcept : _ptr(nullptr) {}
 
     // Set value of atomic pointer in a non-threadsafe way
     // Use this function only when you are sure that at most one
     // thread is accessing the pointer at the moment.
-    void set(T *ptr) SL_NOEXCEPT { _ptr.store(ptr, std::memory_order_relaxed); }
+    void set(T *ptr) noexcept { _ptr.store(ptr, std::memory_order_relaxed); }
 
     // Perform atomic 'exchange pointers' operation. Pointer is set
     // to the 'val' value. Old value is returned.
-    T *xchg(T *val) SL_NOEXCEPT
+    T *xchg(T *val) noexcept
     {
         return _ptr.exchange(val, std::memory_order_acq_rel);
     }
@@ -34,7 +34,7 @@ class atomic_ptr_t {
     // The pointer is compared to 'cmp' argument and if they are
     // equal, its value is set to 'val'. Old value of the pointer
     // is returned.
-    T *cas(T *cmp, T *val) SL_NOEXCEPT
+    T *cas(T *cmp, T *val) noexcept
     {
         _ptr.compare_exchange_strong(cmp, val, std::memory_order_acq_rel);
         return cmp;
@@ -46,17 +46,17 @@ class atomic_ptr_t {
 
 // Atomic value for storing integers.
 struct atomic_value_t {
-    atomic_value_t(const int value) SL_NOEXCEPT : _value(value) {}
+    atomic_value_t(const int value) noexcept : _value(value) {}
 
-    atomic_value_t(const atomic_value_t &src) SL_NOEXCEPT
+    atomic_value_t(const atomic_value_t &src) noexcept
         : _value(src.load()) {}
 
-    void store(const int value) SL_NOEXCEPT
+    void store(const int value) noexcept
     {
         _value.store(value, std::memory_order_release);
     }
 
-    int load() const SL_NOEXCEPT
+    int load() const noexcept
     {
         return _value.load(std::memory_order_acquire);
     }

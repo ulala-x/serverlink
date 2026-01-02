@@ -12,7 +12,7 @@ namespace slk {
 template <typename T>
 class ypipe_base_t {
   public:
-    virtual ~ypipe_base_t() SL_DEFAULT;
+    virtual ~ypipe_base_t() = default;
     virtual void write(const T &value, bool incomplete) = 0;
     virtual bool unwrite(T *value) = 0;
     virtual bool flush() = 0;

@@ -17,7 +17,7 @@ class msg_t;
 
 struct i_encoder
 {
-    virtual ~i_encoder() SL_DEFAULT;
+    virtual ~i_encoder() = default;
 
     // Encode data to the provided buffer.
     // If data points to NULL, the encoder provides its own buffer.

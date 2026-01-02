@@ -17,7 +17,7 @@ namespace slk
 //  reader_awake flag is needed here to mimic ypipe delicate behaviour
 //  around the reader being asleep (see 'c' pointer being NULL in ypipe.hpp)
 
-template <typename T> class ypipe_conflate_t SL_FINAL : public ypipe_base_t<T>
+template <typename T> class ypipe_conflate_t final : public ypipe_base_t<T>
 {
   public:
     //  Initialises the pipe.

@@ -6,11 +6,16 @@
 
 #include <stddef.h>
 #include <stdio.h>
+#include <cstddef>
 
 #include "../util/config.hpp"
 #include "../util/err.hpp"
 #include "../util/atomic_counter.hpp"
 #include "metadata.hpp"
+
+#if SL_HAVE_SPAN
+#include <span>
+#endif
 
 //  bits 2-5
 #define CMD_TYPE_MASK 0x1c
@@ -30,8 +35,9 @@ namespace slk
 // Maximum group name length
 #define SL_GROUP_MAX_LENGTH 255
 
-static const char cancel_cmd_name[] = "\6CANCEL";
-static const char sub_cmd_name[] = "\x9SUBSCRIBE";
+// C++20: Use inline constexpr for compile-time string constants
+inline constexpr char cancel_cmd_name[] = "\6CANCEL";
+inline constexpr char sub_cmd_name[] = "\x9SUBSCRIBE";
 
 class msg_t
 {
@@ -96,6 +102,24 @@ class msg_t
     int copy (msg_t &src_);
     void *data ();
     size_t size () const;
+
+#if SL_HAVE_SPAN
+    //  Returns a span view over the message data as std::byte (mutable).
+    //  Provides modern C++20 interface for buffer manipulation.
+    [[nodiscard]] std::span<std::byte> data_span () noexcept
+    {
+        return std::span<std::byte> (static_cast<std::byte *> (data ()), size ());
+    }
+
+    //  Returns a span view over the message data as std::byte (const).
+    [[nodiscard]] std::span<const std::byte> data_span () const noexcept
+    {
+        return std::span<const std::byte> (
+          static_cast<const std::byte *> (const_cast<msg_t *> (this)->data ()),
+          size ());
+    }
+#endif
+
     unsigned char flags () const;
     void set_flags (unsigned char flags_);
     void reset_flags (unsigned char flags_);

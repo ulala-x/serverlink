@@ -28,7 +28,8 @@ namespace slk
 {
 #ifdef _WIN32
 // Signaler port for Windows TCP-based signaling
-static const int signaler_port = 0;  // Use ephemeral port
+// C++20: Use inline constexpr for compile-time constant
+inline constexpr int signaler_port = 0;  // Use ephemeral port
 #endif
 
 fd_t open_socket (int domain_, int type_, int protocol_)

@@ -56,7 +56,7 @@ int slk::fq_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
     errno_assert (rc == 0);
 
     //  Round-robin over the pipes to get the next message.
-    while (_active > 0) {
+    while (_active > 0) SL_LIKELY_ATTR {
         //  Try to fetch new message. If we've already read part of the message
         //  subsequent part should be immediately available.
         const bool fetched = _pipes[_current]->read (msg_);
@@ -64,11 +64,11 @@ int slk::fq_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
         //  Note that when message is not fetched, current pipe is deactivated
         //  and replaced by another active pipe. Thus we don't have to increase
         //  the 'current' pointer.
-        if (fetched) {
+        if (fetched) SL_LIKELY_ATTR {
             if (pipe_)
                 *pipe_ = _pipes[_current];
             _more = (msg_->flags () & msg_t::more) != 0;
-            if (!_more) {
+            if (!_more) SL_LIKELY_ATTR {
                 _current = (_current + 1) % _active;
             }
             return 0;
@@ -96,15 +96,15 @@ int slk::fq_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
 bool slk::fq_t::has_in ()
 {
     //  There are subsequent parts of the partly-read message available.
-    if (_more)
+    if (_more) SL_UNLIKELY_ATTR
         return true;
 
     //  Note that messing with current doesn't break the fairness of fair
     //  queueing algorithm. If there are no messages available current will
     //  get back to its original value. Otherwise it'll point to the first
     //  pipe holding messages, skipping only pipes with no messages available.
-    while (_active > 0) {
-        if (_pipes[_current]->check_read ())
+    while (_active > 0) SL_LIKELY_ATTR {
+        if (_pipes[_current]->check_read ()) SL_LIKELY_ATTR
             return true;
 
         //  Deactivate the pipe.

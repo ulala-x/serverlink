@@ -17,7 +17,7 @@ class msg_t;
 class i_decoder
 {
   public:
-    virtual ~i_decoder() SL_DEFAULT;
+    virtual ~i_decoder() = default;
 
     // Get a buffer to receive data into.
     // Sets *data to point to the buffer and *size to the buffer size.

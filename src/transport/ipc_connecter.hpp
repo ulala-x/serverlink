@@ -18,7 +18,7 @@ namespace slk
 class io_thread_t;
 class session_base_t;
 
-class ipc_connecter_t SL_FINAL : public stream_connecter_base_t
+class ipc_connecter_t final : public stream_connecter_base_t
 {
   public:
     // If 'delayed_start' is true connecter first waits for a while,
@@ -28,14 +28,14 @@ class ipc_connecter_t SL_FINAL : public stream_connecter_base_t
                     const options_t &options_,
                     address_t *addr_,
                     bool delayed_start_);
-    ~ipc_connecter_t() SL_OVERRIDE;
+    ~ipc_connecter_t() override;
 
   private:
     // Handlers for I/O events
-    void out_event() SL_OVERRIDE;
+    void out_event() override;
 
     // Internal function to start the actual connection establishment
-    void start_connecting() SL_OVERRIDE;
+    void start_connecting() override;
 
     // Get socket name for logging
     std::string get_socket_name(fd_t fd_, socket_end_t socket_end_) const;

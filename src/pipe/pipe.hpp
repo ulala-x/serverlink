@@ -49,7 +49,7 @@ struct i_pipe_events
 //  The array of inbound pipes (1), the array of outbound pipes (2) and
 //  the generic array of pipes to be deallocated (3).
 
-class pipe_t SL_FINAL : public object_t,
+class pipe_t final : public object_t,
                          public array_item_t<1>,
                          public array_item_t<2>,
                          public array_item_t<3>
@@ -138,16 +138,16 @@ class pipe_t SL_FINAL : public object_t,
     typedef ypipe_base_t<msg_t> upipe_t;
 
     //  Command handlers.
-    void process_activate_read () SL_OVERRIDE;
-    void process_activate_write (uint64_t msgs_read_) SL_OVERRIDE;
-    void process_hiccup (void *pipe_) SL_OVERRIDE;
+    void process_activate_read () override;
+    void process_activate_write (uint64_t msgs_read_) override;
+    void process_hiccup (void *pipe_) override;
     void
     process_pipe_peer_stats (uint64_t queue_count_,
                              own_t *socket_base_,
-                             endpoint_uri_pair_t *endpoint_pair_) SL_OVERRIDE;
-    void process_pipe_term () SL_OVERRIDE;
-    void process_pipe_term_ack () SL_OVERRIDE;
-    void process_pipe_hwm (int inhwm_, int outhwm_) SL_OVERRIDE;
+                             endpoint_uri_pair_t *endpoint_pair_) override;
+    void process_pipe_term () override;
+    void process_pipe_term_ack () override;
+    void process_pipe_hwm (int inhwm_, int outhwm_) override;
 
     //  Handler for delimiter read from the pipe.
     void process_delimiter ();
@@ -166,7 +166,7 @@ class pipe_t SL_FINAL : public object_t,
     void set_peer (pipe_t *peer_);
 
     //  Destructor is private. Pipe objects destroy themselves.
-    ~pipe_t () SL_OVERRIDE;
+    ~pipe_t () override;
 
     //  Underlying pipes for both directions.
     upipe_t *_in_pipe;

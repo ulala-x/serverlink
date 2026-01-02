@@ -6,6 +6,11 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <serverlink/config.h>
+
+#if SL_HAVE_RANGES
+#include <ranges>
+#endif
 
 namespace slk {
 
@@ -53,7 +58,11 @@ struct timers_t::match_by_id {
 int timers_t::cancel(int timer_id)
 {
     // Check first if timer exists at all
+#if SL_HAVE_RANGES
+    if (std::ranges::find_if(_timers, match_by_id(timer_id)) == _timers.end()) {
+#else
     if (_timers.end() == std::find_if(_timers.begin(), _timers.end(), match_by_id(timer_id))) {
+#endif
         errno = EINVAL;
         return -1;
     }
@@ -71,9 +80,14 @@ int timers_t::cancel(int timer_id)
 
 int timers_t::set_interval(int timer_id, size_t interval)
 {
+#if SL_HAVE_RANGES
+    auto it = std::ranges::find_if(_timers, match_by_id(timer_id));
+    if (it != _timers.end()) {
+#else
     const timersmap_t::iterator end = _timers.end();
     const timersmap_t::iterator it = std::find_if(_timers.begin(), end, match_by_id(timer_id));
     if (it != end) {
+#endif
         timer_t timer = it->second;
         timer.interval = interval;
         const uint64_t when = _clock.now_ms() + interval;
@@ -89,9 +103,14 @@ int timers_t::set_interval(int timer_id, size_t interval)
 
 int timers_t::reset(int timer_id)
 {
+#if SL_HAVE_RANGES
+    auto it = std::ranges::find_if(_timers, match_by_id(timer_id));
+    if (it != _timers.end()) {
+#else
     const timersmap_t::iterator end = _timers.end();
     const timersmap_t::iterator it = std::find_if(_timers.begin(), end, match_by_id(timer_id));
     if (it != end) {
+#endif
         timer_t timer = it->second;
         const uint64_t when = _clock.now_ms() + timer.interval;
         _timers.erase(it);

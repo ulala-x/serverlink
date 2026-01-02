@@ -25,9 +25,10 @@ class heartbeat_t
     // Magic prefixes for heartbeat messages
     static const unsigned char PING_PREFIX[5];
     static const unsigned char PONG_PREFIX[5];
-    static const size_t PREFIX_SIZE = 5;
-    static const size_t TIMESTAMP_SIZE = 8;
-    static const size_t HEARTBEAT_MSG_SIZE = PREFIX_SIZE + TIMESTAMP_SIZE;
+    // C++20: Use static constexpr for compile-time size constants
+    static constexpr size_t PREFIX_SIZE = 5;
+    static constexpr size_t TIMESTAMP_SIZE = 8;
+    static constexpr size_t HEARTBEAT_MSG_SIZE = PREFIX_SIZE + TIMESTAMP_SIZE;
 
     // Create a PING message with current timestamp
     static bool create_ping (msg_t *msg, int64_t timestamp_us);

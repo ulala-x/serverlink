@@ -21,13 +21,13 @@ class ctx_t;
 
 // Socket polling mechanism using Linux epoll
 
-class epoll_t SL_FINAL : public worker_poller_base_t
+class epoll_t final : public worker_poller_base_t
 {
   public:
     typedef void *handle_t;
 
     epoll_t (ctx_t *ctx_);
-    ~epoll_t () SL_OVERRIDE;
+    ~epoll_t () override;
 
     // "poller" concept
     handle_t add_fd (fd_t fd_, slk::i_poll_events *events_);
@@ -42,7 +42,7 @@ class epoll_t SL_FINAL : public worker_poller_base_t
 
   private:
     // Main event loop
-    void loop () SL_OVERRIDE;
+    void loop () override;
 
     // Main epoll file descriptor
     fd_t _epoll_fd;
