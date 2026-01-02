@@ -402,3 +402,44 @@ void assert_success_or_recoverable (fd_t s_, int rc_)
 }
 
 } // namespace slk
+
+//  DllMain - Windows DLL entry point for guaranteed initialization
+//  This ensures WSAStartup is called when the DLL loads, which handles
+//  the case where global constructors need sockets before main() runs.
+//  Note: SL_BUILDING_DLL is defined by CMake when building shared library
+#if defined _WIN32 && defined SL_BUILDING_DLL
+
+extern "C" BOOL WINAPI DllMain (HINSTANCE hinstDLL,
+                                 DWORD fdwReason,
+                                 LPVOID lpvReserved)
+{
+    switch (fdwReason) {
+    case DLL_PROCESS_ATTACH:
+        // Initialize network when DLL is loaded into process
+        // This runs BEFORE any code that uses the DLL, ensuring WSAStartup
+        // is ready when ctx_t constructor creates signaler objects
+        slk::initialize_network ();
+        break;
+
+    case DLL_PROCESS_DETACH:
+        // Cleanup network when DLL is unloaded
+        // lpvReserved is non-NULL if process is terminating
+        // In that case, skip cleanup as Windows will do it automatically
+        if (lpvReserved == NULL) {
+            slk::shutdown_network ();
+        }
+        break;
+
+    case DLL_THREAD_ATTACH:
+    case DLL_THREAD_DETACH:
+        // No per-thread initialization needed
+        break;
+    }
+
+    // Prevent unused parameter warning
+    (void) hinstDLL;
+
+    return TRUE;
+}
+
+#endif // _WIN32 && SL_BUILDING_DLL
