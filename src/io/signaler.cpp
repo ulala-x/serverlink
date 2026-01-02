@@ -7,8 +7,8 @@
 #include "../util/likely.hpp"
 #include "../util/err.hpp"
 
-#if defined SL_USE_EPOLL
-#include <poll.h>  // epoll systems typically also have poll for signaler
+#if defined SL_USE_EPOLL || defined SL_USE_KQUEUE
+#include <poll.h>  // epoll/kqueue systems typically also have poll for signaler
 #elif defined SL_USE_SELECT || defined _WIN32
 #if defined _WIN32
 #include <winsock2.h>
@@ -164,8 +164,8 @@ int signaler_t::wait (int timeout_) const
     }
 #endif
 
-#if defined SL_USE_EPOLL
-    // Use poll() for signaler wait on epoll-based systems
+#if defined SL_USE_EPOLL || defined SL_USE_KQUEUE
+    // Use poll() for signaler wait on epoll/kqueue-based systems
     struct pollfd pfd;
     pfd.fd = _r;
     pfd.events = POLLIN;
