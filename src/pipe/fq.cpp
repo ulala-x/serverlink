@@ -20,12 +20,6 @@ void slk::fq_t::attach (pipe_t *pipe_)
     _pipes.push_back (pipe_);
     _pipes.swap (_active, _pipes.size () - 1);
     _active++;
-
-    //  Ensure the pipe has "checked" for messages at least once.
-    //  This initializes the underlying ypipe to mark the reader as sleeping
-    //  (sets _c to nullptr) if there are no messages yet.
-    //  Without this, the first flush() would incorrectly think the reader is awake.
-    pipe_->check_read ();
 }
 
 void slk::fq_t::pipe_terminated (pipe_t *pipe_)
@@ -46,15 +40,7 @@ void slk::fq_t::pipe_terminated (pipe_t *pipe_)
 void slk::fq_t::activated (pipe_t *pipe_)
 {
     //  Move the pipe to the list of active pipes.
-    const pipes_t::size_type index = _pipes.index (pipe_);
-
-    //  If pipe is already in the active region, nothing to do.
-    //  This can happen if xread_activated is called multiple times
-    //  or if the pipe was already activated by attach().
-    if (index < _active)
-        return;
-
-    _pipes.swap (index, _active);
+    _pipes.swap (_pipes.index (pipe_), _active);
     _active++;
 }
 
