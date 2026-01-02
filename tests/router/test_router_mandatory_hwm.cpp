@@ -86,8 +86,8 @@ static void test_router_mandatory_hwm()
     TEST_ASSERT_EQ(rc, 5);
 
     /* Send first batch of messages */
-    const int buf_size = 65536;
-    uint8_t send_buf[buf_size];
+    static const int buf_size = 65536;
+    uint8_t send_buf[65536];  // Fixed-size instead of VLA
     memset(send_buf, 0, buf_size);
 
     int i;

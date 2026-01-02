@@ -190,9 +190,9 @@ static void test_multiple_connects()
 {
     slk_ctx_t *ctx = test_context_new();
     const char *endpoint = "inproc://test_multiple";
-    const unsigned int no_of_connects = 10;
+    static const unsigned int no_of_connects = 10;
 
-    slk_socket_t *connect_socket[no_of_connects];
+    slk_socket_t *connect_socket[10];  // Fixed-size instead of VLA
 
     /* Connect first */
     for (unsigned int i = 0; i < no_of_connects; ++i) {
