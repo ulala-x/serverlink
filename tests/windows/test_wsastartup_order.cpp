@@ -7,122 +7,129 @@
  * constructors that need sockets. This is critical for DLL builds
  * where initialization order is unpredictable.
  *
- * Build as a DLL on Windows to test the DllMain implementation.
+ * The test uses the public serverlink API to verify that socket
+ * operations work correctly, which implicitly tests WSAStartup.
  */
 
-#include "../../src/io/ip.hpp"
-#include <iostream>
+#include <serverlink/serverlink.h>
+#include <cstdio>
+#include <cstring>
 
-#ifdef _WIN32
-#include <winsock2.h>
-#include <windows.h>
-#else
-#include <unistd.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#endif
-
+// Test that serverlink can create sockets during static initialization
+// This simulates what happens in ctx_t with _term_mailbox
 namespace slk_test
 {
 
-// Global object that creates a socket during static initialization
-// This simulates what happens in ctx_t with _term_mailbox
-class GlobalSocketCreator
+class GlobalContextCreator
 {
 public:
-    GlobalSocketCreator ()
+    GlobalContextCreator ()
     {
-#ifdef _WIN32
-        std::cout << "GlobalSocketCreator: Creating socket during static init...\n";
+        printf ("GlobalContextCreator: Creating context during static init...\n");
 
-        // This will fail with WSANOTINITIALISED if DllMain didn't run
-        SOCKET s = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        // Creating a context requires signaler which creates sockets
+        // If WSAStartup wasn't called, this would fail on Windows
+        slk_ctx_t *ctx = slk_ctx_new ();
 
-        if (s == INVALID_SOCKET) {
-            int err = WSAGetLastError ();
-            std::cerr << "ERROR: socket() failed with error " << err << "\n";
-            if (err == WSANOTINITIALISED) {
-                std::cerr << "WSANOTINITIALISED - WSAStartup was not called!\n";
+        if (ctx != nullptr) {
+            printf ("SUCCESS: Context created during static init\n");
+            _context_created = true;
+
+            // Create and close a socket to fully test
+            slk_socket_t *sock = slk_socket (ctx, SLK_PAIR);
+            if (sock != nullptr) {
+                printf ("SUCCESS: Socket created during static init\n");
+                _socket_created = true;
+                slk_close (sock);
+            } else {
+                printf ("ERROR: Socket creation failed during static init\n");
+                _socket_created = false;
             }
-            _socket_created = false;
+
+            slk_ctx_destroy (ctx);
         } else {
-            std::cout << "SUCCESS: Socket created during static init (handle: "
-                      << s << ")\n";
-            closesocket (s);
-            _socket_created = true;
-        }
-#else
-        // On POSIX, no special initialization needed
-        int s = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (s >= 0) {
-            close (s);
-            _socket_created = true;
-        } else {
+            printf ("ERROR: Context creation failed during static init\n");
+            _context_created = false;
             _socket_created = false;
         }
-#endif
     }
 
+    bool context_created () const { return _context_created; }
     bool socket_created () const { return _socket_created; }
 
 private:
-    bool _socket_created;
+    bool _context_created = false;
+    bool _socket_created = false;
 };
 
 // Global instance - constructor runs during static initialization
-static GlobalSocketCreator g_socket_creator;
+static GlobalContextCreator g_context_creator;
 
 } // namespace slk_test
 
 int main ()
 {
-    std::cout << "\n=== WSAStartup Initialization Order Test ===\n\n";
+    printf ("\n=== WSAStartup Initialization Order Test ===\n\n");
 
 #ifdef _WIN32
-    std::cout << "Platform: Windows\n";
-    #ifdef _USRDLL
-    std::cout << "Build type: DLL (DllMain should handle initialization)\n";
-    #else
-    std::cout << "Build type: Static library (static initializer should handle initialization)\n";
-    #endif
+    printf ("Platform: Windows\n");
+#ifdef _USRDLL
+    printf ("Build type: DLL (DllMain should handle initialization)\n");
 #else
-    std::cout << "Platform: POSIX (no WSAStartup needed)\n";
+    printf ("Build type: Static/EXE (static initializer handles initialization)\n");
+#endif
+#else
+    printf ("Platform: POSIX (no WSAStartup needed)\n");
 #endif
 
-    std::cout << "\nGlobal constructor test: ";
-    if (slk_test::g_socket_creator.socket_created ()) {
-        std::cout << "PASSED\n";
-        std::cout << "  Socket was successfully created during static initialization\n";
-        std::cout << "  This means WSAStartup was called before global constructors\n";
+    printf ("\nGlobal constructor test:\n");
+    if (slk_test::g_context_creator.context_created ()) {
+        printf ("  Context creation: PASSED\n");
     } else {
-        std::cout << "FAILED\n";
-        std::cout << "  Socket creation failed during static initialization\n";
-        std::cout << "  This indicates WSAStartup was not called in time\n";
+        printf ("  Context creation: FAILED\n");
+        printf ("  This indicates WSAStartup was not called in time\n");
         return 1;
     }
 
-    // Test explicit initialization
-    std::cout << "\nExplicit initialization test: ";
-    bool init_result = slk::initialize_network ();
-    std::cout << (init_result ? "PASSED" : "FAILED") << "\n";
-
-    // Test socket creation after main() starts
-    std::cout << "\nRuntime socket creation test: ";
-    slk::fd_t s = slk::open_socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (s != slk::retired_fd) {
-        std::cout << "PASSED\n";
-        std::cout << "  Socket created successfully at runtime\n";
-#ifdef _WIN32
-        closesocket (s);
-#else
-        close (s);
-#endif
+    if (slk_test::g_context_creator.socket_created ()) {
+        printf ("  Socket creation: PASSED\n");
     } else {
-        std::cout << "FAILED\n";
-        std::cout << "  Socket creation failed at runtime\n";
+        printf ("  Socket creation: FAILED\n");
         return 1;
     }
 
-    std::cout << "\n=== All Tests Passed ===\n";
+    // Test runtime socket operations
+    printf ("\nRuntime socket operations test:\n");
+
+    slk_ctx_t *ctx = slk_ctx_new ();
+    if (ctx == nullptr) {
+        printf ("  Runtime context creation: FAILED\n");
+        return 1;
+    }
+    printf ("  Runtime context creation: PASSED\n");
+
+    slk_socket_t *sock = slk_socket (ctx, SLK_PAIR);
+    if (sock == nullptr) {
+        printf ("  Runtime socket creation: FAILED\n");
+        slk_ctx_destroy (ctx);
+        return 1;
+    }
+    printf ("  Runtime socket creation: PASSED\n");
+
+    // Test bind to a random port
+    int rc = slk_bind (sock, "tcp://127.0.0.1:*");
+    if (rc < 0) {
+        printf ("  Socket bind: FAILED (rc=%d, errno=%d)\n", rc, slk_errno ());
+        slk_close (sock);
+        slk_ctx_destroy (ctx);
+        return 1;
+    }
+    printf ("  Socket bind: PASSED\n");
+
+    // Clean up
+    slk_close (sock);
+    slk_ctx_destroy (ctx);
+
+    printf ("\n=== All Tests Passed ===\n");
     return 0;
 }
