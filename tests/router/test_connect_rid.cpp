@@ -6,6 +6,10 @@
 #include "../testutil.hpp"
 #include <string.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 static const char *rconn1routing_id = "conn1";
 static const char *x_routing_id = "X";
 static const char *y_routing_id = "Y";
@@ -344,6 +348,13 @@ static void test_router_2_router_named()
 int main()
 {
     printf("=== ServerLink CONNECT_ROUTING_ID Tests ===\n\n");
+
+#ifdef _WIN32
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+#endif
+
+    // Small delay to ensure Windows socket subsystem is fully initialized
+    test_sleep_ms(10);
 
     /*
      * Note: test_stream_2_stream is skipped as ServerLink doesn't support

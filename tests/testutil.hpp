@@ -160,10 +160,29 @@ static inline void test_socket_close(slk_socket_t *s)
     }
 }
 
-/* Socket helper - bind to endpoint */
+/* Socket helper - bind to endpoint with retry for TCP port conflicts */
 static inline void test_socket_bind(slk_socket_t *s, const char *endpoint)
 {
     int rc = slk_bind(s, endpoint);
+
+    /* If bind fails on TCP and it's a port conflict, wait and retry */
+    if (rc != 0 && strncmp(endpoint, "tcp://", 6) == 0) {
+        int err = slk_errno();
+        /* EACCES (13), EADDRINUSE (98 Linux, 10048 Windows) indicate port conflict */
+        if (err == 13 || err == 98 || err == 10048 || err == 10013) {
+            /* Wait for TIME_WAIT to expire and retry up to 3 times */
+            for (int retry = 0; retry < 3 && rc != 0; retry++) {
+                fprintf(stderr, "BIND RETRY %d for endpoint '%s' (errno=%d), waiting...\n",
+                        retry + 1, endpoint, err);
+                test_sleep_ms(500);  /* Wait 500ms between retries */
+                rc = slk_bind(s, endpoint);
+                if (rc != 0) {
+                    err = slk_errno();
+                }
+            }
+        }
+    }
+
     if (rc != 0) {
         fprintf(stderr, "BIND FAILED for endpoint '%s': errno=%d (%s)\n",
                 endpoint, slk_errno(), strerror(slk_errno()));
@@ -290,23 +309,23 @@ static inline const char* test_endpoint_tcp()
 
     /* Initialize base port once per process using PID and time-based spacing */
     if (base_port == 0) {
-        /* Use PID and timestamp to create well-separated port ranges per process
+        /* Use PID and millisecond timestamp to create well-separated port ranges
          * This ensures different test processes and runs get different port ranges
-         * Port range: 15000-55000 (safe ephemeral range, well below 65535) */
-        int pid_offset = (getpid() % 400) * 100;   /* 0-39900 */
-        int time_offset = ((unsigned int)time(NULL) % 100);  /* 0-99 */
-        base_port = 15000 + (pid_offset + time_offset) % 40000;  /* 15000-54999 */
+         * Port range: 20000-60000 (safe ephemeral range) */
+        int pid_offset = (getpid() % 200) * 200;   /* 0-39800, step 200 */
+        int time_offset = ((unsigned int)time(NULL) * 7) % 200;  /* 0-199 */
+        base_port = 20000 + (pid_offset + time_offset) % 40000;  /* 20000-59999 */
     }
 
     /* Use rotating buffers to avoid overwriting previous endpoints */
     int slot = call_count % 32;
 
-    /* Each call gets a unique port: base + call_count */
-    int port = base_port + call_count;
+    /* Each call gets a unique port with step of 3 to avoid TIME_WAIT conflicts */
+    int port = base_port + (call_count * 3);
     call_count++;
 
     /* Wrap around if we exceed our allocated block */
-    if (call_count >= 1000) {
+    if (call_count >= 500) {
         call_count = 0;
     }
 
