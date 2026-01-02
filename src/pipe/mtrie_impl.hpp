@@ -60,7 +60,8 @@ bool mtrie_t<T>::add (prefix_t prefix_, size_t size_, value_t *pipe_)
                 alloc_assert (it->_next.table);
                 for (unsigned short i = 0; i != it->_count; ++i)
                     it->_next.table[i] = 0;
-                it->_min = std::min (it->_min, c);
+                // Use parentheses to avoid Windows min/max macro conflict
+                it->_min = (std::min) (it->_min, c);
                 it->_next.table[oldc - it->_min] = oldp;
             } else if (it->_min < c) {
                 // The new character is above the current character range.

@@ -96,7 +96,8 @@ class decoder_base_t : public i_decoder
 
         while (bytes_used < size) {
             // Copy the data from buffer to the message.
-            const std::size_t to_copy = std::min(m_to_read, size - bytes_used);
+            // Use parentheses around std::min to avoid Windows min/max macro conflict
+            const std::size_t to_copy = (std::min)(m_to_read, size - bytes_used);
 
             // Only copy when destination address is different from the
             // current address in the buffer.

@@ -2422,13 +2422,14 @@ int SL_CALL slk_pubsub_cluster_recv(slk_pubsub_cluster_t *cluster_,
         }
 
         // Copy channel name
-        size_t channel_copy_len = std::min(channel.size(), *channel_len_ - 1);
+        // Use parentheses to avoid Windows min/max macro conflict
+        size_t channel_copy_len = (std::min)(channel.size(), *channel_len_ - 1);
         std::memcpy(channel_, channel.data(), channel_copy_len);
         channel_[channel_copy_len] = '\0';
         *channel_len_ = channel.size();
 
         // Copy data
-        size_t data_copy_len = std::min(data.size(), *data_len_);
+        size_t data_copy_len = (std::min)(data.size(), *data_len_);
         std::memcpy(data_, data.data(), data_copy_len);
         *data_len_ = data.size();
 

@@ -3,6 +3,8 @@
 #ifndef SERVERLINK_TCP_ADDRESS_HPP_INCLUDED
 #define SERVERLINK_TCP_ADDRESS_HPP_INCLUDED
 
+#include "../util/config.hpp"
+
 #if !defined SL_HAVE_WINDOWS
 #include <sys/socket.h>
 #include <netinet/in.h>

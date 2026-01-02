@@ -86,7 +86,8 @@ class encoder_base_t : public i_encoder
             }
 
             // Copy data to the buffer. If the buffer is full, return.
-            const std::size_t to_copy = std::min(m_to_write, buffersize - pos);
+            // Use parentheses around std::min to avoid Windows min/max macro conflict
+            const std::size_t to_copy = (std::min)(m_to_write, buffersize - pos);
             std::memcpy(buffer + pos, m_write_pos, to_copy);
             pos += to_copy;
             m_write_pos += to_copy;

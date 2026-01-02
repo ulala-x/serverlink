@@ -130,8 +130,9 @@ struct blob_t
     //  Legacy C++17 fallback: defines an order relationship on blob_t.
     bool operator<(blob_t const &other_) const
     {
+        // Use parentheses around std::min to avoid Windows min/max macro conflict
         const int cmpres =
-          memcmp (_data, other_._data, std::min (_size, other_._size));
+          memcmp (_data, other_._data, (std::min) (_size, other_._size));
         return cmpres < 0 || (cmpres == 0 && _size < other_._size);
     }
 #endif

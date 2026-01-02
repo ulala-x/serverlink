@@ -48,8 +48,9 @@ static int close_wait_ms (int fd_, unsigned int max_ms_ = 2000)
     unsigned int ms_so_far = 0;
     const unsigned int min_step_ms = 1;
     const unsigned int max_step_ms = 100;
+    // Use parentheses around std::min/std::max to avoid Windows min/max macro conflict
     const unsigned int step_ms =
-      std::min (std::max (min_step_ms, max_ms_ / 10), max_step_ms);
+      (std::min) ((std::max) (min_step_ms, max_ms_ / 10), max_step_ms);
 
     int rc = 0; // do not sleep on first attempt
     do {

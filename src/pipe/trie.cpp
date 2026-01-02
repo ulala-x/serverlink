@@ -51,7 +51,8 @@ bool slk::trie_t::add (unsigned char *prefix_, size_t size_)
             alloc_assert (_next.table);
             for (unsigned short i = 0; i != _count; ++i)
                 _next.table[i] = 0;
-            _min = std::min (_min, c);
+            // Use parentheses to avoid Windows min/max macro conflict
+            _min = (std::min) (_min, c);
             _next.table[oldc - _min] = oldp;
         } else if (_min < c) {
             // The new character is above the current character range.
