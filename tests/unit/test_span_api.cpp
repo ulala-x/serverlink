@@ -2,6 +2,25 @@
 /* ServerLink - C++20 std::span API test */
 
 #include <serverlink/serverlink.h>
+#include <serverlink/config.h>
+
+// This test uses internal APIs (msg_t, blob_t) that are not exported on Windows DLL builds
+// On Windows, we skip this test since internal implementation details aren't available
+#if defined(_WIN32) && defined(SL_USING_DLL)
+#include <cstdio>
+int main()
+{
+    printf("test_span_api: Skipping on Windows DLL (internal API test)\n");
+    return 0;
+}
+#elif !SL_HAVE_SPAN
+// std::span not available, provide minimal test
+int main()
+{
+    return 0;
+}
+#else
+
 #include "../../src/msg/blob.hpp"
 #include "../../src/msg/msg.hpp"
 #include "../../src/util/config.hpp"
@@ -9,8 +28,6 @@
 #include <cassert>
 #include <cstring>
 #include <algorithm>
-
-#if SL_HAVE_SPAN
 #include <span>
 #include <numeric>
 
@@ -227,10 +244,4 @@ int main ()
     return 0;
 }
 
-#else
-// std::span not available, provide minimal test
-int main ()
-{
-    return 0;
-}
-#endif
+#endif  // SL_HAVE_SPAN
