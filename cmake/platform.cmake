@@ -139,11 +139,20 @@ else()
 endif()
 
 # Detect Windows event polling (WSAEventSelect-based)
-if(WIN32)
-    set(SL_HAVE_WEPOLL 1)
-    message(STATUS "Windows event polling (wepoll) support detected")
+# TEMPORARY: Disabled wepoll on Windows to match libzmq behavior
+# This uses select() instead for better compatibility
+if(FALSE)  # Disable wepoll for now
+    if(WIN32)
+        set(SL_HAVE_WEPOLL 1)
+        message(STATUS "Windows event polling (wepoll) support detected")
+    else()
+        set(SL_HAVE_WEPOLL 0)
+    endif()
 else()
     set(SL_HAVE_WEPOLL 0)
+    if(WIN32)
+        message(STATUS "Using select() on Windows (wepoll disabled for libzmq compatibility)")
+    endif()
 endif()
 
 # Detect epoll (Linux)

@@ -525,9 +525,6 @@ bool slk::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
     msg_t msg;
     blob_t routing_id;
 
-    SL_DEBUG_LOG("DEBUG: router identify_peer called, locally_initiated=%d, raw_socket=%d\n",
-            locally_initiated_, options.raw_socket);
-
     if (locally_initiated_ && connect_routing_id_is_set ()) {
         const std::string connect_routing_id = extract_connect_routing_id ();
         routing_id.set (
@@ -535,7 +532,6 @@ bool slk::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
           connect_routing_id.length ());
         // Not allowed to duplicate an existing rid
         slk_assert (!has_out_pipe (routing_id));
-        SL_DEBUG_LOG("DEBUG: router identify_peer: using connect_routing_id\n");
     } else if (
       options
         .raw_socket) { // Always assign an integral routing id for raw-socket
@@ -543,13 +539,10 @@ bool slk::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
         buf[0] = 0;
         put_uint32 (buf + 1, _next_integral_routing_id++);
         routing_id.set (buf, sizeof buf);
-        SL_DEBUG_LOG("DEBUG: router identify_peer: using integral routing_id (raw_socket)\n");
     } else if (!options.raw_socket) {
         // Pick up handshake cases and also case where next integral routing id is set
-        SL_DEBUG_LOG("DEBUG: router identify_peer: trying to read routing_id from pipe\n");
         msg.init ();
         const bool ok = pipe_->read (&msg);
-        SL_DEBUG_LOG("DEBUG: router identify_peer: pipe_->read() returned %d\n", ok);
         if (!ok)
             return false;
 
