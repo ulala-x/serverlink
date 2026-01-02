@@ -34,6 +34,9 @@ if (-not (Test-Path $BuildDir)) {
     exit 1
 }
 
+# Resolve to absolute path for DLL loading
+$BuildDir = Resolve-Path $BuildDir
+
 # Change to build directory
 Push-Location $BuildDir
 
