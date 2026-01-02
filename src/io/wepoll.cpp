@@ -265,9 +265,10 @@ void wepoll_t::loop ()
 
         while (batch_start < total_sockets && !_stopping) {
             // Determine batch size
+            // Use parentheses around std::min to avoid Windows max/min macro conflict
             const size_t batch_size =
-                std::min (static_cast<size_t> (max_events),
-                          total_sockets - batch_start);
+                (std::min) (static_cast<size_t> (max_events),
+                            total_sockets - batch_start);
 
             // Build array of event handles for this batch
             WSAEVENT event_array[max_events];

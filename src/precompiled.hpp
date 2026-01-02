@@ -15,11 +15,6 @@
 
 #define __STDC_LIMIT_MACROS
 
-// This must be included before any windows headers are compiled.
-#if defined SL_HAVE_WINDOWS
-#include "io/windows.hpp"
-#endif
-
 #if defined SL_HAVE_OPENBSD
 #define ucred sockpeercred
 #endif
@@ -27,16 +22,25 @@
 // TODO: expand pch implementation to non-windows builds.
 #ifdef _MSC_VER
 
+// Windows headers must be included first and in the correct order
+// winsock2.h must come before windows.h and any other Windows SDK headers
+#include "io/windows.hpp"
+
+// Windows networking headers (after winsock2.h)
+#include <ws2tcpip.h>
+#include <mstcpip.h>
+#include <mswsock.h>
+
+// Other Windows SDK headers (after winsock2.h)
+#include <ipexport.h>
+#include <iphlpapi.h>
+
 // standard C headers
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
 #include <io.h>
-#include <ipexport.h>
-#include <iphlpapi.h>
 #include <limits.h>
-#include <mstcpip.h>
-#include <mswsock.h>
 #include <process.h>
 #include <rpc.h>
 #include <signal.h>
@@ -48,8 +52,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
 
 // standard C++ headers
 #include <algorithm>

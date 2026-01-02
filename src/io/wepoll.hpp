@@ -7,10 +7,10 @@
 
 #if defined SL_USE_WEPOLL
 
+#include "windows.hpp"
+
 #include <vector>
 #include <map>
-#include <winsock2.h>
-#include <windows.h>
 
 #include "fd.hpp"
 #include "poller_base.hpp"

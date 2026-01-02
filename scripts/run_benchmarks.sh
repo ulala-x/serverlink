@@ -64,7 +64,7 @@ for BENCH in ${BENCHMARKS}; do
 
     if "${BENCH}" > "${OUTPUT_FILE_TMP}" 2>&1; then
         echo "  ✓ ${BENCH_NAME} completed"
-        ((BENCH_COUNT++))
+        BENCH_COUNT=$((BENCH_COUNT + 1))
     else
         echo "  ✗ ${BENCH_NAME} failed"
         cat "${OUTPUT_FILE_TMP}"
