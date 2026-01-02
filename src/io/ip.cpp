@@ -424,7 +424,8 @@ void assert_success_or_recoverable (fd_t s_, int rc_)
 //  This ensures WSAStartup is called when the DLL loads, which is more
 //  reliable than static initialization for DLLs since it's called before
 //  any global constructors run.
-#if defined _WIN32 && defined _USRDLL
+//  Note: SL_BUILDING_DLL is defined by CMake when building shared library
+#if defined _WIN32 && defined SL_BUILDING_DLL
 
 extern "C" BOOL WINAPI DllMain (HINSTANCE hinstDLL,
                                  DWORD fdwReason,
@@ -459,4 +460,4 @@ extern "C" BOOL WINAPI DllMain (HINSTANCE hinstDLL,
     return TRUE;
 }
 
-#endif // _WIN32 && _USRDLL
+#endif // _WIN32 && SL_BUILDING_DLL
