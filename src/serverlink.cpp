@@ -1665,7 +1665,7 @@ static int check_events(short events_)
 static int check_fd(slk_fd_t fd_)
 {
 #ifdef _WIN32
-    if (fd_ == INVALID_HANDLE_VALUE) {
+    if (fd_ == static_cast<slk_fd_t>(INVALID_SOCKET)) {
         errno = EBADF;
         return -1;
     }
@@ -1785,7 +1785,7 @@ int SL_CALL slk_poller_wait(void *poller_, slk_poller_event_t *event_, long time
     if (rc < 0 && event_) {
         event_->socket = nullptr;
 #ifdef _WIN32
-        event_->fd = INVALID_HANDLE_VALUE;
+        event_->fd = static_cast<slk_fd_t>(INVALID_SOCKET);
 #else
         event_->fd = -1;
 #endif
