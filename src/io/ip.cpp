@@ -18,6 +18,7 @@
 #else
 #include "windows.hpp"
 #include <io.h>
+#include <cstdio>  // For fprintf debugging on Windows
 #endif
 
 #if defined SL_HAVE_EVENTFD
@@ -33,11 +34,23 @@ namespace slk
 // regardless of static initialization order or DLL loading sequence.
 static bool do_initialize_network ()
 {
+    fprintf (stderr, "[SERVERLINK] do_initialize_network called\n");
+    fflush (stderr);
+
     const WORD version_requested = MAKEWORD (2, 2);
     WSADATA wsa_data;
     const int rc = WSAStartup (version_requested, &wsa_data);
-    return rc == 0 && LOBYTE (wsa_data.wVersion) == 2
-                   && HIBYTE (wsa_data.wVersion) == 2;
+
+    fprintf (stderr, "[SERVERLINK] WSAStartup returned %d\n", rc);
+    fflush (stderr);
+
+    const bool success = rc == 0 && LOBYTE (wsa_data.wVersion) == 2
+                                 && HIBYTE (wsa_data.wVersion) == 2;
+
+    fprintf (stderr, "[SERVERLINK] initialization %s\n", success ? "SUCCESS" : "FAILED");
+    fflush (stderr);
+
+    return success;
 }
 #endif
 
@@ -46,7 +59,15 @@ bool initialize_network ()
 #ifdef _WIN32
     // C++11 guarantees thread-safe initialization of function-local statics.
     // This ensures WSAStartup is called exactly once before the first socket use.
+    fprintf (stderr, "[SERVERLINK] initialize_network() called\n");
+    fflush (stderr);
+
     static bool initialized = do_initialize_network ();
+
+    fprintf (stderr, "[SERVERLINK] initialize_network() returning %s\n",
+             initialized ? "TRUE" : "FALSE");
+    fflush (stderr);
+
     return initialized;
 #else
     return true;
@@ -409,19 +430,35 @@ void assert_success_or_recoverable (fd_t s_, int rc_)
 //  Note: SL_BUILDING_DLL is defined by CMake when building shared library
 #if defined _WIN32 && defined SL_BUILDING_DLL
 
+#pragma message("[COMPILE TIME] DllMain will be included in this build (SL_BUILDING_DLL is defined)")
+
 extern "C" BOOL WINAPI DllMain (HINSTANCE hinstDLL,
                                  DWORD fdwReason,
                                  LPVOID lpvReserved)
 {
+    fprintf (stderr, "[SERVERLINK] DllMain called, reason=%lu\n", fdwReason);
+    fflush (stderr);
+
     switch (fdwReason) {
     case DLL_PROCESS_ATTACH:
         // Initialize network when DLL is loaded into process
         // This runs BEFORE any code that uses the DLL, ensuring WSAStartup
         // is ready when ctx_t constructor creates signaler objects
-        slk::initialize_network ();
+        fprintf (stderr, "[SERVERLINK] DLL_PROCESS_ATTACH: calling initialize_network()\n");
+        fflush (stderr);
+
+        {
+            bool init_result = slk::initialize_network ();
+            fprintf (stderr, "[SERVERLINK] initialize_network() returned %s\n",
+                     init_result ? "TRUE" : "FALSE");
+            fflush (stderr);
+        }
         break;
 
     case DLL_PROCESS_DETACH:
+        fprintf (stderr, "[SERVERLINK] DLL_PROCESS_DETACH\n");
+        fflush (stderr);
+
         // Cleanup network when DLL is unloaded
         // lpvReserved is non-NULL if process is terminating
         // In that case, skip cleanup as Windows will do it automatically
@@ -431,8 +468,13 @@ extern "C" BOOL WINAPI DllMain (HINSTANCE hinstDLL,
         break;
 
     case DLL_THREAD_ATTACH:
+        fprintf (stderr, "[SERVERLINK] DLL_THREAD_ATTACH\n");
+        fflush (stderr);
+        break;
+
     case DLL_THREAD_DETACH:
-        // No per-thread initialization needed
+        fprintf (stderr, "[SERVERLINK] DLL_THREAD_DETACH\n");
+        fflush (stderr);
         break;
     }
 
