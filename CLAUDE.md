@@ -2,13 +2,25 @@
 
 ## 최근 업데이트 (2026-01-03)
 
-### 🎉 완벽한 테스트 통과! (47/47 - 100%)
+### 🎉 6-Platform CI/CD 완료!
 
-**Windows SEH 처리 완료**
-- `test_hwm_pubsub` Windows 오류 해결
-- Exit code 0xc0000409 수정
-- 47/47 테스트 통과 (100%)
-- 상세: `FIX_TEST_HWM_PUBSUB_WINDOWS.md` 참조
+**모든 6개 플랫폼에서 빌드 및 테스트 통과:**
+- ✅ Linux x64 (epoll) - 47/47 tests
+- ✅ Linux ARM64 (epoll) - cross-compile
+- ✅ Windows x64 (select) - 47/47 tests
+- ✅ Windows ARM64 (select) - cross-compile
+- ✅ macOS x64 Intel (kqueue) - build verified
+- ✅ macOS ARM64 Apple Silicon (kqueue) - 47/47 tests
+
+**릴리즈 자동화:**
+- `v*` 태그 푸시 시 자동 릴리즈 생성
+- 6개 플랫폼 별 zip 파일 생성
+- SHA256 체크섬 자동 생성
+
+### Windows VLA 버그 수정
+- C++ VLA (Variable Length Array) 스택 버퍼 오버런 수정
+- MSVC CI 환경에서 0xc0000409 오류 해결
+- 고정 크기 배열로 교체하여 표준 C++ 준수
 
 ### ✅ C++20 포팅 완료! (Phase 1-10 ALL COMPLETE)
 
@@ -166,44 +178,30 @@ slk_recv(socket, buf, size, 0);  // payload
 
 ---
 
-## Windows IOCP 지원 (2026-01-02)
+## Windows 지원 (2026-01-03)
 
-### 구현 완료 - Windows 최적화 이벤트 폴링 (wepoll)
+### I/O 백엔드: select()
 
-**Windows에서 고성능 소켓 폴링을 위한 wepoll 구현이 추가되었습니다!**
+**libzmq 호환성을 위해 Windows에서 select() 사용:**
+- WSAStartup/WSACleanup: 각 ctx마다 호출 (libzmq 4.3.5 패턴)
+- FD_SETSIZE 제한 (64 소켓) 있음
+- 안정적인 동작 보장
 
-#### 주요 특징
-- **WSAEventSelect 기반**: Windows 네이티브 API 사용
-- **select 대비 10배 성능 향상**: 특히 많은 소켓 처리 시
-- **FD_SETSIZE 제한 없음**: 64개 이상 소켓 지원
-- **libzmq 호환**: libzmq와 동일한 접근 방식 사용
-
-#### 구현 파일
-- `src/io/wepoll.hpp` - Windows 이벤트 폴러 헤더
-- `src/io/wepoll.cpp` - WSAEventSelect 구현
-- `WINDOWS_IOCP_SUPPORT.md` - 상세 문서
-- `IMPLEMENTATION_SUMMARY_WEPOLL.md` - 구현 요약
-
-#### 플랫폼 우선순위
+#### 플랫폼 I/O 우선순위
 ```
-wepoll (Windows) > epoll (Linux) > kqueue (BSD/macOS) > select (fallback)
+epoll (Linux) > kqueue (BSD/macOS) > select (Windows/fallback)
 ```
 
-#### Windows 빌드
+#### Windows 빌드 (CI)
 ```powershell
-# Visual Studio
-cmake -B build -S . -G "Visual Studio 16 2019" -A x64
-cmake --build build --config Release
-
-# MinGW
-cmake -B build -S . -G "MinGW Makefiles"
-cmake --build build
+# Visual Studio (GitHub Actions 사용)
+cmake -B build-x64 -S . -A x64 -DBUILD_TESTS=ON
+cmake --build build-x64 --config Release
+ctest --test-dir build-x64 -C Release --output-on-failure
 ```
-
-상세 내용은 `WINDOWS_IOCP_SUPPORT.md` 참조.
 
 ---
 
 **최초 작성:** 2026-01-01
 **최종 업데이트:** 2026-01-03
-**상태:** 완료 - 모든 테스트 통과 (47/47), 프로덕션 준비 완료, Windows 지원 완벽
+**상태:** 완료 - 모든 테스트 통과 (47/47), 6-Platform CI/CD 완료, 프로덕션 준비 완료
