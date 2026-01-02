@@ -6,7 +6,9 @@
 
 #include <cstdlib>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include "../io/windows.hpp"  // For GetCurrentProcessId()
+#else
 #include <unistd.h>
 #endif
 

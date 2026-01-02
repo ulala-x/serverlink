@@ -3,13 +3,15 @@
 #ifndef SERVERLINK_IP_RESOLVER_HPP_INCLUDED
 #define SERVERLINK_IP_RESOLVER_HPP_INCLUDED
 
-#if !defined SL_HAVE_WINDOWS
+#include "address.hpp"
+
+#if defined SL_HAVE_WINDOWS
+#include "../io/windows.hpp"  // For winsock2.h and socket types
+#else
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
 #endif
-
-#include "address.hpp"
 
 namespace slk
 {

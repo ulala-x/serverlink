@@ -5,7 +5,9 @@
 
 #include "../util/config.hpp"
 
-#if !defined SL_HAVE_WINDOWS
+#if defined SL_HAVE_WINDOWS
+#include "../io/windows.hpp"  // For winsock2.h and sockaddr types
+#else
 #include <sys/socket.h>
 #include <netinet/in.h>
 #endif
