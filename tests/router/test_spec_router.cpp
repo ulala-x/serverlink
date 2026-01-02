@@ -19,14 +19,26 @@
  */
 static void test_fair_queue_in(const char *bind_address)
 {
+    printf("DEBUG: test_fair_queue_in started, bind_address=%s\n", bind_address);
+    fflush(stdout);
+
     slk_ctx_t *ctx = test_context_new();
+    printf("DEBUG: context created\n");
+    fflush(stdout);
 
     slk_socket_t *receiver = test_socket_new(ctx, SLK_ROUTER);
+    printf("DEBUG: receiver socket created\n");
+    fflush(stdout);
+
     test_socket_bind(receiver, bind_address);
+    printf("DEBUG: receiver bound\n");
+    fflush(stdout);
 
     // Use constexpr for compile-time constant (VLAs are not standard C++)
     constexpr int services = 5;
     slk_socket_t *senders[services];
+    printf("DEBUG: senders array declared\n");
+    fflush(stdout);
 
     /* Set receiver routing ID */
     int rc = slk_setsockopt(receiver, SLK_ROUTING_ID, "RECV", 4);
@@ -368,7 +380,11 @@ int main()
     printf("Starting tests...\n");
     fflush(stdout);
 
+    printf("DEBUG: About to run test_fair_queue_in_tcp\n");
+    fflush(stdout);
     RUN_TEST(test_fair_queue_in_tcp);
+    printf("DEBUG: Finished test_fair_queue_in_tcp\n");
+    fflush(stdout);
     RUN_TEST(test_destroy_queue_on_disconnect_tcp);
 
     /* Note: inproc tests skipped as ServerLink may not fully support inproc */
