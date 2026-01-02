@@ -250,7 +250,7 @@ SL_EXPORT int SL_CALL slk_poll(slk_pollitem_t *items, int nitems, long timeout);
 
 /* Platform-specific file descriptor type */
 #if defined(_WIN32)
-    typedef void* slk_fd_t;
+    typedef uintptr_t slk_fd_t;  /* Compatible with SOCKET type */
 #else
     typedef int slk_fd_t;
 #endif

@@ -16,8 +16,7 @@
 #include <unistd.h>
 #include <string.h>
 #else
-#include <winsock2.h>
-#include <windows.h>
+#include "windows.hpp"
 #include <io.h>
 #endif
 
@@ -27,11 +26,6 @@
 
 namespace slk
 {
-#ifdef _WIN32
-// Signaler port for Windows TCP-based signaling
-// C++20: Use inline constexpr for compile-time constant
-inline constexpr int signaler_port = 0;  // Use ephemeral port
-#endif
 
 fd_t open_socket (int domain_, int type_, int protocol_)
 {
@@ -51,7 +45,7 @@ fd_t open_socket (int domain_, int type_, int protocol_)
 
     if (s == retired_fd) {
 #ifdef _WIN32
-        errno = err::wsa_error_to_errno (WSAGetLastError ());
+        errno = wsa_error_to_errno (WSAGetLastError ());
 #endif
         return retired_fd;
     }
@@ -219,7 +213,7 @@ static int make_fdpair_tcpip (fd_t *r_, fd_t *w_)
         closesocket (*w_);
         *w_ = INVALID_SOCKET;
     }
-    errno = err::wsa_error_to_errno (saved_errno);
+    errno = wsa_error_to_errno (saved_errno);
     return -1;
 }
 #endif
