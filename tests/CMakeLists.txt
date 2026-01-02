@@ -105,6 +105,12 @@ add_serverlink_test(test_inproc_connect transport/test_inproc_connect.cpp "trans
 add_serverlink_test(test_reconnect_ivl transport/test_reconnect_ivl.cpp "transport")
 add_serverlink_test(test_ipc_basic transport/test_ipc_basic.cpp "transport")
 
+# Windows-specific Tests
+if(WIN32)
+    message(STATUS "Adding Windows-specific tests...")
+    add_serverlink_test(test_wsastartup_order windows/test_wsastartup_order.cpp "windows")
+endif()
+
 # Poller Tests
 message(STATUS "Adding poller tests...")
 add_serverlink_test(test_poller poller/test_poller.cpp "poller")

@@ -31,22 +31,29 @@ namespace slk
 #ifdef _WIN32
 static bool s_network_initialized = false;
 
-// Static initializer to ensure WSAStartup is called before main()
-// This is necessary because some objects (like signaler_t in ctx_t)
-// are created during static initialization and need sockets
+// Internal initialization function - can be called from DllMain or static initializer
+// Note: Not static because DllMain (outside namespace) needs access
+void internal_initialize_network ()
+{
+    if (s_network_initialized)
+        return;
+
+    const WORD version_requested = MAKEWORD (2, 2);
+    WSADATA wsa_data;
+    const int rc = WSAStartup (version_requested, &wsa_data);
+    if (rc == 0 && LOBYTE (wsa_data.wVersion) == 2
+        && HIBYTE (wsa_data.wVersion) == 2) {
+        s_network_initialized = true;
+    }
+}
+
+// Static initializer as fallback for static library builds
+// For DLL builds, DllMain takes precedence
 namespace {
 struct WindowsNetworkInit {
     WindowsNetworkInit ()
     {
-        if (s_network_initialized)
-            return;
-        const WORD version_requested = MAKEWORD (2, 2);
-        WSADATA wsa_data;
-        const int rc = WSAStartup (version_requested, &wsa_data);
-        if (rc == 0 && LOBYTE (wsa_data.wVersion) == 2
-            && HIBYTE (wsa_data.wVersion) == 2) {
-            s_network_initialized = true;
-        }
+        internal_initialize_network ();
     }
 };
 static WindowsNetworkInit s_windows_network_init;
@@ -56,18 +63,11 @@ static WindowsNetworkInit s_windows_network_init;
 bool initialize_network ()
 {
 #ifdef _WIN32
-    if (s_network_initialized)
-        return true;
-
-    const WORD version_requested = MAKEWORD (2, 2);
-    WSADATA wsa_data;
-    const int rc = WSAStartup (version_requested, &wsa_data);
-    slk_assert (rc == 0);
-    slk_assert (LOBYTE (wsa_data.wVersion) == 2
-                && HIBYTE (wsa_data.wVersion) == 2);
-    s_network_initialized = true;
-#endif
+    internal_initialize_network ();
+    return s_network_initialized;
+#else
     return true;
+#endif
 }
 
 fd_t open_socket (int domain_, int type_, int protocol_)
@@ -419,3 +419,44 @@ void assert_success_or_recoverable (fd_t s_, int rc_)
 }
 
 } // namespace slk
+
+//  DllMain - Windows DLL entry point for guaranteed initialization
+//  This ensures WSAStartup is called when the DLL loads, which is more
+//  reliable than static initialization for DLLs since it's called before
+//  any global constructors run.
+#if defined _WIN32 && defined _USRDLL
+
+extern "C" BOOL WINAPI DllMain (HINSTANCE hinstDLL,
+                                 DWORD fdwReason,
+                                 LPVOID lpvReserved)
+{
+    switch (fdwReason) {
+    case DLL_PROCESS_ATTACH:
+        // Initialize network when DLL is loaded into process
+        // This runs BEFORE any global constructors, ensuring WSAStartup
+        // is ready when ctx_t constructor creates signaler objects
+        slk::internal_initialize_network ();
+        break;
+
+    case DLL_PROCESS_DETACH:
+        // Cleanup network when DLL is unloaded
+        // lpvReserved is non-NULL if process is terminating
+        // In that case, skip cleanup as Windows will do it automatically
+        if (lpvReserved == NULL) {
+            slk::shutdown_network ();
+        }
+        break;
+
+    case DLL_THREAD_ATTACH:
+    case DLL_THREAD_DETACH:
+        // No per-thread initialization needed
+        break;
+    }
+
+    // Prevent unused parameter warning
+    (void) hinstDLL;
+
+    return TRUE;
+}
+
+#endif // _WIN32 && _USRDLL
