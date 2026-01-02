@@ -20,9 +20,6 @@
 #define SL_CTX_TAG_VALUE_GOOD 0xabadcafe
 #define SL_CTX_TAG_VALUE_BAD 0xdeadbeef
 
-// Track number of active contexts for network initialization/shutdown
-static std::atomic<int> s_context_count{0};
-
 static int clipped_maxsocket (int max_requested_)
 {
     if (max_requested_ >= slk::poller_t::max_fds ()
@@ -46,11 +43,6 @@ slk::ctx_t::ctx_t () :
     _ipv6 (false),
     _zero_copy (true)
 {
-    // Initialize network (WSAStartup on Windows) on first context
-    if (s_context_count.fetch_add (1) == 0) {
-        initialize_network ();
-    }
-
     // Initialise crypto library, if needed
     slk::random_open ();
 
@@ -92,11 +84,6 @@ slk::ctx_t::~ctx_t ()
 
     // De-initialise crypto library, if needed
     slk::random_close ();
-
-    // Shutdown network (WSACleanup on Windows) on last context
-    if (s_context_count.fetch_sub (1) == 1) {
-        shutdown_network ();
-    }
 
     // Remove the tag, so that the object is considered dead
     _tag = SL_CTX_TAG_VALUE_BAD;

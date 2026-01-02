@@ -18,7 +18,6 @@
 #else
 #include "windows.hpp"
 #include <io.h>
-#include <cstdio>  // For fprintf debugging on Windows
 #endif
 
 #if defined SL_HAVE_EVENTFD
@@ -28,47 +27,19 @@
 namespace slk
 {
 
-#ifdef _WIN32
-// Thread-safe network initialization using C++11 function-local static.
-// This guarantees WSAStartup is called exactly once before any socket operation,
-// regardless of static initialization order or DLL loading sequence.
-static bool do_initialize_network ()
-{
-    fprintf (stderr, "[SERVERLINK] do_initialize_network called\n");
-    fflush (stderr);
-
-    const WORD version_requested = MAKEWORD (2, 2);
-    WSADATA wsa_data;
-    const int rc = WSAStartup (version_requested, &wsa_data);
-
-    fprintf (stderr, "[SERVERLINK] WSAStartup returned %d\n", rc);
-    fflush (stderr);
-
-    const bool success = rc == 0 && LOBYTE (wsa_data.wVersion) == 2
-                                 && HIBYTE (wsa_data.wVersion) == 2;
-
-    fprintf (stderr, "[SERVERLINK] initialization %s\n", success ? "SUCCESS" : "FAILED");
-    fflush (stderr);
-
-    return success;
-}
-#endif
-
 bool initialize_network ()
 {
 #ifdef _WIN32
-    // C++11 guarantees thread-safe initialization of function-local statics.
-    // This ensures WSAStartup is called exactly once before the first socket use.
-    fprintf (stderr, "[SERVERLINK] initialize_network() called\n");
-    fflush (stderr);
-
-    static bool initialized = do_initialize_network ();
-
-    fprintf (stderr, "[SERVERLINK] initialize_network() returning %s\n",
-             initialized ? "TRUE" : "FALSE");
-    fflush (stderr);
-
-    return initialized;
+    // Initialise Windows sockets. Note that WSAStartup can be called multiple
+    // times given that WSACleanup will be called for each WSAStartup.
+    // This matches libzmq 4.3.5 behavior exactly.
+    const WORD version_requested = MAKEWORD (2, 2);
+    WSADATA wsa_data;
+    const int rc = WSAStartup (version_requested, &wsa_data);
+    slk_assert (rc == 0);
+    slk_assert (LOBYTE (wsa_data.wVersion) == 2
+                && HIBYTE (wsa_data.wVersion) == 2);
+    return true;
 #else
     return true;
 #endif
@@ -76,10 +47,6 @@ bool initialize_network ()
 
 fd_t open_socket (int domain_, int type_, int protocol_)
 {
-    // Ensure network is initialized (WSAStartup on Windows)
-    // initialize_network() is idempotent - checks s_network_initialized internally
-    initialize_network ();
-
     int rc;
 
     // Set SOCK_CLOEXEC if available
@@ -156,6 +123,9 @@ void make_socket_noninheritable (fd_t sock_)
 void shutdown_network ()
 {
 #ifdef _WIN32
+    // On Windows, uninitialise socket layer.
+    // WSACleanup is reference counted by Windows and matches each WSAStartup call.
+    // This matches libzmq 4.3.5 behavior exactly.
     const int rc = WSACleanup ();
     wsa_assert (rc != SOCKET_ERROR);
 #endif
@@ -423,65 +393,3 @@ void assert_success_or_recoverable (fd_t s_, int rc_)
 }
 
 } // namespace slk
-
-//  DllMain - Windows DLL entry point for guaranteed initialization
-//  This ensures WSAStartup is called when the DLL loads, which handles
-//  the case where global constructors need sockets before main() runs.
-//  Note: SL_BUILDING_DLL is defined by CMake when building shared library
-#if defined _WIN32 && defined SL_BUILDING_DLL
-
-#pragma message("[COMPILE TIME] DllMain will be included in this build (SL_BUILDING_DLL is defined)")
-
-extern "C" BOOL WINAPI DllMain (HINSTANCE hinstDLL,
-                                 DWORD fdwReason,
-                                 LPVOID lpvReserved)
-{
-    fprintf (stderr, "[SERVERLINK] DllMain called, reason=%lu\n", fdwReason);
-    fflush (stderr);
-
-    switch (fdwReason) {
-    case DLL_PROCESS_ATTACH:
-        // Initialize network when DLL is loaded into process
-        // This runs BEFORE any code that uses the DLL, ensuring WSAStartup
-        // is ready when ctx_t constructor creates signaler objects
-        fprintf (stderr, "[SERVERLINK] DLL_PROCESS_ATTACH: calling initialize_network()\n");
-        fflush (stderr);
-
-        {
-            bool init_result = slk::initialize_network ();
-            fprintf (stderr, "[SERVERLINK] initialize_network() returned %s\n",
-                     init_result ? "TRUE" : "FALSE");
-            fflush (stderr);
-        }
-        break;
-
-    case DLL_PROCESS_DETACH:
-        fprintf (stderr, "[SERVERLINK] DLL_PROCESS_DETACH\n");
-        fflush (stderr);
-
-        // Cleanup network when DLL is unloaded
-        // lpvReserved is non-NULL if process is terminating
-        // In that case, skip cleanup as Windows will do it automatically
-        if (lpvReserved == NULL) {
-            slk::shutdown_network ();
-        }
-        break;
-
-    case DLL_THREAD_ATTACH:
-        fprintf (stderr, "[SERVERLINK] DLL_THREAD_ATTACH\n");
-        fflush (stderr);
-        break;
-
-    case DLL_THREAD_DETACH:
-        fprintf (stderr, "[SERVERLINK] DLL_THREAD_DETACH\n");
-        fflush (stderr);
-        break;
-    }
-
-    // Prevent unused parameter warning
-    (void) hinstDLL;
-
-    return TRUE;
-}
-
-#endif // _WIN32 && SL_BUILDING_DLL

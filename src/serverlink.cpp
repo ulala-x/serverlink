@@ -30,6 +30,7 @@
 #include "util/atomic_counter.hpp"
 #include "util/timers.hpp"
 #include "util/stopwatch.hpp"
+#include "io/ip.hpp"
 
 #ifdef SL_ENABLE_MONITORING
 #include "monitor/connection_manager.hpp"
@@ -159,6 +160,14 @@ const char* SL_CALL slk_strerror(int errnum)
 
 slk_ctx_t* SL_CALL slk_ctx_new(void)
 {
+    // We do this before the ctx constructor since its embedded mailbox_t
+    // object needs the network to be up and running (at least on Windows).
+    // This matches libzmq 4.3.5 behavior exactly.
+    if (!slk::initialize_network ()) {
+        set_errno(SLK_EPROTO);
+        return nullptr;
+    }
+
     try {
         slk::ctx_t *ctx = new slk::ctx_t();
         if (!ctx || !ctx->valid()) {
@@ -184,12 +193,26 @@ void SL_CALL slk_ctx_destroy(slk_ctx_t *ctx_)
 
     slk::ctx_t *ctx = reinterpret_cast<slk::ctx_t*>(ctx_);
 
+    int rc = -1;
+    int en = 0;
+
     try {
         // NOTE: terminate() calls "delete this", so we don't delete ctx here
-        ctx->terminate();
+        rc = ctx->terminate();
+        en = errno;
     } catch (...) {
         // Best effort cleanup - terminate() should have deleted the object
+        rc = -1;
+        en = errno;
     }
+
+    // Shut down network only if termination was not interrupted by a signal.
+    // This matches libzmq 4.3.5 behavior exactly.
+    if (rc == 0 || en != EINTR) {
+        slk::shutdown_network ();
+    }
+
+    errno = en;
 }
 
 int SL_CALL slk_ctx_set(slk_ctx_t *ctx_, int option, const void *value, size_t len)
