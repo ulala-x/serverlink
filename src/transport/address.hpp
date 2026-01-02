@@ -3,14 +3,15 @@
 #ifndef __SL_ADDRESS_HPP_INCLUDED__
 #define __SL_ADDRESS_HPP_INCLUDED__
 
+#include "../util/config.hpp"
 #include "../io/fd.hpp"
 
 #include <string>
 
-#ifndef SL_HAVE_WINDOWS
-#include <sys/socket.h>
+#if defined SL_HAVE_WINDOWS
+#include "../io/windows.hpp"
 #else
-#include <ws2tcpip.h>
+#include <sys/socket.h>
 #endif
 
 namespace slk

@@ -13,8 +13,7 @@
 #endif
 
 #if defined SL_HAVE_WINDOWS
-#include <winsock2.h>
-#include <windows.h>
+#include "windows.hpp"
 #elif defined SL_HAVE_VXWORKS
 #include <unistd.h>
 #include <sys/time.h>

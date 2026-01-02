@@ -130,6 +130,14 @@ endif()
 
 # =============================================================================
 
+# Detect Windows platform
+if(WIN32)
+    set(SL_HAVE_WINDOWS 1)
+    message(STATUS "Windows platform detected")
+else()
+    set(SL_HAVE_WINDOWS 0)
+endif()
+
 # Detect Windows event polling (WSAEventSelect-based)
 if(WIN32)
     set(SL_HAVE_WEPOLL 1)

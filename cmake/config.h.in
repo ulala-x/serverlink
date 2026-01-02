@@ -4,6 +4,9 @@
 #ifndef SERVERLINK_CONFIG_H
 #define SERVERLINK_CONFIG_H
 
+/* Platform detection */
+#cmakedefine SL_HAVE_WINDOWS @SL_HAVE_WINDOWS@
+
 /* Platform I/O multiplexing support */
 #cmakedefine SL_HAVE_WEPOLL @SL_HAVE_WEPOLL@
 #cmakedefine SL_HAVE_EPOLL @SL_HAVE_EPOLL@
