@@ -7,6 +7,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 /* Note: SEQ_END, s_send_seq, s_recv_seq are now defined in testutil.hpp */
 
 /*
@@ -352,6 +356,15 @@ static void test_destroy_queue_on_disconnect_inproc()
 int main()
 {
     printf("=== ServerLink ROUTER Spec Compliance Tests ===\n\n");
+    fflush(stdout);
+
+#ifdef _WIN32
+    // Set error mode to prevent Windows error dialogs from blocking test execution
+    // This ensures crashes are reported immediately rather than waiting for user input
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+#endif
+
+    printf("Starting tests...\n");
     fflush(stdout);
 
     RUN_TEST(test_fair_queue_in_tcp);

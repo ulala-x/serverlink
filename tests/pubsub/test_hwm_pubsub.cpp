@@ -6,6 +6,10 @@
 #include "../testutil.hpp"
 #include <string.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 /* Use SETTLE_TIME from testutil.hpp (300ms) */
 
 /* Test: Default HWM behavior - send until mute, verify all received */
@@ -303,6 +307,11 @@ static void test_blocking_inproc()
 
 int main()
 {
+#ifdef _WIN32
+    /* Suppress Windows error dialogs for critical errors, GPF, and file open errors */
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+#endif
+
     printf("=== ServerLink PUB/SUB HWM Tests ===\n\n");
 
     RUN_TEST(test_defaults_large_tcp);
