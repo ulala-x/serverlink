@@ -3,6 +3,7 @@
 
 param(
     [string]$BuildDir = "",
+    [string]$BuildType = "Release",
     [int]$TestTimeout = 300,
     [switch]$Verbose
 )
@@ -21,6 +22,7 @@ Write-Host "============================================"
 Write-Host "ServerLink Test Suite"
 Write-Host "============================================"
 Write-Host "Build Directory: $BuildDir"
+Write-Host "Build Type:      $BuildType"
 Write-Host "Test Timeout:    ${TestTimeout}s"
 Write-Host "============================================"
 Write-Host ""
@@ -48,6 +50,7 @@ try {
     Write-Host ""
 
     $CtestArgs = @(
+        "-C", "$BuildType",
         "--output-on-failure",
         "--timeout", "$TestTimeout"
     )
@@ -79,7 +82,7 @@ try {
         Write-Host ""
 
         # Show test summary
-        $TestCount = (ctest -N | Select-String "^  Test").Count
+        $TestCount = (ctest -C $BuildType -N | Select-String "^  Test").Count
         Write-Host "Test summary:"
         Write-Host "Total tests: $TestCount"
         Write-Host ""
@@ -93,7 +96,7 @@ try {
 
         # Show failed tests
         Write-Host "Failed tests:"
-        ctest --rerun-failed --output-on-failure
+        ctest -C $BuildType --rerun-failed --output-on-failure
         Write-Host ""
 
         exit 1
