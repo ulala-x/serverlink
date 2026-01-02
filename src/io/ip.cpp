@@ -30,6 +30,27 @@ namespace slk
 // Network initialization status
 #ifdef _WIN32
 static bool s_network_initialized = false;
+
+// Static initializer to ensure WSAStartup is called before main()
+// This is necessary because some objects (like signaler_t in ctx_t)
+// are created during static initialization and need sockets
+namespace {
+struct WindowsNetworkInit {
+    WindowsNetworkInit ()
+    {
+        if (s_network_initialized)
+            return;
+        const WORD version_requested = MAKEWORD (2, 2);
+        WSADATA wsa_data;
+        const int rc = WSAStartup (version_requested, &wsa_data);
+        if (rc == 0 && LOBYTE (wsa_data.wVersion) == 2
+            && HIBYTE (wsa_data.wVersion) == 2) {
+            s_network_initialized = true;
+        }
+    }
+};
+static WindowsNetworkInit s_windows_network_init;
+}  // anonymous namespace
 #endif
 
 bool initialize_network ()
