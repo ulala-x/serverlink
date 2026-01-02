@@ -24,10 +24,9 @@ static void test_fair_queue_in(const char *bind_address)
     slk_socket_t *receiver = test_socket_new(ctx, SLK_ROUTER);
     test_socket_bind(receiver, bind_address);
 
-    // Use fixed-size array instead of VLA (VLAs are not standard C++ and
-    // can cause stack buffer overrun errors on Windows CI)
-    static const int services = 5;
-    slk_socket_t *senders[5];
+    // Use constexpr for compile-time constant (VLAs are not standard C++)
+    constexpr int services = 5;
+    slk_socket_t *senders[services];
 
     /* Set receiver routing ID */
     int rc = slk_setsockopt(receiver, SLK_ROUTING_ID, "RECV", 4);
@@ -65,7 +64,7 @@ static void test_fair_queue_in(const char *bind_address)
     test_sleep_ms(200);
 
     /* Receiver gets all handshakes and responds */
-    char sender_ids[5];  // Fixed-size instead of VLA
+    char sender_ids[services];
     for (unsigned char peer = 0; peer < services; ++peer) {
         /* Poll before blocking recv */
         if (!test_poll_readable(receiver, 5000)) {

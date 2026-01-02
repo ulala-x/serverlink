@@ -517,8 +517,8 @@ static void test_ipc_multiple_clients()
     }
 
     /* Create multiple ROUTER clients */
-    static const int num_clients = 3;
-    slk_socket_t *clients[3];  // Fixed-size instead of VLA
+    constexpr int num_clients = 3;
+    slk_socket_t *clients[num_clients];
 
     for (int i = 0; i < num_clients; i++) {
         clients[i] = test_socket_new(ctx, SLK_ROUTER);
