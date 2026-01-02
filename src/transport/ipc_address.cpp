@@ -7,6 +7,7 @@
 
 #include <string>
 #include <cstring>
+#include <cstddef>
 #include <climits>
 
 #include "../util/err.hpp"
