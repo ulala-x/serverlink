@@ -13,6 +13,8 @@
 #include <winsock2.h>
 #endif
 
+#include <new>
+
 slk::stream_listener_base_t::stream_listener_base_t (
   slk::io_thread_t *io_thread_,
   slk::socket_base_t *socket_,

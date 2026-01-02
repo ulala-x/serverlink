@@ -3,6 +3,7 @@
 
 #include "atomic_counter.hpp"
 #include <cstdlib>
+#include <new>
 
 namespace slk {
 

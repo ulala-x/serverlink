@@ -15,6 +15,7 @@
 #endif
 
 #include <limits>
+#include <new>
 
 slk::stream_connecter_base_t::stream_connecter_base_t (
   slk::io_thread_t *io_thread_,

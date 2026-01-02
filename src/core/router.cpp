@@ -13,6 +13,7 @@
 #include "../monitor/connection_manager.hpp"
 #include "../monitor/event_dispatcher.hpp"
 #include "../monitor/heartbeat.hpp"
+#include <new>
 
 slk::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     routing_socket_base_t (parent_, tid_, sid_),

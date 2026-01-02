@@ -12,6 +12,7 @@
 #include "../util/constants.hpp"
 
 #include <limits.h>
+#include <new>
 
 // Poll event constants - these match the public API defines
 // C++20: Use inline constexpr for compile-time constants

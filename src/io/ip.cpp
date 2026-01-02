@@ -4,6 +4,7 @@
 #include "../util/err.hpp"
 #include "../util/macros.hpp"
 #include "../util/config.hpp"
+#include "../transport/address.hpp"
 #include <string>
 
 #if !defined _WIN32
@@ -356,11 +357,7 @@ void assert_success_or_recoverable (fd_t s_, int rc_)
 
     // Check whether an error occurred
     int err = 0;
-#if defined SL_HAVE_HPUX || defined SL_HAVE_VXWORKS
-    int len = sizeof err;
-#else
-    socklen_t len = sizeof err;
-#endif
+    slk_socklen_t len = sizeof err;
 
     const int rc = getsockopt (s_, SOL_SOCKET, SO_ERROR,
                                reinterpret_cast<char *> (&err), &len);

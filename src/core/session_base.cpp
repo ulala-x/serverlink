@@ -15,6 +15,7 @@
 #include "../transport/address.hpp"
 
 #include "ctx.hpp"
+#include <new>
 
 slk::session_base_t *slk::session_base_t::create (class io_thread_t *io_thread_,
                                                   bool active_,
