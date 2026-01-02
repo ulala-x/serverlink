@@ -10,10 +10,10 @@
  *   ./build/examples/pubsub/sharded_example
  */
 
+#include <stdio.h>
 #define _DEFAULT_SOURCE
 #define _XOPEN_SOURCE 500
 #include <serverlink/serverlink.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>

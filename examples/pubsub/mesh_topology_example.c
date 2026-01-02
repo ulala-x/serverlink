@@ -26,10 +26,10 @@
  *   ./build/examples/pubsub/mesh_topology_example
  */
 
+#include <stdio.h>
 #define _DEFAULT_SOURCE
 #define _XOPEN_SOURCE 500
 #include <serverlink/serverlink.h>
-#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
