@@ -1,0 +1,105 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  quick-build:
+    name: Quick Build & Test (Linux x64)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            git \
+            pkg-config
+
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTS=ON \
+            -DBUILD_EXAMPLES=ON \
+            -DCMAKE_CXX_FLAGS="-Wall -Wextra -Wpedantic -Werror"
+
+      - name: Build
+        run: |
+          cmake --build build --parallel $(nproc)
+
+      - name: Run tests
+        run: |
+          cd build
+          ctest --output-on-failure --timeout 300
+
+      - name: Check for warnings
+        if: failure()
+        run: |
+          echo "Build or tests failed. Please fix before merging."
+          exit 1
+
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check file permissions
+        run: |
+          echo "Checking for executable scripts..."
+          find . -name "*.sh" -type f ! -executable | while read file; do
+            echo "Warning: $file is not executable"
+          done
+
+      - name: Check line endings
+        run: |
+          echo "Checking for CRLF line endings..."
+          if git ls-files --eol | grep 'w/crlf'; then
+            echo "Error: Found files with CRLF line endings"
+            exit 1
+          fi
+
+      - name: Check for TODO/FIXME comments
+        run: |
+          echo "Checking for unresolved TODOs/FIXMEs..."
+          grep -r "FIXME\|TODO" --include="*.cpp" --include="*.hpp" --include="*.h" src/ || true
+
+  summary:
+    name: PR Summary
+    runs-on: ubuntu-22.04
+    needs:
+      - quick-build
+      - code-quality
+    if: always()
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## PR Check Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.quick-build.result }}" == "success" ]; then
+            echo "✅ **Build & Tests**: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Build & Tests**: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.code-quality.result }}" == "success" ]; then
+            echo "✅ **Code Quality**: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ **Code Quality**: WARNINGS" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This PR is ready to merge if all checks passed." >> $GITHUB_STEP_SUMMARY

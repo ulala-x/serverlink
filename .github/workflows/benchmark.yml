@@ -1,0 +1,192 @@
+name: Performance Benchmarks
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    name: Run Benchmarks
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            git \
+            pkg-config \
+            python3 \
+            jq
+
+      - name: Build ServerLink (Release)
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTS=ON \
+            -DCMAKE_CXX_FLAGS="-O3 -march=native"
+          cmake --build build --parallel $(nproc)
+
+      - name: Run benchmarks
+        run: |
+          chmod +x ./scripts/run_benchmarks.sh
+          BUILD_DIR=build ./scripts/run_benchmarks.sh
+
+      - name: Format results as Markdown
+        run: |
+          chmod +x ./scripts/format_benchmark.py
+          python3 ./scripts/format_benchmark.py build/tests/benchmark benchmark_results.md
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            benchmark_results.json
+            benchmark_results.md
+          retention-days: 90
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            let comment = '## 🚀 Performance Benchmark Results\n\n';
+
+            // Read markdown results if available
+            if (fs.existsSync('benchmark_results.md')) {
+              const results = fs.readFileSync('benchmark_results.md', 'utf8');
+              comment += results;
+            } else {
+              comment += 'Benchmark results not available.\n';
+            }
+
+            comment += '\n---\n';
+            comment += '*Benchmarks run on GitHub Actions runner (ubuntu-22.04)*\n';
+
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('Performance Benchmark Results')
+            );
+
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
+
+      - name: Add summary to workflow
+        run: |
+          if [ -f "benchmark_results.md" ]; then
+            cat benchmark_results.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## Benchmark Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "No benchmark results available." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  compare-baseline:
+    name: Compare with Baseline
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            python3 \
+            jq
+
+      - name: Build and benchmark PR
+        run: |
+          cmake -B build-pr \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTS=ON \
+            -DCMAKE_CXX_FLAGS="-O3 -march=native"
+          cmake --build build-pr --parallel $(nproc)
+          chmod +x ./scripts/run_benchmarks.sh
+          BUILD_DIR=build-pr ./scripts/run_benchmarks.sh
+          mv benchmark_results.json benchmark_pr.json
+
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Build and benchmark main
+        run: |
+          cmake -B build-main \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTS=ON \
+            -DCMAKE_CXX_FLAGS="-O3 -march=native"
+          cmake --build build-main --parallel $(nproc)
+          chmod +x ./scripts/run_benchmarks.sh
+          BUILD_DIR=build-main ./scripts/run_benchmarks.sh
+          mv benchmark_results.json benchmark_main.json
+
+      - name: Compare results
+        run: |
+          echo "## 📊 Performance Comparison (PR vs Main)" >> comparison.md
+          echo "" >> comparison.md
+
+          if [ -f "benchmark_pr.json" ] && [ -f "benchmark_main.json" ]; then
+            # Simple comparison using jq
+            echo "| Benchmark | Main | PR | Change |" >> comparison.md
+            echo "|-----------|------|----|----|" >> comparison.md
+
+            # This is a simple comparison - you can make it more sophisticated
+            jq -r '.benchmarks[] | .name' benchmark_pr.json | while read name; do
+              # Extract metrics (this is simplified)
+              echo "| $name | - | - | - |" >> comparison.md
+            done
+          else
+            echo "Could not compare - missing benchmark data" >> comparison.md
+          fi
+
+          cat comparison.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-comparison
+          path: |
+            benchmark_pr.json
+            benchmark_main.json
+            comparison.md
+          retention-days: 30

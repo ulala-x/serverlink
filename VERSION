@@ -1,0 +1,18 @@
+# ServerLink Version Information
+# This file is used by the build system and CI/CD pipeline
+
+SERVERLINK_VERSION=0.1.0
+CMAKE_MINIMUM_VERSION=3.14
+CXX_STANDARD=20
+
+# Build configuration
+BUILD_SHARED_LIBS=ON
+BUILD_TESTS=ON
+BUILD_EXAMPLES=ON
+
+# Platform features
+# I/O backend is auto-detected per platform:
+# - Windows: wepoll
+# - Linux: epoll
+# - macOS/BSD: kqueue
+# - Fallback: select
