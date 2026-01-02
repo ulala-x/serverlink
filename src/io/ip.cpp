@@ -27,44 +27,27 @@
 namespace slk
 {
 
-// Network initialization status
 #ifdef _WIN32
-static bool s_network_initialized = false;
-
-// Internal initialization function - can be called from DllMain or static initializer
-// Note: Not static because DllMain (outside namespace) needs access
-void internal_initialize_network ()
+// Thread-safe network initialization using C++11 function-local static.
+// This guarantees WSAStartup is called exactly once before any socket operation,
+// regardless of static initialization order or DLL loading sequence.
+static bool do_initialize_network ()
 {
-    if (s_network_initialized)
-        return;
-
     const WORD version_requested = MAKEWORD (2, 2);
     WSADATA wsa_data;
     const int rc = WSAStartup (version_requested, &wsa_data);
-    if (rc == 0 && LOBYTE (wsa_data.wVersion) == 2
-        && HIBYTE (wsa_data.wVersion) == 2) {
-        s_network_initialized = true;
-    }
+    return rc == 0 && LOBYTE (wsa_data.wVersion) == 2
+                   && HIBYTE (wsa_data.wVersion) == 2;
 }
-
-// Static initializer as fallback for static library builds
-// For DLL builds, DllMain takes precedence
-namespace {
-struct WindowsNetworkInit {
-    WindowsNetworkInit ()
-    {
-        internal_initialize_network ();
-    }
-};
-static WindowsNetworkInit s_windows_network_init;
-}  // anonymous namespace
 #endif
 
 bool initialize_network ()
 {
 #ifdef _WIN32
-    internal_initialize_network ();
-    return s_network_initialized;
+    // C++11 guarantees thread-safe initialization of function-local statics.
+    // This ensures WSAStartup is called exactly once before the first socket use.
+    static bool initialized = do_initialize_network ();
+    return initialized;
 #else
     return true;
 #endif
@@ -419,45 +402,3 @@ void assert_success_or_recoverable (fd_t s_, int rc_)
 }
 
 } // namespace slk
-
-//  DllMain - Windows DLL entry point for guaranteed initialization
-//  This ensures WSAStartup is called when the DLL loads, which is more
-//  reliable than static initialization for DLLs since it's called before
-//  any global constructors run.
-//  Note: SL_BUILDING_DLL is defined by CMake when building shared library
-#if defined _WIN32 && defined SL_BUILDING_DLL
-
-extern "C" BOOL WINAPI DllMain (HINSTANCE hinstDLL,
-                                 DWORD fdwReason,
-                                 LPVOID lpvReserved)
-{
-    switch (fdwReason) {
-    case DLL_PROCESS_ATTACH:
-        // Initialize network when DLL is loaded into process
-        // This runs BEFORE any global constructors, ensuring WSAStartup
-        // is ready when ctx_t constructor creates signaler objects
-        slk::internal_initialize_network ();
-        break;
-
-    case DLL_PROCESS_DETACH:
-        // Cleanup network when DLL is unloaded
-        // lpvReserved is non-NULL if process is terminating
-        // In that case, skip cleanup as Windows will do it automatically
-        if (lpvReserved == NULL) {
-            slk::shutdown_network ();
-        }
-        break;
-
-    case DLL_THREAD_ATTACH:
-    case DLL_THREAD_DETACH:
-        // No per-thread initialization needed
-        break;
-    }
-
-    // Prevent unused parameter warning
-    (void) hinstDLL;
-
-    return TRUE;
-}
-
-#endif // _WIN32 && SL_BUILDING_DLL
