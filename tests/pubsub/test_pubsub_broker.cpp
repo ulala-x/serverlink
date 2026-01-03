@@ -53,98 +53,39 @@ static void test_start_stop()
 // Test 3: Single publisher to single subscriber through broker
 static void test_single_pubsub()
 {
-    printf("[DEBUG] test_single_pubsub: starting\n");
-    fflush(stdout);
-    printf("[DEBUG] test_single_pubsub: about to call slk_ctx_new\n");
-    fflush(stdout);
     slk_ctx_t *ctx = slk_ctx_new();
-    printf("[DEBUG] test_single_pubsub: ctx_new returned (skipping print)\n");
-    fflush(stdout);
-    printf("[DEBUG] test_single_pubsub: about to assert not null\n");
-    fflush(stdout);
     TEST_ASSERT_NOT_NULL(ctx);
-    printf("[DEBUG] test_single_pubsub: assert passed\n");
-    fflush(stdout);
 
-    printf("[DEBUG] test_single_pubsub: about to create broker\n");
-    fflush(stdout);
     const char *frontend = test_endpoint_tcp();
     const char *backend = test_endpoint_tcp();
     slk_pubsub_broker_t *broker = slk_pubsub_broker_new(ctx, frontend, backend);
-    printf("[DEBUG] test_single_pubsub: broker created\n");
-    fflush(stdout);
-    printf("[DEBUG] test_single_pubsub: about to assert broker not null\n");
-    fflush(stdout);
     TEST_ASSERT_NOT_NULL(broker);
-    printf("[DEBUG] test_single_pubsub: broker assert passed\n");
-    fflush(stdout);
 
     // Start broker
-    printf("[DEBUG] test_single_pubsub: about to start broker\n");
-    fflush(stdout);
     int rc = slk_pubsub_broker_start(broker);
-    printf("[DEBUG] test_single_pubsub: broker_start returned %d\n", rc);
-    fflush(stdout);
-    printf("[DEBUG] test_single_pubsub: about to assert rc == 0\n");
-    fflush(stdout);
     TEST_ASSERT_EQ(0, rc);
-    printf("[DEBUG] test_single_pubsub: assert passed\n");
-    fflush(stdout);
 
     // Give broker time to bind
-    printf("[DEBUG] test_single_pubsub: sleeping 100ms\n");
-    fflush(stdout);
-    slk_sleep(100);  // 100ms
-    printf("[DEBUG] test_single_pubsub: sleep done\n");
-    fflush(stdout);
+    slk_sleep(100);
 
     // Create publisher (connects to frontend)
-    printf("[DEBUG] test_single_pubsub: about to create PUB socket, ctx=%p\n", (void*)ctx);
-    fflush(stdout);
     slk_socket_t *pub = slk_socket(ctx, SLK_PUB);
-    printf("[DEBUG] test_single_pubsub: PUB socket created: %p\n", (void*)pub);
-    fflush(stdout);
-    if (!pub) {
-        printf("ERROR: pub socket is NULL\n");
-        slk_pubsub_broker_stop(broker);
-        slk_pubsub_broker_destroy(&broker);
-        slk_ctx_destroy(ctx);
-        abort();
-    }
-    printf("[DEBUG] test_single_pubsub: about to connect PUB socket\n");
-    fflush(stdout);
+    TEST_ASSERT_NOT_NULL(pub);
     rc = slk_connect(pub, frontend);
-    printf("[DEBUG] test_single_pubsub: connect returned %d\n", rc);
-    fflush(stdout);
     TEST_ASSERT_EQ(0, rc);
 
     // Create subscriber (connects to backend)
-    printf("[DEBUG] test_single_pubsub: about to create SUB socket\n");
-    fflush(stdout);
     slk_socket_t *sub = slk_socket(ctx, SLK_SUB);
-    printf("[DEBUG] test_single_pubsub: SUB socket created: %p\n", (void*)sub);
-    fflush(stdout);
     TEST_ASSERT_NOT_NULL(sub);
-    printf("[DEBUG] test_single_pubsub: about to connect SUB socket\n");
-    fflush(stdout);
     rc = slk_connect(sub, backend);
-    printf("[DEBUG] test_single_pubsub: SUB connect returned %d\n", rc);
-    fflush(stdout);
     TEST_ASSERT_EQ(0, rc);
 
     // Subscribe to all messages
-    printf("[DEBUG] test_single_pubsub: about to subscribe\n");
-    fflush(stdout);
     rc = slk_setsockopt(sub, SLK_SUBSCRIBE, "", 0);
-    printf("[DEBUG] test_single_pubsub: subscribe returned %d\n", rc);
-    fflush(stdout);
     TEST_ASSERT_EQ(0, rc);
 
-    printf("[DEBUG] test_single_pubsub: checking broker still running\n");
-    fflush(stdout);
-
     // Wait for subscriptions to propagate
-    slk_sleep(200);  // 200ms
+    slk_sleep(200);
 
     // Send message
     const char *msg = "Hello, Broker!";

@@ -93,11 +93,6 @@ add_serverlink_test(test_pubsub_cluster pubsub/test_pubsub_cluster.cpp "pubsub")
 # TODO: Fix concurrency test to properly use XPUB with async draining
 # add_serverlink_test(test_registry_concurrent pubsub/test_registry_concurrent.cpp "pubsub")
 
-# Debug test (not part of regular test suite)
-# add_executable(debug_xpub_manual debug_xpub_manual.cpp)  # TODO: Create this file if needed
-# target_include_directories(debug_xpub_manual PRIVATE ${TEST_INCLUDE_DIRS})
-# target_link_libraries(debug_xpub_manual PRIVATE serverlink)
-
 # Transport Tests
 message(STATUS "Adding transport tests...")
 add_serverlink_test(test_bind_after_connect transport/test_bind_after_connect.cpp "transport")
