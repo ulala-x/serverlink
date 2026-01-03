@@ -74,13 +74,6 @@ int mailbox_t::recv (command_t *cmd_, int timeout_)
     return 0;
 }
 
-bool mailbox_t::has_pending () const
-{
-    // Check if we're in active state (already have commands)
-    // or if there are commands in the pipe
-    return _active || _cpipe.check_read ();
-}
-
 bool mailbox_t::valid () const
 {
     return _signaler.valid ();

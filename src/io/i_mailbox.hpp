@@ -18,10 +18,6 @@ class i_mailbox
     virtual void send (const command_t &cmd_) = 0;
     virtual int recv (command_t *cmd_, int timeout_) = 0;
 
-    // Check if there are pending commands without blocking
-    // Returns true if commands are available for reading
-    virtual bool has_pending () const = 0;
-
 #ifdef HAVE_FORK
     // Close file descriptors in the signaller (for forked child processes)
     virtual void forked () = 0;

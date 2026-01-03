@@ -26,9 +26,6 @@ class mailbox_t final : public i_mailbox
     void send (const command_t &cmd_);
     int recv (command_t *cmd_, int timeout_);
 
-    // Check if there are pending commands without blocking
-    bool has_pending () const final;
-
     bool valid () const;
 
 #ifdef HAVE_FORK
