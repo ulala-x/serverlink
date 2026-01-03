@@ -31,7 +31,8 @@ run_router() {
         echo -e "${GREEN}[ROUTER-ROUTER Throughput]${NC}"
         "${BUILD_DIR}/bench_throughput"
     else
-        echo "bench_throughput not found"
+        echo "ERROR: bench_throughput not found at ${BUILD_DIR}/bench_throughput"
+        exit 1
     fi
 }
 
@@ -40,7 +41,8 @@ run_pubsub() {
         echo -e "${GREEN}[PUB-SUB Throughput]${NC}"
         "${BUILD_DIR}/bench_pubsub"
     else
-        echo "bench_pubsub not found"
+        echo "ERROR: bench_pubsub not found at ${BUILD_DIR}/bench_pubsub"
+        exit 1
     fi
 }
 
@@ -49,7 +51,8 @@ run_latency() {
         echo -e "${GREEN}[Latency]${NC}"
         "${BUILD_DIR}/bench_latency"
     else
-        echo "bench_latency not found"
+        echo "ERROR: bench_latency not found at ${BUILD_DIR}/bench_latency"
+        exit 1
     fi
 }
 

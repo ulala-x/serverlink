@@ -30,12 +30,22 @@ jobs:
 
       - name: Build ServerLink (Release)
         run: |
+          set -e
+          echo "Configuring build..."
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=ON \
             -DBUILD_TESTS=ON \
             -DCMAKE_CXX_FLAGS="-O3 -march=native"
+
+          echo "Building benchmarks..."
           cmake --build build --parallel $(nproc)
+
+          echo "Verifying benchmark executables..."
+          test -x build/tests/benchmark/bench_throughput || { echo "ERROR: bench_throughput not built"; exit 1; }
+          test -x build/tests/benchmark/bench_latency || { echo "ERROR: bench_latency not built"; exit 1; }
+          test -x build/tests/benchmark/bench_pubsub || { echo "ERROR: bench_pubsub not built"; exit 1; }
+          echo "All benchmark executables built successfully"
 
       - name: Run benchmarks
         run: |
@@ -124,11 +134,19 @@ jobs:
 
       - name: Build and benchmark PR
         run: |
+          set -e
+          echo "Building PR branch..."
           cmake -B build-pr \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTS=ON \
             -DCMAKE_CXX_FLAGS="-O3 -march=native"
           cmake --build build-pr --parallel $(nproc)
+
+          echo "Verifying PR benchmark executables..."
+          test -x build-pr/tests/benchmark/bench_throughput || { echo "ERROR: bench_throughput not built"; exit 1; }
+          test -x build-pr/tests/benchmark/bench_latency || { echo "ERROR: bench_latency not built"; exit 1; }
+          test -x build-pr/tests/benchmark/bench_pubsub || { echo "ERROR: bench_pubsub not built"; exit 1; }
+
           chmod +x ./tests/benchmark/run_serverlink.sh
           ./tests/benchmark/run_serverlink.sh > benchmark_pr.txt
 
@@ -139,11 +157,19 @@ jobs:
 
       - name: Build and benchmark main
         run: |
+          set -e
+          echo "Building main branch..."
           cmake -B build-main \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTS=ON \
             -DCMAKE_CXX_FLAGS="-O3 -march=native"
           cmake --build build-main --parallel $(nproc)
+
+          echo "Verifying main benchmark executables..."
+          test -x build-main/tests/benchmark/bench_throughput || { echo "ERROR: bench_throughput not built"; exit 1; }
+          test -x build-main/tests/benchmark/bench_latency || { echo "ERROR: bench_latency not built"; exit 1; }
+          test -x build-main/tests/benchmark/bench_pubsub || { echo "ERROR: bench_pubsub not built"; exit 1; }
+
           chmod +x ./tests/benchmark/run_serverlink.sh
           ./tests/benchmark/run_serverlink.sh > benchmark_main.txt
 
