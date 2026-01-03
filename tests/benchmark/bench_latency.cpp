@@ -250,16 +250,34 @@ int main() {
     printf("------------------------------------------------------------------------------------");
     printf("----------\n");
 
+    // Check for CI environment - use reduced iterations
+    const char *ci_env = std::getenv("CI");
+    const char *github_actions = std::getenv("GITHUB_ACTIONS");
+    bool is_ci = (ci_env != nullptr) || (github_actions != nullptr);
+
+    // CI mode: fewer iterations, inproc only
+    int iteration_count = is_ci ? 100 : 10000;
+
+    if (is_ci) {
+        printf("CI mode: using reduced iteration counts\n\n");
+    }
+
     // Test with various message sizes
     size_t sizes[] = {64, 1024, 8192};
 
     for (size_t i = 0; i < 3; i++) {
-        bench_params_t params = {sizes[i], 10000, "tcp"};
+        bench_params_t params = {sizes[i], iteration_count, "inproc"};
 
-        bench_latency_tcp(params);
+        if (!is_ci) {
+            bench_params_t tcp_params = {sizes[i], iteration_count, "tcp"};
+            bench_latency_tcp(tcp_params);
+        }
         bench_latency_inproc(params);
 #ifdef __linux__
-        bench_latency_ipc(params);
+        if (!is_ci) {
+            bench_params_t ipc_params = {sizes[i], iteration_count, "ipc"};
+            bench_latency_ipc(ipc_params);
+        }
 #endif
         printf("\n");
     }

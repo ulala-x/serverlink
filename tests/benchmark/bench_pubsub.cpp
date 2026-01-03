@@ -391,41 +391,59 @@ int main() {
     printf("------------------------------------------------------------------------------------");
     printf("----------\n");
 
+    // Check for CI environment - use reduced iterations
+    const char *ci_env = std::getenv("CI");
+    const char *github_actions = std::getenv("GITHUB_ACTIONS");
+    bool is_ci = (ci_env != nullptr) || (github_actions != nullptr);
+
     // Test with various message sizes
-    // Larger messages = fewer iterations (to keep test time reasonable)
+    // CI mode: reduced iterations, inproc only
     size_t sizes[] = {64, 1024, 8192, 65536};
-    int counts[] = {100000, 50000, 10000, 1000};
+    int counts_full[] = {100000, 50000, 10000, 1000};
+    int counts_ci[] = {1000, 500, 100, 50};
+
+    int *counts = is_ci ? counts_ci : counts_full;
+
+    if (is_ci) {
+        printf("CI mode: using reduced iteration counts\n\n");
+    }
 
     for (size_t i = 0; i < 4; i++) {
         bench_params_t params = {sizes[i], counts[i], "pubsub"};
 
-        bench_pubsub_tcp(params);
+        if (!is_ci) {
+            bench_pubsub_tcp(params);
+        }
         bench_pubsub_inproc(params);
 
 #if defined(SL_HAVE_IPC) && defined(__linux__)
-        bench_pubsub_ipc(params);
+        if (!is_ci) {
+            bench_pubsub_ipc(params);
+        }
 #endif
         printf("\n");
     }
 
-    // Fan-out benchmarks (1 PUB → N SUB)
-    printf("\n=== Fan-out Benchmark (1 PUB → N SUB) ===\n\n");
-    printf("%-20s | %8s | %14s | %13s | %14s | %12s\n",
-           "Transport", "Subs", "Message Size", "Total Msgs", "Throughput", "Bandwidth");
-    printf("------------------------------------------------------------------------------------");
-    printf("----------\n");
+    // Fan-out benchmarks (1 PUB → N SUB) - skip in CI mode (too slow)
+    if (!is_ci) {
+        printf("\n=== Fan-out Benchmark (1 PUB → N SUB) ===\n\n");
+        printf("%-20s | %8s | %14s | %13s | %14s | %12s\n",
+               "Transport", "Subs", "Message Size", "Total Msgs", "Throughput", "Bandwidth");
+        printf("------------------------------------------------------------------------------------");
+        printf("----------\n");
 
-    // Test fan-out with different subscriber counts
-    int sub_counts[] = {2, 4, 8};
+        // Test fan-out with different subscriber counts
+        int sub_counts[] = {2, 4, 8};
 
-    // Use smaller message size and count for fan-out to keep test time reasonable
-    bench_params_t fanout_params = {64, 10000, "fanout"};
+        // Use smaller message size and count for fan-out to keep test time reasonable
+        bench_params_t fanout_params = {64, 10000, "fanout"};
 
-    for (size_t i = 0; i < 3; i++) {
-        bench_pubsub_fanout_tcp(sub_counts[i], fanout_params);
-        bench_pubsub_fanout_inproc(sub_counts[i], fanout_params);
+        for (size_t i = 0; i < 3; i++) {
+            bench_pubsub_fanout_tcp(sub_counts[i], fanout_params);
+            bench_pubsub_fanout_inproc(sub_counts[i], fanout_params);
+        }
+        printf("\n");
     }
-    printf("\n");
 
     printf("Benchmark completed.\n\n");
 

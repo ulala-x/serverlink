@@ -220,18 +220,39 @@ int main() {
     printf("------------------------------------------------------------------------------------");
     printf("----------\n");
 
+    // Check for CI environment - use reduced iterations
+    const char *ci_env = std::getenv("CI");
+    const char *github_actions = std::getenv("GITHUB_ACTIONS");
+    bool is_ci = (ci_env != nullptr) || (github_actions != nullptr);
+
     // Test with various message sizes
-    // Larger messages = fewer iterations (to keep test time reasonable)
+    // CI mode: reduced iterations for faster execution
+    // Full mode: comprehensive benchmark
     size_t sizes[] = {64, 1024, 8192, 65536};
-    int counts[] = {100000, 50000, 10000, 1000};
+    int counts_full[] = {100000, 50000, 10000, 1000};
+    int counts_ci[] = {1000, 500, 100, 50};  // ~100x faster for CI
+
+    int *counts = is_ci ? counts_ci : counts_full;
+
+    if (is_ci) {
+        printf("CI mode: using reduced iteration counts\n\n");
+    }
 
     for (size_t i = 0; i < 4; i++) {
-        bench_params_t params = {sizes[i], counts[i], "tcp"};
+        bench_params_t params = {sizes[i], counts[i], "inproc"};
 
-        bench_throughput_tcp(params);
+        // In CI, only run inproc (faster, no port conflicts)
+        // In full mode, run all transports
+        if (!is_ci) {
+            bench_params_t tcp_params = {sizes[i], counts[i], "tcp"};
+            bench_throughput_tcp(tcp_params);
+        }
         bench_throughput_inproc(params);
 #if defined(SL_HAVE_IPC) && defined(__linux__)
-        bench_throughput_ipc(params);
+        if (!is_ci) {
+            bench_params_t ipc_params = {sizes[i], counts[i], "ipc"};
+            bench_throughput_ipc(ipc_params);
+        }
 #endif
         printf("\n");
     }
