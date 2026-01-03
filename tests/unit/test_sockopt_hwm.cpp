@@ -250,6 +250,21 @@ static void test_decrease_when_full()
     /* We must wait for the connect to succeed */
     test_sleep_ms(100);
 
+    /* Handshake: bind sends first message to establish routing (required for ARM64) */
+    rc = slk_send(bind_socket, "sender", 6, SLK_SNDMORE);
+    TEST_ASSERT(rc >= 0);
+    rc = slk_send(bind_socket, "READY", 5, 0);
+    TEST_ASSERT(rc >= 0);
+
+    test_sleep_ms(50);
+
+    /* Connect socket receives handshake */
+    char handshake_buf[256];
+    rc = slk_recv(connect_socket, handshake_buf, sizeof(handshake_buf), 0);  /* routing ID "bind" */
+    TEST_ASSERT(rc > 0);
+    rc = slk_recv(connect_socket, handshake_buf, sizeof(handshake_buf), 0);  /* "READY" */
+    TEST_ASSERT(rc > 0);
+
     /* Fill up to HWM */
     int send_count = test_fill_up_to_hwm(connect_socket, sndhwm, receiver_id, strlen(receiver_id));
 
