@@ -22,34 +22,26 @@
  */
 static void test_fair_queue_in(const char *bind_address)
 {
-    printf("[FQ] Creating context...\n"); fflush(stdout);
     slk_ctx_t *ctx = test_context_new();
-    printf("[FQ] Context created: %p\n", (void*)ctx); fflush(stdout);
-
-    printf("[FQ] Creating receiver socket...\n"); fflush(stdout);
     slk_socket_t *receiver = test_socket_new(ctx, SLK_ROUTER);
-    printf("[FQ] Receiver socket created: %p\n", (void*)receiver); fflush(stdout);
-
-    printf("[FQ] Binding receiver to %s...\n", bind_address); fflush(stdout);
     test_socket_bind(receiver, bind_address);
-    printf("[FQ] Receiver bound\n"); fflush(stdout);
 
-    // Use macro for ARM64 Windows compatibility
     slk_socket_t *senders[NUM_SERVICES];
-    printf("[FQ] Senders array allocated on stack\n"); fflush(stdout);
 
     /* Set receiver routing ID */
-    printf("[FQ] Setting receiver routing ID...\n"); fflush(stdout);
     int rc = slk_setsockopt(receiver, SLK_ROUTING_ID, "RECV", 4);
     TEST_SUCCESS(rc);
-    printf("[FQ] Receiver routing ID set\n"); fflush(stdout);
 
-    printf("[FQ] Creating %d sender sockets...\n", NUM_SERVICES); fflush(stdout);
+    /* Create all sockets first with delay between each.
+     * This avoids race conditions on ARM64 where socket creation
+     * and I/O thread initialization can interfere. */
     for (unsigned char peer = 0; peer < NUM_SERVICES; ++peer) {
-        printf("[FQ] Creating sender %d...\n", peer); fflush(stdout);
         senders[peer] = test_socket_new(ctx, SLK_ROUTER);
-        printf("[FQ] Sender %d created: %p\n", peer, (void*)senders[peer]); fflush(stdout);
+        test_sleep_ms(10);  /* ARM64 stability delay */
+    }
 
+    /* Now configure and connect each socket */
+    for (unsigned char peer = 0; peer < NUM_SERVICES; ++peer) {
         char str[2];
         str[0] = 'A' + peer;
         str[1] = '\0';
@@ -371,40 +363,12 @@ static void test_destroy_queue_on_disconnect_inproc()
 
 int main()
 {
-    printf("=== ServerLink ROUTER Spec Compliance Tests ===\n\n");
-    fflush(stdout);
-
-    // Print platform info for debugging
-    printf("Platform: ");
-#if defined(_WIN32)
-    printf("Windows");
-#if defined(_M_ARM64)
-    printf(" ARM64");
-#elif defined(_M_X64)
-    printf(" x64");
-#elif defined(_M_IX86)
-    printf(" x86");
-#endif
-#elif defined(__linux__)
-    printf("Linux");
-#elif defined(__APPLE__)
-    printf("macOS");
-#endif
-    printf("\n");
-    printf("sizeof(void*)=%zu, sizeof(size_t)=%zu\n", sizeof(void*), sizeof(size_t));
-    fflush(stdout);
-
 #ifdef _WIN32
-    // Set error mode to prevent Windows error dialogs from blocking test execution
-    // This ensures crashes are reported immediately rather than waiting for user input
+    /* Prevent Windows error dialogs from blocking test execution */
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
 #endif
 
-    printf("Starting tests...\n");
-    fflush(stdout);
-
-    // Small delay to ensure Windows socket subsystem is fully initialized
-    test_sleep_ms(50);  // Increased from 10ms to 50ms for ARM64
+    printf("=== ServerLink ROUTER Spec Compliance Tests ===\n");
 
     RUN_TEST(test_fair_queue_in_tcp);
     RUN_TEST(test_destroy_queue_on_disconnect_tcp);
