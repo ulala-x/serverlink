@@ -307,26 +307,29 @@ static inline const char* test_endpoint_tcp()
     static int base_port = 0;
     static int call_count = 0;
 
-    /* Initialize base port once per process using PID and time-based spacing */
+    /* Initialize base port once per process using PID, time, and slk_clock for randomness */
     if (base_port == 0) {
-        /* Use PID and millisecond timestamp to create well-separated port ranges
+        /* Use PID, second timestamp, and microsecond clock to create well-separated port ranges
          * This ensures different test processes and runs get different port ranges
-         * Port range: 20000-60000 (safe ephemeral range) */
-        int pid_offset = (getpid() % 200) * 200;   /* 0-39800, step 200 */
-        int time_offset = ((unsigned int)time(NULL) * 7) % 200;  /* 0-199 */
-        base_port = 20000 + (pid_offset + time_offset) % 40000;  /* 20000-59999 */
+         * Port range: 20000-59999 (safe ephemeral range) */
+        int pid_offset = (getpid() % 400) * 100;   /* 0-39900, step 100 */
+        int time_offset = ((unsigned int)time(NULL) % 100);  /* 0-99 */
+        int clock_offset = (int)(slk_clock() % 500);  /* 0-499, using microsecond clock */
+        base_port = 20000 + ((pid_offset + time_offset * 100 + clock_offset) % 39000);
     }
 
     /* Use rotating buffers to avoid overwriting previous endpoints */
     int slot = call_count % 32;
 
-    /* Each call gets a unique port with step of 3 to avoid TIME_WAIT conflicts */
-    int port = base_port + (call_count * 3);
+    /* Each call gets a unique port with step of 7 to avoid TIME_WAIT conflicts */
+    int port = base_port + (call_count * 7);
     call_count++;
 
-    /* Wrap around if we exceed our allocated block */
-    if (call_count >= 500) {
+    /* Wrap around if we exceed port range */
+    if (port > 59900 || call_count >= 300) {
         call_count = 0;
+        /* Recalculate base port for next cycle */
+        base_port = 20000 + (int)(slk_clock() % 39000);
     }
 
     snprintf(endpoints[slot], sizeof(endpoints[slot]), "tcp://127.0.0.1:%d", port);
