@@ -21,6 +21,9 @@
 #include <unistd.h>
 #endif
 
+/* Forward declaration for test_endpoint_tcp (defined later in file) */
+static inline const char* test_endpoint_tcp();
+
 /* TCP settle time in milliseconds - time to wait for TCP connections to establish
  * and messages to propagate through the network. libzmq uses 300ms. */
 #ifndef SETTLE_TIME
@@ -165,18 +168,27 @@ static inline void test_socket_bind(slk_socket_t *s, const char *endpoint)
 {
     int rc = slk_bind(s, endpoint);
 
-    /* If bind fails on TCP and it's a port conflict, wait and retry */
+    /* If bind fails on TCP, try alternative strategies */
     if (rc != 0 && strncmp(endpoint, "tcp://", 6) == 0) {
         int err = slk_errno();
-        /* EACCES (13), EADDRINUSE (98 Linux, 10048 Windows) indicate port conflict */
+        /* EACCES (13, 10013 Windows), EADDRINUSE (98 Linux, 10048 Windows) */
         if (err == 13 || err == 98 || err == 10048 || err == 10013) {
-            /* Wait for TIME_WAIT to expire and retry up to 5 times with increasing delays */
-            int delays[] = {100, 200, 500, 1000, 2000};  /* Progressive backoff */
+            /* On permission denied (EACCES), try different ports
+             * On address in use, wait and retry same port first */
+            int delays[] = {50, 100, 200, 500, 1000};  /* Progressive backoff */
             for (int retry = 0; retry < 5 && rc != 0; retry++) {
-                fprintf(stderr, "BIND RETRY %d/5 for endpoint '%s' (errno=%d), waiting %dms...\n",
-                        retry + 1, endpoint, err, delays[retry]);
-                test_sleep_ms(delays[retry]);
-                rc = slk_bind(s, endpoint);
+                const char *try_endpoint = endpoint;
+                /* On EACCES, try a new port instead of retrying same one */
+                if (err == 13 || err == 10013) {
+                    try_endpoint = test_endpoint_tcp();  /* Get new port */
+                    fprintf(stderr, "BIND RETRY %d/5: Permission denied, trying new port '%s'...\n",
+                            retry + 1, try_endpoint);
+                } else {
+                    fprintf(stderr, "BIND RETRY %d/5 for endpoint '%s' (errno=%d), waiting %dms...\n",
+                            retry + 1, endpoint, err, delays[retry]);
+                    test_sleep_ms(delays[retry]);
+                }
+                rc = slk_bind(s, try_endpoint);
                 if (rc != 0) {
                     err = slk_errno();
                 }
