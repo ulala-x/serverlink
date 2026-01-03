@@ -10,6 +10,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # Default values
 BUILD_DIR="${BUILD_DIR:-${PROJECT_ROOT}/build}"
 OUTPUT_FILE="${OUTPUT_FILE:-benchmark_results.json}"
+PLATFORM="${PLATFORM:-}"
 
 echo "============================================"
 echo "ServerLink Benchmark Suite"
@@ -53,6 +54,49 @@ echo ""
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf ${TEMP_DIR}" EXIT
 
+# Collect system information
+echo "Collecting system information..."
+SYSINFO_FILE="${TEMP_DIR}/sysinfo.json"
+
+# Get OS info
+if [ -f /etc/os-release ]; then
+    OS_NAME=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d'"' -f2)
+elif [ "$(uname)" == "Darwin" ]; then
+    OS_NAME="macOS $(sw_vers -productVersion)"
+else
+    OS_NAME=$(uname -s)
+fi
+
+# Get CPU info
+if [ "$(uname)" == "Darwin" ]; then
+    CPU_MODEL=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "Apple Silicon")
+    CPU_CORES=$(sysctl -n hw.ncpu)
+    MEMORY_GB=$(( $(sysctl -n hw.memsize) / 1024 / 1024 / 1024 ))
+else
+    CPU_MODEL=$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d':' -f2 | xargs || echo "Unknown")
+    CPU_CORES=$(nproc 2>/dev/null || echo "Unknown")
+    MEMORY_GB=$(( $(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}') / 1024 / 1024 ))
+fi
+
+# Get architecture
+ARCH=$(uname -m)
+
+# Write system info to JSON
+cat > "${SYSINFO_FILE}" << EOF
+{
+  "os": "${OS_NAME}",
+  "arch": "${ARCH}",
+  "cpu": "${CPU_MODEL}",
+  "cores": ${CPU_CORES:-0},
+  "memory_gb": ${MEMORY_GB:-0},
+  "kernel": "$(uname -r)"
+}
+EOF
+
+echo "System Info:"
+cat "${SYSINFO_FILE}"
+echo ""
+
 # Run each benchmark
 BENCH_COUNT=0
 for BENCH in ${BENCHMARKS}; do
@@ -82,7 +126,11 @@ echo ""
 # Combine results into JSON format using Python formatter
 if [ -f "${SCRIPT_DIR}/format_benchmark.py" ]; then
     echo "Formatting results to JSON..."
-    python3 "${SCRIPT_DIR}/format_benchmark.py" "${TEMP_DIR}" "${OUTPUT_FILE}"
+    PLATFORM_ARG=""
+    if [ -n "${PLATFORM}" ]; then
+        PLATFORM_ARG="--platform ${PLATFORM}"
+    fi
+    python3 "${SCRIPT_DIR}/format_benchmark.py" "${TEMP_DIR}" "${OUTPUT_FILE}" ${PLATFORM_ARG}
 
     if [ -f "${OUTPUT_FILE}" ]; then
         echo "Results written to: ${OUTPUT_FILE}"

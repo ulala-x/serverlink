@@ -64,6 +64,12 @@ jobs:
           chmod +x ./scripts/run_tests.sh
           BUILD_DIR=build-x64 ./scripts/run_tests.sh
 
+      - name: Run benchmarks
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          chmod +x ./scripts/run_benchmarks.sh
+          BUILD_DIR=build-x64 OUTPUT_FILE=benchmark-linux-x64.json PLATFORM=linux-x64 ./scripts/run_benchmarks.sh
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -71,54 +77,65 @@ jobs:
           path: dist/linux-x64/
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
+      - name: Upload benchmark results
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-linux-x64
+          path: benchmark-linux-x64.json
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
   build-linux-arm64:
     name: Build Linux ARM64
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-arm
     needs: read-version
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up QEMU for ARM64 emulation
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
-      - name: Install build dependencies (cross-compile)
+      - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
             cmake \
             git \
-            pkg-config \
-            g++-aarch64-linux-gnu \
-            gcc-aarch64-linux-gnu
+            pkg-config
 
-      - name: Build ServerLink (cross-compile)
+      - name: Build ServerLink
         run: |
           chmod +x ./build-scripts/linux/build.sh
-          # For cross-compilation, we'll use CMake toolchain
-          mkdir -p build-arm64
-          cd build-arm64
-          cmake .. \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=ON \
-            -DBUILD_TESTS=ON \
-            -DBUILD_EXAMPLES=ON \
-            -DCMAKE_SYSTEM_NAME=Linux \
-            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
-            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
-            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
-            -DCMAKE_INSTALL_PREFIX=../dist/linux-arm64
-          cmake --build . --parallel $(nproc)
-          cmake --build . --target install
+          ./build-scripts/linux/build.sh arm64 Release ON
+
+      - name: Verify build
+        run: |
+          chmod +x ./build-scripts/common/verify.sh
+          ./build-scripts/common/verify.sh dist/linux-arm64 linux-arm64
+
+      - name: Run tests
+        run: |
+          chmod +x ./scripts/run_tests.sh
+          BUILD_DIR=build-arm64 ./scripts/run_tests.sh
+
+      - name: Run benchmarks
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          chmod +x ./scripts/run_benchmarks.sh
+          BUILD_DIR=build-arm64 OUTPUT_FILE=benchmark-linux-arm64.json PLATFORM=linux-arm64 ./scripts/run_benchmarks.sh
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: serverlink-linux-arm64
           path: dist/linux-arm64/
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
+      - name: Upload benchmark results
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-linux-arm64
+          path: benchmark-linux-arm64.json
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
   build-windows-x64:
@@ -140,6 +157,12 @@ jobs:
           $env:BUILD_DIR = "build-x64"
           .\scripts\run_tests.ps1 -BuildDir build-x64
 
+      - name: Run benchmarks
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          .\scripts\run_benchmarks.ps1 -BuildDir build-x64 -OutputFile benchmark-windows-x64.json -Platform windows-x64
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -147,9 +170,17 @@ jobs:
           path: dist/windows-x64/
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
+      - name: Upload benchmark results
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-windows-x64
+          path: benchmark-windows-x64.json
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
   build-windows-arm64:
     name: Build Windows ARM64
-    runs-on: windows-2022
+    runs-on: windows-11-arm
     needs: read-version
     steps:
       - name: Checkout repository
@@ -160,11 +191,31 @@ jobs:
         run: |
           .\build-scripts\windows\build.ps1 -Architecture arm64 -BuildType Release
 
+      - name: Run tests
+        shell: pwsh
+        run: |
+          $env:BUILD_DIR = "build-arm64"
+          .\scripts\run_tests.ps1 -BuildDir build-arm64
+
+      - name: Run benchmarks
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          .\scripts\run_benchmarks.ps1 -BuildDir build-arm64 -OutputFile benchmark-windows-arm64.json -Platform windows-arm64
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: serverlink-windows-arm64
           path: dist/windows-arm64/
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
+      - name: Upload benchmark results
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-windows-arm64
+          path: benchmark-windows-arm64.json
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
   build-macos-x64:
@@ -189,11 +240,30 @@ jobs:
           chmod +x ./build-scripts/common/verify.sh
           ./build-scripts/common/verify.sh dist/macos-x86_64 macos-x86_64
 
+      - name: Run tests (via Rosetta 2)
+        run: |
+          chmod +x ./scripts/run_tests.sh
+          BUILD_DIR=build-x86_64 ./scripts/run_tests.sh
+
+      - name: Run benchmarks (via Rosetta 2)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          chmod +x ./scripts/run_benchmarks.sh
+          BUILD_DIR=build-x86_64 OUTPUT_FILE=benchmark-macos-x64.json PLATFORM=macos-x64 ./scripts/run_benchmarks.sh
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: serverlink-macos-x64
           path: dist/macos-x86_64/
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
+      - name: Upload benchmark results
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-macos-x64
+          path: benchmark-macos-x64.json
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
   build-macos-arm64:
@@ -223,11 +293,25 @@ jobs:
           chmod +x ./scripts/run_tests.sh
           BUILD_DIR=build-arm64 ./scripts/run_tests.sh
 
+      - name: Run benchmarks
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          chmod +x ./scripts/run_benchmarks.sh
+          BUILD_DIR=build-arm64 OUTPUT_FILE=benchmark-macos-arm64.json PLATFORM=macos-arm64 ./scripts/run_benchmarks.sh
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: serverlink-macos-arm64
           path: dist/macos-arm64/
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
+      - name: Upload benchmark results
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-macos-arm64
+          path: benchmark-macos-arm64.json
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
   verify:
@@ -293,6 +377,49 @@ jobs:
           path: artifacts/checksums.txt
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
+      - name: Checkout for benchmark scripts
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts
+
+      - name: Generate benchmark comparison report
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          # Create benchmarks directory with all benchmark files
+          mkdir -p benchmarks
+          for platform in linux-x64 linux-arm64 windows-x64 windows-arm64 macos-x64 macos-arm64; do
+            if [ -f "artifacts/benchmark-${platform}/benchmark-${platform}.json" ]; then
+              cp "artifacts/benchmark-${platform}/benchmark-${platform}.json" benchmarks/
+            fi
+          done
+
+          # Generate comparison report
+          python3 scripts/compare_benchmarks.py \
+            --input-dir benchmarks \
+            --output-md artifacts/benchmark_report.md \
+            --output-json artifacts/benchmark_report.json \
+            --version ${{ needs.read-version.outputs.version }}
+
+          # Add benchmark summary to GitHub step summary
+          if [ -f "artifacts/benchmark_report.md" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Performance Benchmarks" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat artifacts/benchmark_report.md >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload benchmark report
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-report
+          path: |
+            artifacts/benchmark_report.md
+            artifacts/benchmark_report.json
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
   release:
     name: Create Release
     runs-on: ubuntu-22.04
@@ -314,6 +441,19 @@ jobs:
           for platform in linux-x64 linux-arm64 windows-x64 windows-arm64 macos-x64 macos-arm64; do
             if [ -d "serverlink-${platform}" ]; then
               zip -r "serverlink-${platform}.zip" "serverlink-${platform}"
+            fi
+          done
+
+          # Copy benchmark report to artifacts root if available
+          if [ -d "benchmark-report" ]; then
+            cp benchmark-report/benchmark_report.md . 2>/dev/null || true
+            cp benchmark-report/benchmark_report.json . 2>/dev/null || true
+          fi
+
+          # Copy individual benchmark results
+          for platform in linux-x64 linux-arm64 windows-x64 windows-arm64 macos-x64 macos-arm64; do
+            if [ -d "benchmark-${platform}" ]; then
+              cp "benchmark-${platform}/benchmark-${platform}.json" . 2>/dev/null || true
             fi
           done
 
@@ -344,6 +484,12 @@ jobs:
             | macOS | x64 (Intel) | kqueue | `serverlink-macos-x64.zip` |
             | macOS | ARM64 (Apple Silicon) | kqueue | `serverlink-macos-arm64.zip` |
 
+            ### Performance Benchmarks
+            Cross-platform benchmark results are available:
+            - `benchmark_report.md` - Human-readable comparison table
+            - `benchmark_report.json` - Machine-readable full results
+            - Individual platform results: `benchmark-{platform}.json`
+
             ### Verification
             All builds have been tested with 47 automated tests.
             See `checksums.txt` for SHA256 verification.
@@ -355,5 +501,13 @@ jobs:
             artifacts/serverlink-macos-x64.zip
             artifacts/serverlink-macos-arm64.zip
             artifacts/checksums/checksums.txt
+            artifacts/benchmark_report.md
+            artifacts/benchmark_report.json
+            artifacts/benchmark-linux-x64.json
+            artifacts/benchmark-linux-arm64.json
+            artifacts/benchmark-windows-x64.json
+            artifacts/benchmark-windows-arm64.json
+            artifacts/benchmark-macos-x64.json
+            artifacts/benchmark-macos-arm64.json
           draft: false
           prerelease: false

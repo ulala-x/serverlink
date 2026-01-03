@@ -3,7 +3,8 @@
 
 param(
     [string]$BuildDir = "",
-    [string]$OutputFile = "benchmark_results.json"
+    [string]$OutputFile = "benchmark_results.json",
+    [string]$Platform = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -73,6 +74,34 @@ $env:PATH = "$BuildDir\Release;$BuildDir\Debug;$env:PATH"
 $TempDir = Join-Path $env:TEMP "serverlink_bench_$(Get-Random)"
 New-Item -ItemType Directory -Path $TempDir | Out-Null
 
+# Collect system information
+Write-Host "Collecting system information..."
+$SysInfoFile = Join-Path $TempDir "sysinfo.json"
+
+try {
+    $OS = Get-CimInstance -ClassName Win32_OperatingSystem
+    $CPU = Get-CimInstance -ClassName Win32_Processor | Select-Object -First 1
+    $CS = Get-CimInstance -ClassName Win32_ComputerSystem
+
+    $SysInfo = @{
+        os = "$($OS.Caption) $($OS.Version)"
+        arch = $env:PROCESSOR_ARCHITECTURE
+        cpu = $CPU.Name
+        cores = $CPU.NumberOfCores
+        logical_processors = $CPU.NumberOfLogicalProcessors
+        memory_gb = [math]::Round($CS.TotalPhysicalMemory / 1GB, 1)
+        windows_build = $OS.BuildNumber
+    }
+
+    $SysInfo | ConvertTo-Json | Out-File -FilePath $SysInfoFile -Encoding UTF8
+
+    Write-Host "System Info:"
+    $SysInfo | ConvertTo-Json
+    Write-Host ""
+} catch {
+    Write-Warning "Failed to collect system info: $_"
+}
+
 try {
     # Run each benchmark
     $BenchCount = 0
@@ -105,7 +134,11 @@ try {
     $FormatterScript = Join-Path $ScriptDir "format_benchmark.py"
     if (Test-Path $FormatterScript) {
         Write-Host "Formatting results to JSON..."
-        & python $FormatterScript $TempDir $OutputFile
+        $PlatformArgs = @()
+        if ($Platform -ne "") {
+            $PlatformArgs = @("--platform", $Platform)
+        }
+        & python $FormatterScript $TempDir $OutputFile @PlatformArgs
 
         if (Test-Path $OutputFile) {
             Write-Host "Results written to: $OutputFile"

@@ -1,7 +1,7 @@
 # ServerLink Version Information
 # This file is used by the build system and CI/CD pipeline
 
-SERVERLINK_VERSION=0.1.0
+SERVERLINK_VERSION=0.1.1
 CMAKE_MINIMUM_VERSION=3.14
 CXX_STANDARD=20
 
