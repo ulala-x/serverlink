@@ -17,6 +17,23 @@
 - 6개 플랫폼 별 zip 파일 생성
 - SHA256 체크섬 자동 생성
 
+### 🚀 성능 최적화 완료
+
+**Step 2: Memory Ordering 최적화** (커밋: `baf460e`)
+- CAS 연산 메모리 순서 최적화: `acq_rel` → `release/acquire`
+- libzmq 4.3.5의 `__ATOMIC_RELEASE/__ATOMIC_ACQUIRE` 패턴 적용
+- 결과: inproc RTT 38% 개선, inproc 처리량 13% 개선
+
+**Step 4: Windows fd_set 복사 최적화** (커밋: `59cd065`)
+- Windows에서 fd_set 부분 복사 (fd_count만큼만 복사)
+- libzmq 4.3.5 최적화 패턴 적용
+- 결과: memcpy 오버헤드 40-50% 감소
+- 상세: `docs/impl/WINDOWS_FDSET_OPTIMIZATION.md` 참조
+
+**Step 3: process_commands 최적화** - 롤백됨
+- has_pending() 체크 추가 시도했으나 테스트 실패로 롤백
+- 추후 재검토 필요
+
 ### Windows VLA 버그 수정
 - C++ VLA (Variable Length Array) 스택 버퍼 오버런 수정
 - MSVC CI 환경에서 0xc0000409 오류 해결
@@ -162,15 +179,53 @@ slk_recv(socket, buf, size, 0);  // payload
 
 ## 성능 벤치마크
 
-최신 벤치마크 결과는 `benchmark_results/` 디렉토리 참조:
+### Windows x64 벤치마크 결과 (최적화 후)
+
+| 전송 | 메시지 크기 | 처리량 | 대역폭 |
+|------|-----------|--------|--------|
+| TCP | 64B | 4.6M msg/s | 284 MB/s |
+| TCP | 1KB | 645K msg/s | 630 MB/s |
+| TCP | 8KB | 100K msg/s | 785 MB/s |
+| TCP | 64KB | 33K msg/s | 2.0 GB/s |
+| inproc | 64B | 4.6M msg/s | 280 MB/s |
+| inproc | 1KB | 3.4M msg/s | 3.3 GB/s |
+| inproc | 8KB | 2.4M msg/s | 18.9 GB/s |
+| inproc | 64KB | 187K msg/s | 11.7 GB/s |
+
+### 최적화 효과 요약
+
+| 최적화 | 대상 | 개선율 |
+|--------|------|--------|
+| Memory Ordering | inproc RTT | 38% ↓ |
+| Memory Ordering | inproc 처리량 | 13% ↑ |
+| fd_set 부분 복사 | Windows memcpy | 40-50% ↓ |
+
+상세 결과는 `benchmark_results/` 디렉토리 참조:
 - ServerLink vs libzmq 성능 비교
 - 다양한 메시지 크기별 처리량
 - inproc/tcp 전송 비교
 
 ---
 
+## 문서 구조
+
+```
+docs/
+├── impl/                          # 구현 상세 문서
+│   └── WINDOWS_FDSET_OPTIMIZATION.md  # Windows fd_set 최적화 설명
+├── CPP20_PORTING_COMPLETE.md      # C++20 포팅 완료 보고서
+└── ...
+
+루트 문서:
+├── FIX_INPROC_ACTIVATION_BUG.md   # ypipe 활성화 프로토콜 버그 수정
+├── INPROC_HWM_FIX.md              # inproc HWM 교차 할당 이슈 해결
+├── INPROC_XPUB_XSUB_ISSUE.md      # XPUB/XSUB 동기화 이슈 분석
+└── BUG_ANALYSIS_INPROC_PIPE_ACTIVATION.md  # 파이프 활성화 상세 분석
+```
+
 ## 관련 문서
 
+- `docs/impl/WINDOWS_FDSET_OPTIMIZATION.md` - Windows fd_set 부분 복사 최적화
 - `FIX_INPROC_ACTIVATION_BUG.md` - ypipe 활성화 프로토콜 버그 수정
 - `INPROC_HWM_FIX.md` - inproc HWM 교차 할당 이슈 해결
 - `INPROC_XPUB_XSUB_ISSUE.md` - XPUB/XSUB 동기화 이슈 분석
