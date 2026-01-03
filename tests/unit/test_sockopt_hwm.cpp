@@ -16,10 +16,13 @@ static const int MAX_SENDS = 10000;
 static void test_change_before_connected()
 {
     slk_ctx_t *ctx = test_context_new();
-    const char *endpoint = "inproc://a";
+    const char *endpoint = "inproc://hwm_before";
 
     slk_socket_t *bind_socket = test_socket_new(ctx, SLK_ROUTER);
     slk_socket_t *connect_socket = test_socket_new(ctx, SLK_ROUTER);
+
+    /* Wait for I/O thread to fully initialize sockets (ARM64 stability) */
+    test_sleep_ms(10);
 
     int val = 2;
     int rc = slk_setsockopt(bind_socket, SLK_RCVHWM, &val, sizeof(val));
@@ -96,10 +99,13 @@ static void test_change_before_connected()
 static void test_change_after_connected()
 {
     slk_ctx_t *ctx = test_context_new();
-    const char *endpoint = "inproc://a";
+    const char *endpoint = "inproc://hwm_after";
 
     slk_socket_t *bind_socket = test_socket_new(ctx, SLK_ROUTER);
     slk_socket_t *connect_socket = test_socket_new(ctx, SLK_ROUTER);
+
+    /* Wait for I/O thread to fully initialize sockets (ARM64 stability) */
+    test_sleep_ms(10);
 
     int val = 1;
     int rc = slk_setsockopt(bind_socket, SLK_RCVHWM, &val, sizeof(val));
@@ -214,10 +220,13 @@ static int test_fill_up_to_hwm(slk_socket_t *socket, int sndhwm, const char *rec
 static void test_decrease_when_full()
 {
     slk_ctx_t *ctx = test_context_new();
-    const char *endpoint = "inproc://a";
+    const char *endpoint = "inproc://hwm_decrease";
 
     slk_socket_t *bind_socket = test_socket_new(ctx, SLK_ROUTER);
     slk_socket_t *connect_socket = test_socket_new(ctx, SLK_ROUTER);
+
+    /* Wait for I/O thread to fully initialize sockets (ARM64 stability) */
+    test_sleep_ms(10);
 
     int val = 1;
     int rc = slk_setsockopt(bind_socket, SLK_RCVHWM, &val, sizeof(val));
