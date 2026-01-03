@@ -1,217 +1,155 @@
-# ServerLink Performance Benchmarks
+# ServerLink Benchmarks
 
-This directory contains performance benchmarks for the ServerLink messaging library.
+This directory contains performance benchmarks for ServerLink and comparison benchmarks against libzmq 4.3.5.
 
-## Benchmark Programs
+## Quick Start
 
-### 1. bench_throughput
-Measures message throughput (messages per second and bandwidth in MB/s) for different transport types and message sizes.
-
-**Tests:**
-- TCP transport
-- inproc (in-process) transport
-- IPC transport (Unix domain sockets, Linux only)
-
-**Message sizes:** 64B, 1KB, 8KB, 64KB
-
-### 2. bench_latency
-Measures round-trip latency with percentile statistics (average, p50, p95, p99).
-
-**Tests:**
-- TCP transport
-- inproc transport
-- IPC transport (Linux only)
-
-**Message sizes:** 64B, 1KB, 8KB
-
-## Building
-
-The benchmarks are built automatically when you build the project:
+### Run Performance Comparison (Recommended)
 
 ```bash
-cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make bench_throughput bench_latency
+./run_comparison.sh          # Run all benchmarks and show comparison table
+./run_comparison.sh router   # ROUTER-ROUTER only
+./run_comparison.sh pubsub   # PUB-SUB only
 ```
 
-**Note:** Use Release build for accurate performance measurements. Debug builds will be significantly slower.
+Output example:
+```
+## ROUTER-ROUTER Comparison
 
-## Running
+| Transport | Size     |   ServerLink |       libzmq |       Diff |
+|----------|----------|--------------|--------------|------------|
+| TCP      |      64B |      4.81M/s |      4.85M/s |      -0.6% |
+| TCP      |      1KB |       864K/s |       830K/s |      +4.1% |
+| inproc   |      8KB |       792K/s |       617K/s |     +28.5% |
+```
 
-### Run individual benchmarks:
+### Run Individual Benchmarks
 
 ```bash
-cd build/tests/benchmark
+# ServerLink only
+./run_serverlink.sh          # All benchmarks
+./run_serverlink.sh router   # ROUTER-ROUTER only
+./run_serverlink.sh pubsub   # PUB-SUB only
 
-# Throughput benchmark
-./bench_throughput
-
-# Latency benchmark
-./bench_latency
+# libzmq only (auto-compiles if needed)
+./run_libzmq.sh              # All benchmarks
+./run_libzmq.sh router       # ROUTER-ROUTER only
+./run_libzmq.sh pubsub       # PUB-SUB only
 ```
 
-### Run all benchmarks:
+## Scripts
+
+| Script | Description |
+|--------|-------------|
+| `run_comparison.sh` | Run both and show comparison table |
+| `run_serverlink.sh` | Run ServerLink benchmarks only |
+| `run_libzmq.sh` | Run libzmq benchmarks only (auto-compile) |
+
+## Benchmark Files
+
+### ServerLink Benchmarks (CMake-built)
+- `bench_throughput.cpp` - ROUTER-ROUTER throughput benchmark
+- `bench_pubsub.cpp` - PUB/SUB throughput benchmark
+- `bench_latency.cpp` - Round-trip latency benchmark
+- `bench_profile.cpp` - Memory and CPU profiling
+
+Built executables are in: `../../build/tests/benchmark/`
+
+### libzmq Comparison Benchmarks
+- `bench_zmq_router.cpp` - libzmq ROUTER-ROUTER throughput (for fair comparison)
+- `bench_zmq_pubsub.cpp` - libzmq PUB/SUB throughput (for fair comparison)
+
+## Benchmark Configuration
+
+All benchmarks use identical configurations for fair comparison:
+
+| Parameter | Value |
+|-----------|-------|
+| Message Sizes | 64B, 1KB, 8KB, 64KB |
+| Message Counts | 100K (64B), 50K (1KB), 10K (8KB), 1K (64KB) |
+| High Water Mark | 0 (unlimited) |
+| Transports | TCP, inproc, IPC (Unix only) |
+| Compiler Flags | -O3 -std=c++20 -pthread |
+
+## Results
+
+Performance comparison results are available in:
+- `../../benchmark_results/libzmq_vs_serverlink_comparison.md` - Detailed analysis
+- `../../benchmark_results/performance_summary.txt` - Quick summary
+
+## Key Findings
+
+### ServerLink Advantages
+- **inproc 8KB**: +66% faster (824K vs 497K msg/s)
+- **inproc 64KB**: +36% faster (254K vs 187K msg/s)
+- **TCP small messages**: +5% consistently
+- **IPC PUB/SUB**: +14-16% for small/medium messages
+
+### libzmq Advantages
+- **TCP large messages**: Better for 8KB+ (up to -21%)
+- **inproc 1KB**: -19% ROUTER, -17% PUB/SUB (8KB)
+
+### Performance Parity
+- inproc 64B (both patterns)
+- IPC 1KB (both patterns)
+- TCP 8KB PUB/SUB
+
+## Dependencies
+
+### For libzmq Benchmarks
+- libzmq 4.3.5 installed at `/home/ulalax/project/ulalax/libzmq-native/deps/linux-x64/zeromq-4.3.5`
+- GCC or Clang with C++17 support
+- pthread
+
+### For ServerLink Benchmarks
+- ServerLink built with CMake (see main README)
+- C++20 compiler
+
+## CI Mode
+
+Both libzmq and ServerLink benchmarks detect CI environment and reduce iteration counts by ~100x for faster CI runs:
 
 ```bash
-cd build
-make benchmark
+export CI=true
+./bench_zmq_router  # Uses reduced counts
 ```
-
-## Understanding Results
-
-### Throughput Output
-
-```
-Transport            |   Message Size |  Message Count |        Time |    Throughput |    Bandwidth
---------------------------------------------------------------------------------------------
-TCP                  |       64 bytes |   100000 msgs |    1234.56 ms |     81000 msg/s |     4.94 MB/s
-inproc               |       64 bytes |   100000 msgs |     123.45 ms |    810000 msg/s |    49.44 MB/s
-```
-
-- **Transport**: The transport protocol used (TCP, inproc, IPC)
-- **Message Size**: Size of each message in bytes
-- **Message Count**: Number of messages sent
-- **Time**: Total time to send all messages
-- **Throughput**: Messages per second
-- **Bandwidth**: Megabytes per second
-
-### Latency Output
-
-```
-Transport            |   Message Size |      Average |          p50 |          p95 |          p99
---------------------------------------------------------------------------------------------
-TCP                  |       64 bytes | avg:   123.45 us | p50:   120.00 us | p95:   150.00 us | p99:   200.00 us
-```
-
-- **Average**: Mean round-trip time
-- **p50**: 50th percentile (median) - half of measurements are faster
-- **p95**: 95th percentile - 95% of measurements are faster
-- **p99**: 99th percentile - 99% of measurements are faster
-
-**Note:** All latency values are **round-trip time (RTT)**. One-way latency is approximately RTT/2.
-
-## Performance Tips
-
-### For best benchmark results:
-
-1. **Build in Release mode:**
-   ```bash
-   cmake .. -DCMAKE_BUILD_TYPE=Release
-   ```
-
-2. **Disable CPU frequency scaling:**
-   ```bash
-   # Linux
-   sudo cpupower frequency-set --governor performance
-   ```
-
-3. **Run on idle system:**
-   - Close unnecessary applications
-   - Disable background services
-   - Run multiple times and take median
-
-4. **Lock to specific CPU core (Linux):**
-   ```bash
-   taskset -c 0 ./bench_throughput
-   ```
-
-## Benchmark Architecture
-
-### Throughput Benchmark
-
-```
-┌─────────┐                    ┌──────────┐
-│ Sender  │ ──── messages ───► │ Receiver │
-│ Thread  │                    │ Thread   │
-└─────────┘                    └──────────┘
-                               ↓
-                         Measure time
-```
-
-- Sender sends messages as fast as possible
-- Receiver measures total time to receive all messages
-- Throughput = message_count / elapsed_time
-
-### Latency Benchmark
-
-```
-┌────────┐                    ┌───────────┐
-│ Client │ ──── request ────► │   Echo    │
-│        │ ◄─── response ──── │  Server   │
-└────────┘                    └───────────┘
-    ↓
-Measure RTT
-```
-
-- Client sends a message and waits for echo
-- Server immediately echoes back all received messages
-- For each message, measure round-trip time
-- Calculate statistics (avg, p50, p95, p99)
-
-## Implementation Details
-
-### Common Utilities (`bench_common.hpp`)
-
-- **stopwatch_t**: High-resolution timer using `std::chrono::high_resolution_clock`
-- **bench_params_t**: Parameter structure for benchmark configuration
-- **print_*_result()**: Formatted output functions
-- **BENCH_ASSERT/BENCH_CHECK**: Error checking macros
-
-### Transport Types
-
-1. **TCP** (`tcp://127.0.0.1:port`)
-   - Standard TCP/IP networking
-   - Loopback interface (localhost)
-   - Tests network stack overhead
-
-2. **inproc** (`inproc://name`)
-   - In-process communication
-   - Zero-copy when possible
-   - Minimal overhead (no network stack)
-
-3. **IPC** (`ipc:///tmp/name.ipc`, Linux only)
-   - Unix domain sockets
-   - Local inter-process communication
-   - Faster than TCP, slower than inproc
 
 ## Troubleshooting
 
-### Benchmark hangs or times out
+### libzmq not found
+```bash
+# Verify libzmq installation
+ls /home/ulalax/project/ulalax/libzmq-native/deps/linux-x64/zeromq-4.3.5/include/zmq.h
+ls /home/ulalax/project/ulalax/libzmq-native/deps/linux-x64/zeromq-4.3.5/build/lib/libzmq.so.5.2.5
+```
 
-This may indicate that core ServerLink functionality is not fully implemented:
-- Check if TCP transport is implemented
-- Check if ROUTER socket type is working
-- Verify that `slk_send()` and `slk_recv()` work correctly
+### ServerLink benchmarks not built
+```bash
+cd ../..
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON
+cmake --build build --parallel 8
+```
 
-### Unusually low performance
+### Port already in use (TCP benchmarks)
+TCP benchmarks use ports 15556-15557. If busy, kill processes or wait a moment.
 
-- Ensure you're using Release build (`-DCMAKE_BUILD_TYPE=Release`)
-- Check for running background processes
-- Verify CPU isn't throttled (check `/proc/cpuinfo` or use `cpupower`)
-- Try larger message sizes (small messages test per-message overhead)
+## Performance Notes
 
-### Port already in use
+1. **inproc Performance**: ServerLink's memory ordering optimization (acq_rel → release/acquire) provides significant improvements for large messages
+2. **TCP Performance**: Both libraries achieve excellent throughput; ServerLink optimized for small messages
+3. **IPC Performance**: ServerLink shows advantages in PUB/SUB pattern
+4. **Real-world Workloads**: Choose based on your specific message size and transport needs
 
-If TCP benchmarks fail, another process may be using the port:
-- Benchmarks use ports 15555-15556 by default
-- Check: `netstat -tlnp | grep 1555`
-- Edit benchmark source to change port numbers if needed
+## Further Reading
 
-## Future Enhancements
+- [ServerLink Performance Optimizations](../../docs/impl/WINDOWS_FDSET_OPTIMIZATION.md)
+- [C++20 Porting Complete](../../docs/CPP20_PORTING_COMPLETE.md)
+- [Inproc Pipe Activation Bug Fix](../../FIX_INPROC_ACTIVATION_BUG.md)
 
-Potential additions to the benchmark suite:
+## License
 
-- Multi-threaded throughput tests
-- Different socket patterns (PUSH/PULL, PUB/SUB)
-- Message loss rate under load
-- Memory usage profiling
-- CPU utilization monitoring
-- Comparison with other messaging libraries (ZeroMQ, nanomsg)
-- Automated performance regression testing
+Both ServerLink and these comparison benchmarks are MPL-2.0 licensed.
 
-## References
+---
 
-For more information on ServerLink:
-- Project repository: `/home/ulalax/project/ulalax/serverlink`
-- API documentation: `include/serverlink/serverlink.h`
-- Test suite: `tests/unit/`, `tests/router/`, `tests/integration/`
+**Last Updated**: 2026-01-03

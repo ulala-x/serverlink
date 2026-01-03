@@ -18,8 +18,13 @@ add_executable(bench_pubsub bench_pubsub.cpp)
 target_link_libraries(bench_pubsub PRIVATE serverlink)
 target_include_directories(bench_pubsub PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
+# Profiling benchmark
+add_executable(bench_profile bench_profile.cpp)
+target_link_libraries(bench_profile PRIVATE serverlink)
+target_include_directories(bench_profile PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
 # Set C++11 for chrono and threads
-set_target_properties(bench_throughput bench_latency bench_pubsub PROPERTIES
+set_target_properties(bench_throughput bench_latency bench_pubsub bench_profile PROPERTIES
     CXX_STANDARD 11
     CXX_STANDARD_REQUIRED ON
     CXX_EXTENSIONS OFF
@@ -30,6 +35,7 @@ if(UNIX)
     target_link_libraries(bench_throughput PRIVATE pthread)
     target_link_libraries(bench_latency PRIVATE pthread)
     target_link_libraries(bench_pubsub PRIVATE pthread)
+    target_link_libraries(bench_profile PRIVATE pthread)
 endif()
 
 # Add custom target to run all benchmarks
