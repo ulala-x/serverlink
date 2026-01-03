@@ -339,7 +339,7 @@ def format_as_markdown(benchmarks: List[Dict[str, Any]], output_file: Path, plat
         "",
         "| Benchmark | Type | Transport | Message Size | Key Metric | Value |",
         "|-----------|------|-----------|--------------|------------|-------|"
-    ]
+    ])
 
     for bench in benchmarks:
         name = bench.get("name", "Unknown")
