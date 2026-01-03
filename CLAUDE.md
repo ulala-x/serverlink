@@ -30,9 +30,11 @@
 - 결과: memcpy 오버헤드 40-50% 감소
 - 상세: `docs/impl/WINDOWS_FDSET_OPTIMIZATION.md` 참조
 
-**Step 3: process_commands 최적화** - 롤백됨
-- has_pending() 체크 추가 시도했으나 테스트 실패로 롤백
-- 추후 재검토 필요
+**Step 5: send() 핫패스 최적화** (커밋: `6a4d9c5`)
+- 불필요한 `has_pending()` 체크 제거 (잘못된 최적화 수정)
+- libzmq의 검증된 설계 패턴으로 복원
+- `process_commands()`가 이미 TSC throttling을 내장하고 있어 외부 체크 불필요
+- 상세: `docs/impl/CODE_COMPARISON_ANALYSIS.md` 참조
 
 ### Windows VLA 버그 수정
 - C++ VLA (Variable Length Array) 스택 버퍼 오버런 수정
