@@ -170,11 +170,12 @@ static inline void test_socket_bind(slk_socket_t *s, const char *endpoint)
         int err = slk_errno();
         /* EACCES (13), EADDRINUSE (98 Linux, 10048 Windows) indicate port conflict */
         if (err == 13 || err == 98 || err == 10048 || err == 10013) {
-            /* Wait for TIME_WAIT to expire and retry up to 3 times */
-            for (int retry = 0; retry < 3 && rc != 0; retry++) {
-                fprintf(stderr, "BIND RETRY %d for endpoint '%s' (errno=%d), waiting...\n",
-                        retry + 1, endpoint, err);
-                test_sleep_ms(500);  /* Wait 500ms between retries */
+            /* Wait for TIME_WAIT to expire and retry up to 5 times with increasing delays */
+            int delays[] = {100, 200, 500, 1000, 2000};  /* Progressive backoff */
+            for (int retry = 0; retry < 5 && rc != 0; retry++) {
+                fprintf(stderr, "BIND RETRY %d/5 for endpoint '%s' (errno=%d), waiting %dms...\n",
+                        retry + 1, endpoint, err, delays[retry]);
+                test_sleep_ms(delays[retry]);
                 rc = slk_bind(s, endpoint);
                 if (rc != 0) {
                     err = slk_errno();
@@ -307,29 +308,37 @@ static inline const char* test_endpoint_tcp()
     static int base_port = 0;
     static int call_count = 0;
 
-    /* Initialize base port once per process using PID, time, and slk_clock for randomness */
+    /* Initialize base port once per process using multiple entropy sources
+     * This ensures different test processes get well-separated port ranges
+     * Port range: 15000-60000 (safe range avoiding common ports) */
     if (base_port == 0) {
-        /* Use PID, second timestamp, and microsecond clock to create well-separated port ranges
-         * This ensures different test processes and runs get different port ranges
-         * Port range: 20000-59999 (safe ephemeral range) */
-        int pid_offset = (getpid() % 400) * 100;   /* 0-39900, step 100 */
-        int time_offset = ((unsigned int)time(NULL) % 100);  /* 0-99 */
-        int clock_offset = (int)(slk_clock() % 500);  /* 0-499, using microsecond clock */
-        base_port = 20000 + ((pid_offset + time_offset * 100 + clock_offset) % 39000);
+        /* Combine multiple entropy sources for better distribution:
+         * - PID provides process-level uniqueness
+         * - time(NULL) provides second-level uniqueness
+         * - slk_clock() provides microsecond-level uniqueness
+         * - Additional clock call for more entropy */
+        int pid = getpid();
+        int pid_offset = (pid % 500) * 90;  /* 0-44910, step 90 */
+        int time_offset = ((unsigned int)time(NULL) % 200) * 10;  /* 0-1990 */
+        int clock1 = (int)(slk_clock() % 1000);  /* 0-999 */
+        test_sleep_ms(1);  /* Add small delay for more clock variation */
+        int clock2 = (int)(slk_clock() % 1000);  /* 0-999 */
+        int entropy = pid_offset + time_offset + clock1 + (clock2 * 3);
+        base_port = 15000 + (entropy % 44000);  /* 15000-59000 range */
     }
 
     /* Use rotating buffers to avoid overwriting previous endpoints */
     int slot = call_count % 32;
 
-    /* Each call gets a unique port with step of 7 to avoid TIME_WAIT conflicts */
-    int port = base_port + (call_count * 7);
+    /* Each call gets a unique port with step of 11 (prime) to avoid TIME_WAIT conflicts */
+    int port = base_port + (call_count * 11);
     call_count++;
 
     /* Wrap around if we exceed port range */
     if (port > 59900 || call_count >= 300) {
         call_count = 0;
-        /* Recalculate base port for next cycle */
-        base_port = 20000 + (int)(slk_clock() % 39000);
+        /* Recalculate base port with new clock value for next cycle */
+        base_port = 15000 + (int)(slk_clock() % 44000);
     }
 
     snprintf(endpoints[slot], sizeof(endpoints[slot]), "tcp://127.0.0.1:%d", port);
