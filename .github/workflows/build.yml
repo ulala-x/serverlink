@@ -404,6 +404,7 @@ jobs:
 
       - name: Generate benchmark comparison report
         if: startsWith(github.ref, 'refs/tags/')
+        continue-on-error: true
         run: |
           # Create benchmarks directory with all benchmark files
           mkdir -p benchmarks
