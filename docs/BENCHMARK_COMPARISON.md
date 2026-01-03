@@ -8,13 +8,34 @@
 
 > **Note:** This benchmark was conducted on Windows x64. Results may vary on Linux/macOS due to different I/O backends (epoll/kqueue vs select).
 
+---
+
+## 🚀 Performance Optimization History
+
+### v0.1.1-opt1: Memory Ordering Optimization (2026-01-03)
+
+**변경사항:** `atomic_ptr.hpp`의 CAS 연산 memory ordering 최적화
+- Before: `memory_order_acq_rel` (모든 연산)
+- After: `memory_order_release` (success) / `memory_order_acquire` (failure)
+
+**결과:**
+
+| 지표 | 최적화 전 | 최적화 후 | 개선율 |
+|------|----------|----------|--------|
+| inproc RTT (64B) | 35.16 µs | **21.75 µs** | **38% 개선** |
+| inproc 처리량 (64B) | 5.04M msg/s | **5.72M msg/s** | **13% 개선** |
+| inproc 처리량 (1KB) | 3.25M msg/s | **4.34M msg/s** | **34% 개선** |
+| TCP 처리량 (64B) | 4.60M msg/s | **4.71M msg/s** | +2% |
+
+---
+
 ## Executive Summary
 
 | Metric | ServerLink | libzmq | Comparison |
 |--------|------------|--------|------------|
-| **Best Throughput** | 5.0M msg/s | 8.3M msg/s | libzmq +66% |
+| **Best Throughput** | 5.7M msg/s | 8.3M msg/s | libzmq +46% |
 | **Best Bandwidth** | 20 GB/s | 15 GB/s | ServerLink +33% |
-| **Best Latency** | 23.6µs RTT | 8.6µs RTT | libzmq 2.7x faster |
+| **Best Latency** | 21.8µs RTT | 8.6µs RTT | libzmq 2.5x faster |
 
 ### Key Findings
 

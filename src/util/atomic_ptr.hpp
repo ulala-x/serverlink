@@ -36,7 +36,11 @@ class atomic_ptr_t {
     // is returned.
     T *cas(T *cmp, T *val) noexcept
     {
-        _ptr.compare_exchange_strong(cmp, val, std::memory_order_acq_rel);
+        // Use release ordering on success (write), acquire on failure (read)
+        // This matches libzmq's __ATOMIC_RELEASE/__ATOMIC_ACQUIRE pattern
+        _ptr.compare_exchange_strong(cmp, val,
+                                      std::memory_order_release,
+                                      std::memory_order_acquire);
         return cmp;
     }
 
