@@ -78,6 +78,9 @@ static void test_basic()
     rc = slk_connect(sub, "inproc://test_xpub_manual");
     TEST_SUCCESS(rc);
 
+    /* Wait for connection to stabilize (ARM64 stability) */
+    test_sleep_ms(50);
+
     /* Subscribe for A */
     const uint8_t subscription[] = {1, 'A', 0};
     send_subscription(sub, subscription, sizeof(subscription), 0);
@@ -121,6 +124,9 @@ static void test_unsubscribe_manual()
     slk_socket_t *sub = test_socket_new(ctx, SLK_XSUB);
     rc = slk_connect(sub, "inproc://test_xpub_manual_unsub");
     TEST_SUCCESS(rc);
+
+    /* Wait for connection to stabilize (ARM64 stability) */
+    test_sleep_ms(50);
 
     /* Subscribe for A */
     const uint8_t subscription1[] = {1, 'A'};
