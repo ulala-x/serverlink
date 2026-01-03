@@ -13,26 +13,42 @@
 
 /* Note: SEQ_END, s_send_seq, s_recv_seq are now defined in testutil.hpp */
 
+/* Number of sender services for fair-queue test - using macro for ARM64 compatibility */
+#define NUM_SERVICES 5
+
 /*
  * SHALL receive incoming messages from its peers using a fair-queuing
  * strategy.
  */
 static void test_fair_queue_in(const char *bind_address)
 {
+    printf("[FQ] Creating context...\n"); fflush(stdout);
     slk_ctx_t *ctx = test_context_new();
-    slk_socket_t *receiver = test_socket_new(ctx, SLK_ROUTER);
-    test_socket_bind(receiver, bind_address);
+    printf("[FQ] Context created: %p\n", (void*)ctx); fflush(stdout);
 
-    // Use constexpr for compile-time constant (VLAs are not standard C++)
-    constexpr int services = 5;
-    slk_socket_t *senders[services];
+    printf("[FQ] Creating receiver socket...\n"); fflush(stdout);
+    slk_socket_t *receiver = test_socket_new(ctx, SLK_ROUTER);
+    printf("[FQ] Receiver socket created: %p\n", (void*)receiver); fflush(stdout);
+
+    printf("[FQ] Binding receiver to %s...\n", bind_address); fflush(stdout);
+    test_socket_bind(receiver, bind_address);
+    printf("[FQ] Receiver bound\n"); fflush(stdout);
+
+    // Use macro for ARM64 Windows compatibility
+    slk_socket_t *senders[NUM_SERVICES];
+    printf("[FQ] Senders array allocated on stack\n"); fflush(stdout);
 
     /* Set receiver routing ID */
+    printf("[FQ] Setting receiver routing ID...\n"); fflush(stdout);
     int rc = slk_setsockopt(receiver, SLK_ROUTING_ID, "RECV", 4);
     TEST_SUCCESS(rc);
+    printf("[FQ] Receiver routing ID set\n"); fflush(stdout);
 
-    for (unsigned char peer = 0; peer < services; ++peer) {
+    printf("[FQ] Creating %d sender sockets...\n", NUM_SERVICES); fflush(stdout);
+    for (unsigned char peer = 0; peer < NUM_SERVICES; ++peer) {
+        printf("[FQ] Creating sender %d...\n", peer); fflush(stdout);
         senders[peer] = test_socket_new(ctx, SLK_ROUTER);
+        printf("[FQ] Sender %d created: %p\n", peer, (void*)senders[peer]); fflush(stdout);
 
         char str[2];
         str[0] = 'A' + peer;
@@ -50,7 +66,7 @@ static void test_fair_queue_in(const char *bind_address)
 
     /* ROUTER-to-ROUTER handshakes for all senders */
     char buf[256];
-    for (unsigned char peer = 0; peer < services; ++peer) {
+    for (unsigned char peer = 0; peer < NUM_SERVICES; ++peer) {
         /* Each sender sends handshake */
         rc = slk_send(senders[peer], "RECV", 4, SLK_SNDMORE);
         TEST_ASSERT(rc >= 0);
@@ -63,8 +79,8 @@ static void test_fair_queue_in(const char *bind_address)
     test_sleep_ms(200);
 
     /* Receiver gets all handshakes and responds */
-    char sender_ids[services];
-    for (unsigned char peer = 0; peer < services; ++peer) {
+    char sender_ids[NUM_SERVICES];
+    for (unsigned char peer = 0; peer < NUM_SERVICES; ++peer) {
         /* Poll before blocking recv */
         if (!test_poll_readable(receiver, 5000)) {
             fprintf(stderr, "ERROR: Timeout waiting for handshake from peer %d\n", peer);
@@ -80,7 +96,7 @@ static void test_fair_queue_in(const char *bind_address)
     }
 
     /* Send all responses */
-    for (unsigned char peer = 0; peer < services; ++peer) {
+    for (unsigned char peer = 0; peer < NUM_SERVICES; ++peer) {
         rc = slk_send(receiver, &sender_ids[peer], 1, SLK_SNDMORE);
         TEST_ASSERT(rc >= 0);
         rc = slk_send(receiver, "READY", 5, 0);
@@ -90,7 +106,7 @@ static void test_fair_queue_in(const char *bind_address)
     test_sleep_ms(100);
 
     /* All senders receive handshake responses */
-    for (unsigned char peer = 0; peer < services; ++peer) {
+    for (unsigned char peer = 0; peer < NUM_SERVICES; ++peer) {
         /* Poll before blocking recv */
         if (!test_poll_readable(senders[peer], 5000)) {
             fprintf(stderr, "ERROR: Timeout waiting for handshake response for peer %d\n", peer);
@@ -125,19 +141,19 @@ static void test_fair_queue_in(const char *bind_address)
     int sum = 0;
 
     /* Send N requests */
-    for (unsigned char peer = 0; peer < services; ++peer) {
+    for (unsigned char peer = 0; peer < NUM_SERVICES; ++peer) {
         rc = slk_send(senders[peer], "RECV", 4, SLK_SNDMORE);
         TEST_ASSERT(rc >= 0);
         s_send_seq_1(senders[peer], "M");
         sum += 'A' + peer;
     }
 
-    TEST_ASSERT_EQ(sum, (int)(services * 'A' + services * (services - 1) / 2));
+    TEST_ASSERT_EQ(sum, (int)(NUM_SERVICES * 'A' + NUM_SERVICES * (NUM_SERVICES - 1) / 2));
 
     test_sleep_ms(100);
 
     /* Handle N requests - should receive in round-robin order */
-    for (unsigned char peer = 0; peer < services; ++peer) {
+    for (unsigned char peer = 0; peer < NUM_SERVICES; ++peer) {
         char buf[256];
         int rc = slk_recv(receiver, buf, sizeof(buf), 0);  /* routing-id */
         TEST_ASSERT_EQ(rc, 1);
@@ -151,7 +167,7 @@ static void test_fair_queue_in(const char *bind_address)
 
     test_socket_close(receiver);
 
-    for (size_t peer = 0; peer < services; ++peer)
+    for (size_t peer = 0; peer < NUM_SERVICES; ++peer)
         test_socket_close(senders[peer]);
 
     /* Wait for disconnects */
@@ -358,6 +374,26 @@ int main()
     printf("=== ServerLink ROUTER Spec Compliance Tests ===\n\n");
     fflush(stdout);
 
+    // Print platform info for debugging
+    printf("Platform: ");
+#if defined(_WIN32)
+    printf("Windows");
+#if defined(_M_ARM64)
+    printf(" ARM64");
+#elif defined(_M_X64)
+    printf(" x64");
+#elif defined(_M_IX86)
+    printf(" x86");
+#endif
+#elif defined(__linux__)
+    printf("Linux");
+#elif defined(__APPLE__)
+    printf("macOS");
+#endif
+    printf("\n");
+    printf("sizeof(void*)=%zu, sizeof(size_t)=%zu\n", sizeof(void*), sizeof(size_t));
+    fflush(stdout);
+
 #ifdef _WIN32
     // Set error mode to prevent Windows error dialogs from blocking test execution
     // This ensures crashes are reported immediately rather than waiting for user input
@@ -368,7 +404,7 @@ int main()
     fflush(stdout);
 
     // Small delay to ensure Windows socket subsystem is fully initialized
-    test_sleep_ms(10);
+    test_sleep_ms(50);  // Increased from 10ms to 50ms for ARM64
 
     RUN_TEST(test_fair_queue_in_tcp);
     RUN_TEST(test_destroy_queue_on_disconnect_tcp);
