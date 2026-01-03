@@ -411,15 +411,11 @@ int main() {
     for (size_t i = 0; i < 4; i++) {
         bench_params_t params = {sizes[i], counts[i], "pubsub"};
 
-        if (!is_ci) {
-            bench_pubsub_tcp(params);
-        }
+        bench_pubsub_tcp(params);
         bench_pubsub_inproc(params);
 
 #if defined(SL_HAVE_IPC) && defined(__linux__)
-        if (!is_ci) {
-            bench_pubsub_ipc(params);
-        }
+        bench_pubsub_ipc(params);
 #endif
         printf("\n");
     }

@@ -266,18 +266,14 @@ int main() {
     size_t sizes[] = {64, 1024, 8192};
 
     for (size_t i = 0; i < 3; i++) {
-        bench_params_t params = {sizes[i], iteration_count, "inproc"};
+        bench_params_t tcp_params = {sizes[i], iteration_count, "tcp"};
+        bench_params_t inproc_params = {sizes[i], iteration_count, "inproc"};
 
-        if (!is_ci) {
-            bench_params_t tcp_params = {sizes[i], iteration_count, "tcp"};
-            bench_latency_tcp(tcp_params);
-        }
-        bench_latency_inproc(params);
+        bench_latency_tcp(tcp_params);
+        bench_latency_inproc(inproc_params);
 #ifdef __linux__
-        if (!is_ci) {
-            bench_params_t ipc_params = {sizes[i], iteration_count, "ipc"};
-            bench_latency_ipc(ipc_params);
-        }
+        bench_params_t ipc_params = {sizes[i], iteration_count, "ipc"};
+        bench_latency_ipc(ipc_params);
 #endif
         printf("\n");
     }

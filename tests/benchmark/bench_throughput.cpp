@@ -239,20 +239,14 @@ int main() {
     }
 
     for (size_t i = 0; i < 4; i++) {
-        bench_params_t params = {sizes[i], counts[i], "inproc"};
+        bench_params_t tcp_params = {sizes[i], counts[i], "tcp"};
+        bench_params_t inproc_params = {sizes[i], counts[i], "inproc"};
 
-        // In CI, only run inproc (faster, no port conflicts)
-        // In full mode, run all transports
-        if (!is_ci) {
-            bench_params_t tcp_params = {sizes[i], counts[i], "tcp"};
-            bench_throughput_tcp(tcp_params);
-        }
-        bench_throughput_inproc(params);
+        bench_throughput_tcp(tcp_params);
+        bench_throughput_inproc(inproc_params);
 #if defined(SL_HAVE_IPC) && defined(__linux__)
-        if (!is_ci) {
-            bench_params_t ipc_params = {sizes[i], counts[i], "ipc"};
-            bench_throughput_ipc(ipc_params);
-        }
+        bench_params_t ipc_params = {sizes[i], counts[i], "ipc"};
+        bench_throughput_ipc(ipc_params);
 #endif
         printf("\n");
     }

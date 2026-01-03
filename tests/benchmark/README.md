@@ -107,11 +107,16 @@ Performance comparison results are available in:
 
 ## CI Mode
 
-Both libzmq and ServerLink benchmarks detect CI environment and reduce iteration counts by ~100x for faster CI runs:
+Benchmarks detect CI environment (`CI` or `GITHUB_ACTIONS` env var) and reduce iteration counts by ~100x for faster runs:
+
+| Mode | 64B | 1KB | 8KB | 64KB | Transports |
+|------|-----|-----|-----|------|------------|
+| Full | 100K | 50K | 10K | 1K | TCP, inproc, IPC |
+| CI | 1K | 500 | 100 | 50 | TCP, inproc, IPC |
 
 ```bash
 export CI=true
-./bench_zmq_router  # Uses reduced counts
+./run_serverlink.sh  # Uses reduced iteration counts
 ```
 
 ## Troubleshooting

@@ -39,21 +39,14 @@ jobs:
 
       - name: Run benchmarks
         run: |
-          chmod +x ./scripts/run_benchmarks.sh
-          BUILD_DIR=build ./scripts/run_benchmarks.sh
-
-      - name: Format results as Markdown
-        run: |
-          chmod +x ./scripts/format_benchmark.py
-          python3 ./scripts/format_benchmark.py build/tests/benchmark benchmark_results.md
+          chmod +x ./tests/benchmark/run_serverlink.sh
+          ./tests/benchmark/run_serverlink.sh | tee benchmark_results.txt
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-results
-          path: |
-            benchmark_results.json
-            benchmark_results.md
+          path: benchmark_results.txt
           retention-days: 90
 
       - name: Comment PR with results
@@ -64,32 +57,31 @@ jobs:
             const fs = require('fs');
 
             let comment = '## 🚀 Performance Benchmark Results\n\n';
+            comment += '```\n';
 
-            // Read markdown results if available
-            if (fs.existsSync('benchmark_results.md')) {
-              const results = fs.readFileSync('benchmark_results.md', 'utf8');
+            if (fs.existsSync('benchmark_results.txt')) {
+              const results = fs.readFileSync('benchmark_results.txt', 'utf8');
               comment += results;
             } else {
               comment += 'Benchmark results not available.\n';
             }
 
+            comment += '```\n';
             comment += '\n---\n';
             comment += '*Benchmarks run on GitHub Actions runner (ubuntu-22.04)*\n';
 
-            // Find existing comment
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
             });
 
-            const botComment = comments.find(comment =>
-              comment.user.type === 'Bot' &&
-              comment.body.includes('Performance Benchmark Results')
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' &&
+              c.body.includes('Performance Benchmark Results')
             );
 
             if (botComment) {
-              // Update existing comment
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -97,7 +89,6 @@ jobs:
                 body: comment
               });
             } else {
-              // Create new comment
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -108,13 +99,11 @@ jobs:
 
       - name: Add summary to workflow
         run: |
-          if [ -f "benchmark_results.md" ]; then
-            cat benchmark_results.md >> $GITHUB_STEP_SUMMARY
-          else
-            echo "## Benchmark Results" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "No benchmark results available." >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "## Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat benchmark_results.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
   compare-baseline:
     name: Compare with Baseline
@@ -140,9 +129,8 @@ jobs:
             -DBUILD_TESTS=ON \
             -DCMAKE_CXX_FLAGS="-O3 -march=native"
           cmake --build build-pr --parallel $(nproc)
-          chmod +x ./scripts/run_benchmarks.sh
-          BUILD_DIR=build-pr ./scripts/run_benchmarks.sh
-          mv benchmark_results.json benchmark_pr.json
+          chmod +x ./tests/benchmark/run_serverlink.sh
+          ./tests/benchmark/run_serverlink.sh > benchmark_pr.txt
 
       - name: Checkout main branch
         uses: actions/checkout@v4
@@ -156,37 +144,28 @@ jobs:
             -DBUILD_TESTS=ON \
             -DCMAKE_CXX_FLAGS="-O3 -march=native"
           cmake --build build-main --parallel $(nproc)
-          chmod +x ./scripts/run_benchmarks.sh
-          BUILD_DIR=build-main ./scripts/run_benchmarks.sh
-          mv benchmark_results.json benchmark_main.json
+          chmod +x ./tests/benchmark/run_serverlink.sh
+          ./tests/benchmark/run_serverlink.sh > benchmark_main.txt
 
       - name: Compare results
         run: |
-          echo "## 📊 Performance Comparison (PR vs Main)" >> comparison.md
-          echo "" >> comparison.md
-
-          if [ -f "benchmark_pr.json" ] && [ -f "benchmark_main.json" ]; then
-            # Simple comparison using jq
-            echo "| Benchmark | Main | PR | Change |" >> comparison.md
-            echo "|-----------|------|----|----|" >> comparison.md
-
-            # This is a simple comparison - you can make it more sophisticated
-            jq -r '.benchmarks[] | .name' benchmark_pr.json | while read name; do
-              # Extract metrics (this is simplified)
-              echo "| $name | - | - | - |" >> comparison.md
-            done
-          else
-            echo "Could not compare - missing benchmark data" >> comparison.md
-          fi
-
-          cat comparison.md >> $GITHUB_STEP_SUMMARY
+          echo "## 📊 Performance Comparison (PR vs Main)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### PR Branch" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat benchmark_pr.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Main Branch" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat benchmark_main.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload comparison
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-comparison
           path: |
-            benchmark_pr.json
-            benchmark_main.json
-            comparison.md
+            benchmark_pr.txt
+            benchmark_main.txt
           retention-days: 30
