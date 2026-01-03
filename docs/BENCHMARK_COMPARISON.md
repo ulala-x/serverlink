@@ -27,15 +27,36 @@
 | inproc 처리량 (1KB) | 3.25M msg/s | **4.34M msg/s** | **34% 개선** |
 | TCP 처리량 (64B) | 4.60M msg/s | **4.71M msg/s** | +2% |
 
+### v0.1.1-opt2: Lazy process_commands Optimization (2026-01-03)
+
+**변경사항:** `socket_base.cpp`의 process_commands() 호출 최적화
+- Before: 매 send() 호출마다 process_commands() 호출
+- After: has_pending() 체크 후 필요시에만 호출 (lazy processing)
+
+**결과:**
+
+| 지표 | opt1 | opt2 | 개선율 |
+|------|------|------|--------|
+| inproc 처리량 (64B) | 5.72M msg/s | **7.65M msg/s** | **+34% 개선** |
+| inproc 처리량 (64KB) | 89K msg/s | **227K msg/s** | **+155% 개선** |
+| TCP 처리량 (64B) | 4.71M msg/s | 4.76M msg/s | +1% |
+
+**누적 개선율 (원본 대비):**
+
+| 지표 | 원본 | 최종 | 총 개선율 |
+|------|------|------|----------|
+| inproc 처리량 (64B) | 5.04M msg/s | **7.65M msg/s** | **+52%** |
+| inproc RTT (64B) | 35.16 µs | **21.67 µs** | **38%** |
+
 ---
 
 ## Executive Summary
 
 | Metric | ServerLink | libzmq | Comparison |
 |--------|------------|--------|------------|
-| **Best Throughput** | 5.7M msg/s | 8.3M msg/s | libzmq +46% |
+| **Best Throughput** | 7.7M msg/s | 8.3M msg/s | libzmq +8% |
 | **Best Bandwidth** | 20 GB/s | 15 GB/s | ServerLink +33% |
-| **Best Latency** | 21.8µs RTT | 8.6µs RTT | libzmq 2.5x faster |
+| **Best Latency** | 21.7µs RTT | 8.6µs RTT | libzmq 2.5x faster |
 
 ### Key Findings
 

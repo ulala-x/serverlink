@@ -98,4 +98,10 @@ int mailbox_safe_t::recv (command_t *cmd_, int timeout_)
     return 0;
 }
 
+bool mailbox_safe_t::has_pending () const
+{
+    // Check if there are commands in the pipe
+    return _cpipe.check_read ();
+}
+
 } // namespace slk

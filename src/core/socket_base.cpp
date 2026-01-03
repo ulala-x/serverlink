@@ -737,10 +737,14 @@ int slk::socket_base_t::send (msg_t *msg_, int flags_)
         return -1;
     }
 
-    // Process pending commands, if any
-    int rc = process_commands (0, true);
-    if (unlikely (rc != 0)) {
-        return -1;
+    // Process pending commands only if there are any
+    // This optimization avoids unnecessary mailbox polling on every send()
+    // Similar to libzmq's lazy command processing pattern
+    if (_mailbox->has_pending ()) {
+        int rc = process_commands (0, true);
+        if (unlikely (rc != 0)) {
+            return -1;
+        }
     }
 
     // Clear any user-visible flags that are set on the message

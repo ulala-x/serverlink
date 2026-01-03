@@ -27,6 +27,9 @@ class mailbox_safe_t final : public i_mailbox
     void send (const command_t &cmd_);
     int recv (command_t *cmd_, int timeout_);
 
+    // Check if there are pending commands without blocking
+    bool has_pending () const final;
+
     // Add signaler to mailbox which will be called when a message is ready
     void add_signaler (signaler_t *signaler_);
     void remove_signaler (signaler_t *signaler_);
