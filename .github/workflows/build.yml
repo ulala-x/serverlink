@@ -85,6 +85,7 @@ jobs:
           name: benchmark-linux-x64
           path: benchmark-linux-x64.json
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          if-no-files-found: ignore
 
   build-linux-arm64:
     name: Build Linux ARM64
@@ -139,6 +140,7 @@ jobs:
           name: benchmark-linux-arm64
           path: benchmark-linux-arm64.json
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          if-no-files-found: ignore
 
   build-windows-x64:
     name: Build Windows x64
@@ -180,6 +182,7 @@ jobs:
           name: benchmark-windows-x64
           path: benchmark-windows-x64.json
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          if-no-files-found: ignore
 
   build-windows-arm64:
     name: Build Windows ARM64
@@ -221,6 +224,7 @@ jobs:
           name: benchmark-windows-arm64
           path: benchmark-windows-arm64.json
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          if-no-files-found: ignore
 
   build-macos-x64:
     name: Build macOS x64 (Intel)
@@ -270,6 +274,7 @@ jobs:
           name: benchmark-macos-x64
           path: benchmark-macos-x64.json
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          if-no-files-found: ignore
 
   build-macos-arm64:
     name: Build macOS ARM64 (Apple Silicon)
@@ -319,6 +324,7 @@ jobs:
           name: benchmark-macos-arm64
           path: benchmark-macos-arm64.json
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          if-no-files-found: ignore
 
   verify:
     name: Verify Build Artifacts
