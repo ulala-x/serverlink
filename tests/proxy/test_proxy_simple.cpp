@@ -27,12 +27,11 @@ static void test_proxy_sockets_creation()
     TEST_ASSERT_NOT_NULL(frontend);
     TEST_ASSERT_NOT_NULL(backend);
 
-    // Bind sockets (would be used by proxy)
-    const char *frontend_endpoint = test_endpoint_tcp();
-    const char *backend_endpoint = test_endpoint_tcp();
-
-    test_socket_bind(frontend, frontend_endpoint);
-    test_socket_bind(backend, backend_endpoint);
+    // Bind sockets using inproc (avoids TCP port issues on ARM64)
+    int rc = slk_bind(frontend, "inproc://proxy_frontend");
+    TEST_SUCCESS(rc);
+    rc = slk_bind(backend, "inproc://proxy_backend");
+    TEST_SUCCESS(rc);
 
     // Don't actually run proxy, just verify setup works
     printf("  Created and bound frontend and backend sockets\n");
