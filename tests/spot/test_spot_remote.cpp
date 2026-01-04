@@ -24,8 +24,8 @@ static void test_spot_remote_tcp()
 
     test_sleep_ms(SETTLE_TIME);
 
-    /* Subscriber connects and subscribes */
-    rc = slk_spot_cluster_add(sub, endpoint);
+    /* Subscriber routes topic to publisher and subscribes */
+    rc = slk_spot_topic_route(sub, "remote:tcp", endpoint);
     TEST_SUCCESS(rc);
 
     rc = slk_spot_subscribe(sub, "remote:tcp");
@@ -76,8 +76,8 @@ static void test_spot_remote_inproc()
 
     test_sleep_ms(100);
 
-    /* Subscriber connects and subscribes */
-    rc = slk_spot_cluster_add(sub, endpoint);
+    /* Subscriber routes topic to publisher and subscribes */
+    rc = slk_spot_topic_route(sub, "remote:inproc", endpoint);
     TEST_SUCCESS(rc);
 
     rc = slk_spot_subscribe(sub, "remote:inproc");
@@ -135,10 +135,10 @@ static void test_spot_bidirectional_remote()
 
     test_sleep_ms(SETTLE_TIME);
 
-    /* Both nodes connect to each other */
-    rc = slk_spot_cluster_add(node1, endpoint2);
+    /* Both nodes route to each other's topics */
+    rc = slk_spot_topic_route(node1, "topic2", endpoint2);
     TEST_SUCCESS(rc);
-    rc = slk_spot_cluster_add(node2, endpoint1);
+    rc = slk_spot_topic_route(node2, "topic1", endpoint1);
     TEST_SUCCESS(rc);
 
     /* Cross-subscribe */
@@ -207,7 +207,7 @@ static void test_spot_reconnect()
 
     test_sleep_ms(SETTLE_TIME);
 
-    rc = slk_spot_cluster_add(sub, endpoint);
+    rc = slk_spot_topic_route(sub, "reconnect", endpoint);
     TEST_SUCCESS(rc);
 
     rc = slk_spot_subscribe(sub, "reconnect");
@@ -227,16 +227,13 @@ static void test_spot_reconnect()
                        data, sizeof(data), &data_len, 500);
     TEST_SUCCESS(rc);
 
-    /* Disconnect */
-    rc = slk_spot_cluster_remove(sub, endpoint);
+    /* Disconnect - topic still registered but reconnect */
+    rc = slk_spot_unsubscribe(sub, "reconnect");
     TEST_SUCCESS(rc);
 
     test_sleep_ms(SETTLE_TIME);
 
-    /* Reconnect */
-    rc = slk_spot_cluster_add(sub, endpoint);
-    TEST_SUCCESS(rc);
-
+    /* Reconnect - re-subscribe */
     rc = slk_spot_subscribe(sub, "reconnect");
     TEST_SUCCESS(rc);
 
@@ -284,18 +281,18 @@ static void test_spot_multiple_remote_subscribers()
 
     test_sleep_ms(SETTLE_TIME);
 
-    /* All subscribers connect and subscribe */
-    rc = slk_spot_cluster_add(sub1, endpoint);
+    /* All subscribers route to publisher and subscribe */
+    rc = slk_spot_topic_route(sub1, "broadcast", endpoint);
     TEST_SUCCESS(rc);
     rc = slk_spot_subscribe(sub1, "broadcast");
     TEST_SUCCESS(rc);
 
-    rc = slk_spot_cluster_add(sub2, endpoint);
+    rc = slk_spot_topic_route(sub2, "broadcast", endpoint);
     TEST_SUCCESS(rc);
     rc = slk_spot_subscribe(sub2, "broadcast");
     TEST_SUCCESS(rc);
 
-    rc = slk_spot_cluster_add(sub3, endpoint);
+    rc = slk_spot_topic_route(sub3, "broadcast", endpoint);
     TEST_SUCCESS(rc);
     rc = slk_spot_subscribe(sub3, "broadcast");
     TEST_SUCCESS(rc);

@@ -77,35 +77,41 @@ static void test_spot_multi_topic()
     test_context_destroy(ctx);
 }
 
-/* Test: Multiple subscribers to same topic */
+/* Test: Multiple subscribers to same topic via TCP
+ *
+ * In SPOT design:
+ * - Publisher creates topic locally and binds to external endpoint
+ * - Subscribers route to publisher's endpoint and subscribe
+ */
 static void test_spot_multi_subscriber()
 {
     slk_ctx_t *ctx = test_context_new();
 
-    /* Create two SPOT instances */
+    /* Publisher creates topic and binds to TCP endpoint */
     slk_spot_t *pub = slk_spot_new(ctx);
-    slk_spot_t *sub1 = slk_spot_new(ctx);
-    slk_spot_t *sub2 = slk_spot_new(ctx);
+    TEST_ASSERT_NOT_NULL(pub);
 
-    /* Publisher creates topic */
+    const char *pub_endpoint = test_endpoint_tcp();
+
     int rc = slk_spot_topic_create(pub, "broadcast");
     TEST_SUCCESS(rc);
 
-    /* Route topic to both subscribers via inproc */
-    const char *endpoint1 = "inproc://sub1";
-    const char *endpoint2 = "inproc://sub2";
-
-    rc = slk_spot_bind(sub1, endpoint1);
-    TEST_SUCCESS(rc);
-    rc = slk_spot_bind(sub2, endpoint2);
+    rc = slk_spot_bind(pub, pub_endpoint);
     TEST_SUCCESS(rc);
 
-    rc = slk_spot_topic_route(pub, "broadcast", endpoint1);
-    TEST_SUCCESS(rc);
-    rc = slk_spot_topic_route(pub, "broadcast", endpoint2);
-    TEST_SUCCESS(rc);
+    test_sleep_ms(SETTLE_TIME);
 
-    test_sleep_ms(100);
+    /* Create subscribers that route to publisher */
+    slk_spot_t *sub1 = slk_spot_new(ctx);
+    slk_spot_t *sub2 = slk_spot_new(ctx);
+    TEST_ASSERT_NOT_NULL(sub1);
+    TEST_ASSERT_NOT_NULL(sub2);
+
+    /* Each subscriber routes to publisher's endpoint */
+    rc = slk_spot_topic_route(sub1, "broadcast", pub_endpoint);
+    TEST_SUCCESS(rc);
+    rc = slk_spot_topic_route(sub2, "broadcast", pub_endpoint);
+    TEST_SUCCESS(rc);
 
     /* Subscribers subscribe */
     rc = slk_spot_subscribe(sub1, "broadcast");
@@ -113,7 +119,7 @@ static void test_spot_multi_subscriber()
     rc = slk_spot_subscribe(sub2, "broadcast");
     TEST_SUCCESS(rc);
 
-    test_sleep_ms(100);
+    test_sleep_ms(SETTLE_TIME);
 
     /* Publish message */
     const char *msg = "message to all";
