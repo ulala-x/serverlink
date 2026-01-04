@@ -4,6 +4,7 @@
 #include "topic_registry.hpp"
 #include "../util/err.hpp"
 
+#include <mutex>
 #include <sstream>
 
 namespace slk

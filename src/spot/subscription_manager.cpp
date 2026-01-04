@@ -4,6 +4,7 @@
 #include "subscription_manager.hpp"
 #include "../util/err.hpp"
 
+#include <mutex>
 #include <algorithm>
 
 namespace slk
