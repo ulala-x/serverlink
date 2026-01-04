@@ -44,8 +44,7 @@ int spot_node_t::connect ()
 
     // Create DEALER socket (Note: ServerLink doesn't have DEALER yet, using ROUTER as placeholder)
     // TODO: When DEALER is implemented, change SL_ROUTER to SL_DEALER
-    _socket = socket_base_t::create (SL_ROUTER, _ctx,
-                                      _ctx->get_reaper ()->get_tid (), 0);
+    _socket = _ctx->create_socket (SL_ROUTER);
     if (!_socket) {
         errno = ENOMEM;
         return -1;

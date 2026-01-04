@@ -15,6 +15,7 @@
 #include <cerrno>
 #include <cstring>
 #include <sstream>
+#include <stdexcept>
 
 namespace slk
 {
@@ -29,11 +30,16 @@ spot_pubsub_t::spot_pubsub_t (ctx_t *ctx_)
     , _rcvhwm (1000)
     , _topic_counter (0)
 {
-    assert (_ctx);
+    if (!_ctx) {
+        throw std::invalid_argument ("Context pointer is null");
+    }
 
     // Create receive socket (XSUB) for all subscriptions
-    _recv_socket = socket_base_t::create (SL_XSUB, _ctx, _ctx->get_reaper ()->get_tid (), 0);
-    assert (_recv_socket);
+    // Use create_socket() to properly initialize the context (reaper, I/O threads)
+    _recv_socket = _ctx->create_socket (SL_XSUB);
+    if (!_recv_socket) {
+        throw std::runtime_error ("Failed to create XSUB socket");
+    }
 
     // Set HWM for receive socket
     _recv_socket->setsockopt (SL_RCVHWM, &_rcvhwm, sizeof (_rcvhwm));
@@ -91,8 +97,7 @@ int spot_pubsub_t::topic_create (const std::string &topic_id)
     assert (entry->location == topic_registry_t::topic_location_t::LOCAL);
 
     // Create XPUB socket for this topic
-    socket_base_t *xpub = socket_base_t::create (SL_XPUB, _ctx,
-                                                   _ctx->get_reaper ()->get_tid (), 0);
+    socket_base_t *xpub = _ctx->create_socket (SL_XPUB);
     if (!xpub) {
         _registry->unregister (topic_id);
         errno = ENOMEM;
@@ -659,8 +664,7 @@ int spot_pubsub_t::bind (const std::string &endpoint)
     }
 
     // Create ROUTER socket for server mode
-    _server_socket = socket_base_t::create (SL_ROUTER, _ctx,
-                                             _ctx->get_reaper ()->get_tid (), 0);
+    _server_socket = _ctx->create_socket (SL_ROUTER);
     if (!_server_socket) {
         errno = ENOMEM;
         return -1;
