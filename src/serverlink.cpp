@@ -2203,4 +2203,35 @@ int SL_CALL slk_spot_fd(slk_spot_t *spot_, slk_fd_t *fd_)
     }
 }
 
+int SL_CALL slk_spot_setsockopt(slk_spot_t *spot_, int option,
+                                const void *value, size_t len)
+{
+    CHECK_PTR(spot_, -1);
+    CHECK_PTR(value, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        return spot->setsockopt(option, value, len);
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+int SL_CALL slk_spot_getsockopt(slk_spot_t *spot_, int option,
+                                void *value, size_t *len)
+{
+    CHECK_PTR(spot_, -1);
+    CHECK_PTR(value, -1);
+    CHECK_PTR(len, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        return spot->getsockopt(option, value, len);
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
+}
+
 } // extern "C"

@@ -51,13 +51,20 @@ static void test_spot_mixed_local_remote()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout for both subscribers */
+    int timeout_ms = 500;
+    rc = slk_spot_setsockopt(inproc_sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+    rc = slk_spot_setsockopt(tcp_sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Both should receive */
     char topic[64], data[256];
     size_t topic_len, data_len;
 
     /* Inproc subscriber */
     rc = slk_spot_recv(inproc_sub, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
     topic[topic_len] = '\0';
     data[data_len] = '\0';
@@ -66,7 +73,7 @@ static void test_spot_mixed_local_remote()
 
     /* TCP subscriber */
     rc = slk_spot_recv(tcp_sub, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
     topic[topic_len] = '\0';
     data[data_len] = '\0';
@@ -123,18 +130,25 @@ static void test_spot_multi_transport()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout for both subscribers */
+    timeout_ms = 500;
+    rc = slk_spot_setsockopt(tcp_sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+    rc = slk_spot_setsockopt(ipc_sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Both should receive via different transports */
     char topic[64], data[256];
     size_t topic_len, data_len;
 
     rc = slk_spot_recv(tcp_sub, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
     data[data_len] = '\0';
     TEST_ASSERT_STR_EQ(data, msg);
 
     rc = slk_spot_recv(ipc_sub, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
     data[data_len] = '\0';
     TEST_ASSERT_STR_EQ(data, msg);
@@ -194,18 +208,25 @@ static void test_spot_topic_routing_mixed()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout */
+    timeout_ms = 500;
+    rc = slk_spot_setsockopt(local_router, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+    rc = slk_spot_setsockopt(remote_sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Both local router and remote subscriber should receive */
     char topic[64], data[256];
     size_t topic_len, data_len;
 
     rc = slk_spot_recv(local_router, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
     data[data_len] = '\0';
     TEST_ASSERT_STR_EQ(data, msg);
 
     rc = slk_spot_recv(remote_sub, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
     data[data_len] = '\0';
     TEST_ASSERT_STR_EQ(data, msg);
@@ -260,6 +281,11 @@ static void test_spot_pattern_mixed()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout */
+    timeout_ms = 500;
+    rc = slk_spot_setsockopt(sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Subscriber should receive from both sources matching pattern */
     char topic[64], data[256];
     size_t topic_len, data_len;
@@ -269,7 +295,7 @@ static void test_spot_pattern_mixed()
 
     while (received_count < 2) {
         rc = slk_spot_recv(sub, topic, sizeof(topic), &topic_len,
-                          data, sizeof(data), &data_len, 500);
+                          data, sizeof(data), &data_len, 0);
         if (rc != 0) break;
 
         topic[topic_len] = '\0';
@@ -335,6 +361,13 @@ static void test_spot_high_load_mixed()
 
     test_sleep_ms(300);
 
+    /* Set receive timeout */
+    timeout_ms = 100;
+    rc = slk_spot_setsockopt(local_sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+    rc = slk_spot_setsockopt(remote_sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Both subscribers should receive all messages */
     char topic[64], data[256];
     size_t topic_len, data_len;
@@ -342,14 +375,14 @@ static void test_spot_high_load_mixed()
     int local_received = 0;
     for (int i = 0; i < msg_count; i++) {
         rc = slk_spot_recv(local_sub, topic, sizeof(topic), &topic_len,
-                          data, sizeof(data), &data_len, 100);
+                          data, sizeof(data), &data_len, 0);
         if (rc == 0) local_received++;
     }
 
     int remote_received = 0;
     for (int i = 0; i < msg_count; i++) {
         rc = slk_spot_recv(remote_sub, topic, sizeof(topic), &topic_len,
-                          data, sizeof(data), &data_len, 100);
+                          data, sizeof(data), &data_len, 0);
         if (rc == 0) remote_received++;
     }
 
@@ -367,16 +400,11 @@ int main()
 {
     printf("=== ServerLink SPOT Mixed Scenarios Tests ===\n\n");
 
-    /* TODO: These tests require proper timeout support in recv()
-     * Currently recv falls into blocking mode and hangs.
-     * test_spot_basic covers the core functionality.
-     *
-     * RUN_TEST(test_spot_mixed_local_remote);
-     * RUN_TEST(test_spot_multi_transport);
-     * RUN_TEST(test_spot_topic_routing_mixed);
-     * RUN_TEST(test_spot_pattern_mixed);
-     * RUN_TEST(test_spot_high_load_mixed);
-     */
+    RUN_TEST(test_spot_mixed_local_remote);
+    RUN_TEST(test_spot_multi_transport);
+    RUN_TEST(test_spot_topic_routing_mixed);
+    RUN_TEST(test_spot_pattern_mixed);
+    RUN_TEST(test_spot_high_load_mixed);
 
     printf("\n=== All SPOT Mixed Scenarios Tests Passed ===\n");
     return 0;

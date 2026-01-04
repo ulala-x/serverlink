@@ -72,6 +72,10 @@ SL_EXPORT void SL_CALL slk_version(int *major, int *minor, int *patch);
 #define SLK_SNDHWM              23  /* Send high water mark (messages) */
 #define SLK_RCVHWM              24  /* Receive high water mark (messages) */
 
+/* Timeout options */
+#define SLK_RCVTIMEO            27  /* Receive timeout in milliseconds (-1=infinite) */
+#define SLK_SNDTIMEO            28  /* Send timeout in milliseconds (-1=infinite) */
+
 /* Security options (future use) */
 #define SLK_AUTH_ENABLED        200 /* Enable authentication */
 #define SLK_AUTH_TIMEOUT        201 /* Authentication timeout in ms */
@@ -740,6 +744,40 @@ SL_EXPORT int SL_CALL slk_spot_set_hwm(slk_spot_t *spot, int sndhwm, int rcvhwm)
  *   0 on success, -1 on error
  */
 SL_EXPORT int SL_CALL slk_spot_fd(slk_spot_t *spot, slk_fd_t *fd);
+
+/* Set SPOT socket option
+ *
+ * Configures options for the receive socket (XSUB).
+ * Supported options: SLK_RCVTIMEO (int, milliseconds)
+ *
+ * Parameters:
+ *   spot   - SPOT instance
+ *   option - Option identifier (e.g., SLK_RCVTIMEO)
+ *   value  - Option value pointer
+ *   len    - Value size in bytes
+ *
+ * Returns:
+ *   0 on success, -1 on error (errno set)
+ */
+SL_EXPORT int SL_CALL slk_spot_setsockopt(slk_spot_t *spot, int option,
+                                          const void *value, size_t len);
+
+/* Get SPOT socket option
+ *
+ * Retrieves option values from the receive socket (XSUB).
+ * Supported options: SLK_RCVTIMEO (int, milliseconds)
+ *
+ * Parameters:
+ *   spot   - SPOT instance
+ *   option - Option identifier (e.g., SLK_RCVTIMEO)
+ *   value  - [out] Buffer to store option value
+ *   len    - [in/out] Buffer size, returns actual value size
+ *
+ * Returns:
+ *   0 on success, -1 on error (errno set)
+ */
+SL_EXPORT int SL_CALL slk_spot_getsockopt(slk_spot_t *spot, int option,
+                                          void *value, size_t *len);
 
 #ifdef __cplusplus
 }

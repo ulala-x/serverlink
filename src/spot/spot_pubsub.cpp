@@ -16,6 +16,8 @@
 #include <cstring>
 #include <sstream>
 #include <stdexcept>
+#include <chrono>
+#include <thread>
 
 namespace slk
 {
@@ -28,6 +30,7 @@ spot_pubsub_t::spot_pubsub_t (ctx_t *ctx_)
     , _server_socket (nullptr)
     , _sndhwm (1000)
     , _rcvhwm (1000)
+    , _rcvtimeo (-1)
     , _topic_counter (0)
 {
     if (!_ctx) {
@@ -455,140 +458,120 @@ int spot_pubsub_t::recv (char *topic_buf, size_t topic_buf_size,
     // This allows the node to respond to cluster sync requests
     const_cast<spot_pubsub_t *> (this)->process_incoming_messages ();
 
-    // Try LOCAL topics first (XSUB socket)
-    msg_t topic_msg;
-    if (topic_msg.init () != 0) {
-        return -1;
+    // Determine if we should use non-blocking mode or timeout
+    bool use_timeout = !(flags & SL_DONTWAIT) && _rcvtimeo != 0;
+
+    // Calculate deadline for timeout
+    int timeout = _rcvtimeo;
+    uint64_t deadline = 0;
+    if (use_timeout && timeout > 0) {
+        deadline = _clock.now_ms () + timeout;
     }
 
-    int rc = _recv_socket->recv (&topic_msg, flags | SL_DONTWAIT);
-    if (rc == 0) {
-        // Got message from LOCAL topic
-        // Copy topic to buffer
-        size_t topic_size = topic_msg.size ();
-        if (topic_size > topic_buf_size) {
-            topic_msg.close ();
-            errno = EMSGSIZE;
+    // Retry loop for blocking mode with timeout
+    while (true) {
+        // Try LOCAL topics first (XSUB socket)
+        msg_t topic_msg;
+        if (topic_msg.init () != 0) {
             return -1;
         }
 
-        memcpy (topic_buf, topic_msg.data (), topic_size);
-        *topic_len = topic_size;
-        topic_msg.close ();
-
-        // Receive Frame 2: Data
-        msg_t data_msg;
-        if (data_msg.init () != 0) {
-            return -1;
-        }
-
-        if (_recv_socket->recv (&data_msg, flags) != 0) {
-            data_msg.close ();
-            return -1;
-        }
-
-        // Copy data to buffer
-        size_t data_size = data_msg.size ();
-        if (data_size > data_buf_size) {
-            data_msg.close ();
-            errno = EMSGSIZE;
-            return -1;
-        }
-
-        memcpy (data_buf, data_msg.data (), data_size);
-        *data_len = data_size;
-        data_msg.close ();
-
-        return 0;
-    }
-
-    topic_msg.close ();
-
-    // No LOCAL message, try REMOTE topics
-    for (auto &kv : _nodes) {
-        spot_node_t *node = kv.second.get ();
-
-        std::string remote_topic_id;
-        std::vector<uint8_t> remote_data;
-
-        rc = node->recv (remote_topic_id, remote_data, flags | SL_DONTWAIT);
+        int rc = _recv_socket->recv (&topic_msg, SL_DONTWAIT);
         if (rc == 0) {
-            // Got message from REMOTE topic
+            // Got message from LOCAL topic
             // Copy topic to buffer
-            if (remote_topic_id.size () > topic_buf_size) {
+            size_t topic_size = topic_msg.size ();
+            if (topic_size > topic_buf_size) {
+                topic_msg.close ();
                 errno = EMSGSIZE;
                 return -1;
             }
 
-            memcpy (topic_buf, remote_topic_id.data (), remote_topic_id.size ());
-            *topic_len = remote_topic_id.size ();
+            memcpy (topic_buf, topic_msg.data (), topic_size);
+            *topic_len = topic_size;
+            topic_msg.close ();
+
+            // Receive Frame 2: Data
+            msg_t data_msg;
+            if (data_msg.init () != 0) {
+                return -1;
+            }
+
+            if (_recv_socket->recv (&data_msg, 0) != 0) {
+                data_msg.close ();
+                return -1;
+            }
 
             // Copy data to buffer
-            if (remote_data.size () > data_buf_size) {
+            size_t data_size = data_msg.size ();
+            if (data_size > data_buf_size) {
+                data_msg.close ();
                 errno = EMSGSIZE;
                 return -1;
             }
 
-            memcpy (data_buf, remote_data.data (), remote_data.size ());
-            *data_len = remote_data.size ();
+            memcpy (data_buf, data_msg.data (), data_size);
+            *data_len = data_size;
+            data_msg.close ();
 
             return 0;
         }
-    }
 
-    // No message available from LOCAL or REMOTE
-    if (flags & SL_DONTWAIT) {
-        errno = EAGAIN;
-        return -1;
-    }
-
-    // Blocking mode: wait on LOCAL socket
-    // TODO: Implement proper polling across LOCAL + REMOTE sources
-    if (topic_msg.init () != 0) {
-        return -1;
-    }
-
-    if (_recv_socket->recv (&topic_msg, flags) != 0) {
         topic_msg.close ();
-        return -1;
+
+        // No LOCAL message, try REMOTE topics
+        for (auto &kv : _nodes) {
+            spot_node_t *node = kv.second.get ();
+
+            std::string remote_topic_id;
+            std::vector<uint8_t> remote_data;
+
+            rc = node->recv (remote_topic_id, remote_data, SL_DONTWAIT);
+            if (rc == 0) {
+                // Got message from REMOTE topic
+                // Copy topic to buffer
+                if (remote_topic_id.size () > topic_buf_size) {
+                    errno = EMSGSIZE;
+                    return -1;
+                }
+
+                memcpy (topic_buf, remote_topic_id.data (), remote_topic_id.size ());
+                *topic_len = remote_topic_id.size ();
+
+                // Copy data to buffer
+                if (remote_data.size () > data_buf_size) {
+                    errno = EMSGSIZE;
+                    return -1;
+                }
+
+                memcpy (data_buf, remote_data.data (), remote_data.size ());
+                *data_len = remote_data.size ();
+
+                return 0;
+            }
+        }
+
+        // No message available from LOCAL or REMOTE
+        if (flags & SL_DONTWAIT) {
+            errno = EAGAIN;
+            return -1;
+        }
+
+        // Check timeout
+        if (timeout > 0) {
+            uint64_t now = _clock.now_ms ();
+            if (now >= deadline) {
+                errno = EAGAIN;
+                return -1;
+            }
+        } else if (timeout == 0) {
+            errno = EAGAIN;
+            return -1;
+        }
+
+        // If we reach here in blocking mode, sleep briefly to avoid busy-waiting
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
-
-    // Copy topic to buffer
-    size_t topic_size = topic_msg.size ();
-    if (topic_size > topic_buf_size) {
-        topic_msg.close ();
-        errno = EMSGSIZE;
-        return -1;
-    }
-
-    memcpy (topic_buf, topic_msg.data (), topic_size);
-    *topic_len = topic_size;
-    topic_msg.close ();
-
-    // Receive Frame 2: Data
-    msg_t data_msg;
-    if (data_msg.init () != 0) {
-        return -1;
-    }
-
-    if (_recv_socket->recv (&data_msg, flags) != 0) {
-        data_msg.close ();
-        return -1;
-    }
-
-    // Copy data to buffer
-    size_t data_size = data_msg.size ();
-    if (data_size > data_buf_size) {
-        data_msg.close ();
-        errno = EMSGSIZE;
-        return -1;
-    }
-
-    memcpy (data_buf, data_msg.data (), data_size);
-    *data_len = data_size;
-    data_msg.close ();
-
-    return 0;
 }
 
 // ============================================================================
@@ -647,6 +630,49 @@ int spot_pubsub_t::set_hwm (int sndhwm, int rcvhwm)
     }
 
     return 0;
+}
+
+int spot_pubsub_t::setsockopt (int option, const void *value, size_t len)
+{
+    if (!value) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    switch (option) {
+        case SL_RCVTIMEO:
+            if (len != sizeof (int)) {
+                errno = EINVAL;
+                return -1;
+            }
+            _rcvtimeo = *static_cast<const int *> (value);
+            return 0;
+        default:
+            errno = EINVAL;
+            return -1;
+    }
+}
+
+int spot_pubsub_t::getsockopt (int option, void *value, size_t *len) const
+{
+    if (!value || !len) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    switch (option) {
+        case SL_RCVTIMEO:
+            if (*len < sizeof (int)) {
+                errno = EINVAL;
+                return -1;
+            }
+            *static_cast<int *> (value) = _rcvtimeo;
+            *len = sizeof (int);
+            return 0;
+        default:
+            errno = EINVAL;
+            return -1;
+    }
 }
 
 // ============================================================================

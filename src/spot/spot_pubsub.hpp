@@ -9,6 +9,7 @@
 #include <memory>
 #include <shared_mutex>
 #include <cstdint>
+#include "util/clock.hpp"
 
 namespace slk
 {
@@ -226,6 +227,26 @@ class spot_pubsub_t
      */
     int set_hwm (int sndhwm, int rcvhwm);
 
+    /**
+     * @brief Set socket option
+     *
+     * @param option Option identifier (e.g., SLK_RCVTIMEO)
+     * @param value Option value
+     * @param len Value size
+     * @return 0 on success, -1 on error
+     */
+    int setsockopt (int option, const void *value, size_t len);
+
+    /**
+     * @brief Get socket option
+     *
+     * @param option Option identifier (e.g., SLK_RCVTIMEO)
+     * @param value [out] Option value
+     * @param len [in/out] Value size
+     * @return 0 on success, -1 on error
+     */
+    int getsockopt (int option, void *value, size_t *len) const;
+
     // ========================================================================
     // Cluster Management
     // ========================================================================
@@ -316,6 +337,10 @@ class spot_pubsub_t
     // High water marks
     int _sndhwm;
     int _rcvhwm;
+
+    // Timeout support
+    int _rcvtimeo;     // Receive timeout in milliseconds (-1 = infinite)
+    clock_t _clock;    // Clock for timeout calculation
 
     // Thread safety
     mutable std::shared_mutex _mutex;

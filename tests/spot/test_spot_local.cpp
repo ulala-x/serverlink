@@ -38,6 +38,11 @@ static void test_spot_multi_topic()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout */
+    int timeout_ms = 100;
+    rc = slk_spot_setsockopt(spot, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Receive messages (order may vary) */
     char received_topics[3][64] = {0};
     char received_data[3][256] = {0};
@@ -47,7 +52,7 @@ static void test_spot_multi_topic()
         size_t topic_len, data_len;
 
         rc = slk_spot_recv(spot, topic, sizeof(topic), &topic_len,
-                          data, sizeof(data), &data_len, 100);
+                          data, sizeof(data), &data_len, 0);
         TEST_SUCCESS(rc);
 
         memcpy(received_topics[i], topic, topic_len);
@@ -128,17 +133,24 @@ static void test_spot_multi_subscriber()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout for both subscribers */
+    int timeout_ms = 100;
+    rc = slk_spot_setsockopt(sub1, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+    rc = slk_spot_setsockopt(sub2, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Both subscribers should receive */
     char topic1[64], data1[256];
     size_t topic1_len, data1_len;
     rc = slk_spot_recv(sub1, topic1, sizeof(topic1), &topic1_len,
-                       data1, sizeof(data1), &data1_len, 100);
+                       data1, sizeof(data1), &data1_len, 0);
     TEST_SUCCESS(rc);
 
     char topic2[64], data2[256];
     size_t topic2_len, data2_len;
     rc = slk_spot_recv(sub2, topic2, sizeof(topic2), &topic2_len,
-                       data2, sizeof(data2), &data2_len, 100);
+                       data2, sizeof(data2), &data2_len, 0);
     TEST_SUCCESS(rc);
 
     topic1[topic1_len] = '\0';
@@ -186,6 +198,11 @@ static void test_spot_pattern_matching()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout */
+    timeout_ms = 100;
+    rc = slk_spot_setsockopt(spot, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Should only receive events:* messages */
     int received_count = 0;
     while (received_count < 2) {
@@ -193,7 +210,7 @@ static void test_spot_pattern_matching()
         size_t topic_len, data_len;
 
         rc = slk_spot_recv(spot, topic, sizeof(topic), &topic_len,
-                          data, sizeof(data), &data_len, 100);
+                          data, sizeof(data), &data_len, 0);
         if (rc != 0) break;
 
         topic[topic_len] = '\0';
@@ -246,6 +263,11 @@ static void test_spot_selective_unsubscribe()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout */
+    timeout_ms = 100;
+    rc = slk_spot_setsockopt(spot, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Should only receive topic1 and topic3 */
     int received_count = 0;
     while (received_count < 2) {
@@ -253,7 +275,7 @@ static void test_spot_selective_unsubscribe()
         size_t topic_len, data_len;
 
         rc = slk_spot_recv(spot, topic, sizeof(topic), &topic_len,
-                          data, sizeof(data), &data_len, 100);
+                          data, sizeof(data), &data_len, 0);
         if (rc != 0) break;
 
         topic[topic_len] = '\0';
@@ -298,6 +320,11 @@ static void test_spot_large_message()
 
     test_sleep_ms(200);
 
+    /* Set receive timeout */
+    int timeout_ms = 500;
+    rc = slk_spot_setsockopt(spot, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Receive large message */
     char topic[64];
     char *recv_data = (char*)malloc(large_size);
@@ -305,7 +332,7 @@ static void test_spot_large_message()
 
     size_t topic_len, data_len;
     rc = slk_spot_recv(spot, topic, sizeof(topic), &topic_len,
-                       recv_data, large_size, &data_len, 500);
+                       recv_data, large_size, &data_len, 0);
     TEST_SUCCESS(rc);
 
     topic[topic_len] = '\0';
@@ -343,6 +370,11 @@ static void test_spot_rapid_pubsub()
 
     test_sleep_ms(200);
 
+    /* Set receive timeout */
+    timeout_ms = 100;
+    rc = slk_spot_setsockopt(spot, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Receive all messages */
     int received = 0;
     for (int i = 0; i < count; i++) {
@@ -350,7 +382,7 @@ static void test_spot_rapid_pubsub()
         size_t topic_len, data_len;
 
         rc = slk_spot_recv(spot, topic, sizeof(topic), &topic_len,
-                          data, sizeof(data), &data_len, 100);
+                          data, sizeof(data), &data_len, 0);
         if (rc == 0) {
             received++;
         }
@@ -367,17 +399,12 @@ int main()
 {
     printf("=== ServerLink SPOT Local Tests ===\n\n");
 
-    /* TODO: These tests require proper timeout support in recv()
-     * Currently recv falls into blocking mode and hangs.
-     * test_spot_basic covers the core functionality.
-     *
-     * RUN_TEST(test_spot_multi_topic);
-     * RUN_TEST(test_spot_multi_subscriber);
-     * RUN_TEST(test_spot_pattern_matching);
-     * RUN_TEST(test_spot_selective_unsubscribe);
-     * RUN_TEST(test_spot_large_message);
-     * RUN_TEST(test_spot_rapid_pubsub);
-     */
+    RUN_TEST(test_spot_multi_topic);
+    RUN_TEST(test_spot_multi_subscriber);
+    RUN_TEST(test_spot_pattern_matching);
+    RUN_TEST(test_spot_selective_unsubscribe);
+    RUN_TEST(test_spot_large_message);
+    RUN_TEST(test_spot_rapid_pubsub);
 
     printf("\n=== All SPOT Local Tests Passed ===\n");
     return 0;

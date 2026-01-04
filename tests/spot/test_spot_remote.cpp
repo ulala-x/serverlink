@@ -40,11 +40,16 @@ static void test_spot_remote_tcp()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout */
+    int timeout_ms = 500;
+    rc = slk_spot_setsockopt(sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Receive message */
     char topic[64], data[256];
     size_t topic_len, data_len;
     rc = slk_spot_recv(sub, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
 
     topic[topic_len] = '\0';
@@ -92,11 +97,16 @@ static void test_spot_remote_inproc()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout */
+    timeout_ms = 500;
+    rc = slk_spot_setsockopt(sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Receive message */
     char topic[64], data[256];
     size_t topic_len, data_len;
     rc = slk_spot_recv(sub, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
 
     topic[topic_len] = '\0';
@@ -155,11 +165,16 @@ static void test_spot_bidirectional_remote()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout for node2 */
+    int timeout_ms = 500;
+    rc = slk_spot_setsockopt(node2, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Node2 receives */
     char topic[64], data[256];
     size_t topic_len, data_len;
     rc = slk_spot_recv(node2, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
 
     topic[topic_len] = '\0';
@@ -173,9 +188,13 @@ static void test_spot_bidirectional_remote()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout for node1 */
+    rc = slk_spot_setsockopt(node1, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Node1 receives */
     rc = slk_spot_recv(node1, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
 
     topic[topic_len] = '\0';
@@ -221,10 +240,15 @@ static void test_spot_reconnect()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout */
+    timeout_ms = 500;
+    rc = slk_spot_setsockopt(sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     char topic[64], data[256];
     size_t topic_len, data_len;
     rc = slk_spot_recv(sub, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
 
     /* Disconnect - topic still registered but reconnect */
@@ -247,7 +271,7 @@ static void test_spot_reconnect()
 
     /* Should receive second message */
     rc = slk_spot_recv(sub, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
 
     topic[topic_len] = '\0';
@@ -306,24 +330,33 @@ static void test_spot_multiple_remote_subscribers()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout for all subscribers */
+    timeout_ms = 500;
+    rc = slk_spot_setsockopt(sub1, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+    rc = slk_spot_setsockopt(sub2, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+    rc = slk_spot_setsockopt(sub3, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* All subscribers should receive */
     char topic[64], data[256];
     size_t topic_len, data_len;
 
     rc = slk_spot_recv(sub1, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
     data[data_len] = '\0';
     TEST_ASSERT_STR_EQ(data, msg);
 
     rc = slk_spot_recv(sub2, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
     data[data_len] = '\0';
     TEST_ASSERT_STR_EQ(data, msg);
 
     rc = slk_spot_recv(sub3, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
     data[data_len] = '\0';
     TEST_ASSERT_STR_EQ(data, msg);
@@ -339,16 +372,11 @@ int main()
 {
     printf("=== ServerLink SPOT Remote Tests ===\n\n");
 
-    /* TODO: These tests require proper timeout support in recv()
-     * Currently recv falls into blocking mode and hangs.
-     * test_spot_basic covers the core functionality.
-     *
-     * RUN_TEST(test_spot_remote_tcp);
-     * RUN_TEST(test_spot_remote_inproc);
-     * RUN_TEST(test_spot_bidirectional_remote);
-     * RUN_TEST(test_spot_reconnect);
-     * RUN_TEST(test_spot_multiple_remote_subscribers);
-     */
+    RUN_TEST(test_spot_remote_tcp);
+    RUN_TEST(test_spot_remote_inproc);
+    RUN_TEST(test_spot_bidirectional_remote);
+    RUN_TEST(test_spot_reconnect);
+    RUN_TEST(test_spot_multiple_remote_subscribers);
 
     printf("\n=== All SPOT Remote Tests Passed ===\n");
     return 0;

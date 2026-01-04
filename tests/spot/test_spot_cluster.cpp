@@ -79,12 +79,19 @@ static void test_spot_three_node_cluster()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout */
+    int timeout_ms = 500;
+    rc = slk_spot_setsockopt(node2, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+    rc = slk_spot_setsockopt(node3, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Node2 and Node3 should receive */
     char topic[64], data[256];
     size_t topic_len, data_len;
 
     rc = slk_spot_recv(node2, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
     topic[topic_len] = '\0';
     data[data_len] = '\0';
@@ -92,7 +99,7 @@ static void test_spot_three_node_cluster()
     TEST_ASSERT_STR_EQ(data, "from_node1");
 
     rc = slk_spot_recv(node3, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
     topic[topic_len] = '\0';
     data[data_len] = '\0';
@@ -162,16 +169,21 @@ static void test_spot_topic_sync()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout */
+    timeout_ms = 500;
+    rc = slk_spot_setsockopt(node2, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Node2 should receive both */
     char topic[64], data[256];
     size_t topic_len, data_len;
 
     rc = slk_spot_recv(node2, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
 
     rc = slk_spot_recv(node2, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
 
     slk_spot_destroy(&node1);
@@ -224,15 +236,22 @@ static void test_spot_node_failure_recovery()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout */
+    timeout_ms = 500;
+    rc = slk_spot_setsockopt(node2, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+    rc = slk_spot_setsockopt(node3, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     char topic[64], data[256];
     size_t topic_len, data_len;
 
     rc = slk_spot_recv(node2, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
 
     rc = slk_spot_recv(node3, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
 
     /* Simulate node2 failure by destroying it */
@@ -247,7 +266,7 @@ static void test_spot_node_failure_recovery()
     test_sleep_ms(100);
 
     rc = slk_spot_recv(node3, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
     data[data_len] = '\0';
     TEST_ASSERT_STR_EQ(data, "msg2");
@@ -273,13 +292,13 @@ static void test_spot_node_failure_recovery()
     test_sleep_ms(100);
 
     rc = slk_spot_recv(node2, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
     data[data_len] = '\0';
     TEST_ASSERT_STR_EQ(data, "msg3");
 
     rc = slk_spot_recv(node3, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
     data[data_len] = '\0';
     TEST_ASSERT_STR_EQ(data, "msg3");
@@ -328,11 +347,16 @@ static void test_spot_dynamic_membership()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout */
+    timeout_ms = 500;
+    rc = slk_spot_setsockopt(node2, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     char topic[64], data[256];
     size_t topic_len, data_len;
 
     rc = slk_spot_recv(node2, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
 
     /* Add node3 dynamically */
@@ -355,11 +379,13 @@ static void test_spot_dynamic_membership()
     test_sleep_ms(100);
 
     rc = slk_spot_recv(node2, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
 
+    rc = slk_spot_setsockopt(node3, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
     rc = slk_spot_recv(node3, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
     data[data_len] = '\0';
     TEST_ASSERT_STR_EQ(data, "expanded");
@@ -377,14 +403,17 @@ static void test_spot_dynamic_membership()
     test_sleep_ms(100);
 
     rc = slk_spot_recv(node3, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 500);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
     data[data_len] = '\0';
     TEST_ASSERT_STR_EQ(data, "reduced");
 
     /* Node2 should not receive (timeout expected) */
+    timeout_ms = 100;
+    rc = slk_spot_setsockopt(node2, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
     rc = slk_spot_recv(node2, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 100);
+                       data, sizeof(data), &data_len, 0);
     TEST_FAILURE(rc);  /* Should timeout */
 
     slk_spot_destroy(&node1);
@@ -397,15 +426,10 @@ int main()
 {
     printf("=== ServerLink SPOT Cluster Tests ===\n\n");
 
-    /* TODO: These tests require proper timeout support in recv()
-     * Currently recv falls into blocking mode and hangs.
-     * test_spot_basic covers the core functionality.
-     *
-     * RUN_TEST(test_spot_three_node_cluster);
-     * RUN_TEST(test_spot_topic_sync);
-     * RUN_TEST(test_spot_node_failure_recovery);
-     * RUN_TEST(test_spot_dynamic_membership);
-     */
+    RUN_TEST(test_spot_three_node_cluster);
+    RUN_TEST(test_spot_topic_sync);
+    RUN_TEST(test_spot_node_failure_recovery);
+    RUN_TEST(test_spot_dynamic_membership);
 
     printf("\n=== All SPOT Cluster Tests Passed ===\n");
     return 0;

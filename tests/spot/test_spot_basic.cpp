@@ -150,10 +150,15 @@ static void test_spot_basic_pubsub()
     /* Receive message */
     test_sleep_ms(50);
 
+    /* Set receive timeout */
+    int timeout_ms = 100;
+    rc = slk_spot_setsockopt(spot, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     char topic[64], data[256];
     size_t topic_len, data_len;
     rc = slk_spot_recv(spot, topic, sizeof(topic), &topic_len,
-                       data, sizeof(data), &data_len, 100);
+                       data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
 
     topic[topic_len] = '\0';
@@ -202,13 +207,18 @@ static void test_spot_multiple_messages()
 
     test_sleep_ms(100);
 
+    /* Set receive timeout */
+    int timeout_ms = 100;
+    rc = slk_spot_setsockopt(spot, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    TEST_SUCCESS(rc);
+
     /* Receive all messages */
     for (int i = 0; i < 10; i++) {
         char topic[64], data[256];
         size_t topic_len, data_len;
 
         rc = slk_spot_recv(spot, topic, sizeof(topic), &topic_len,
-                          data, sizeof(data), &data_len, 100);
+                          data, sizeof(data), &data_len, 0);
         TEST_SUCCESS(rc);
 
         char expected[32];
