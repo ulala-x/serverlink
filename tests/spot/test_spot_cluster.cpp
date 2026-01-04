@@ -170,7 +170,7 @@ static void test_spot_topic_sync()
     test_sleep_ms(100);
 
     /* Set receive timeout */
-    timeout_ms = 500;
+    int timeout_ms = 500;
     rc = slk_spot_setsockopt(node2, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
     TEST_SUCCESS(rc);
 
@@ -237,7 +237,7 @@ static void test_spot_node_failure_recovery()
     test_sleep_ms(100);
 
     /* Set receive timeout */
-    timeout_ms = 500;
+    int timeout_ms = 500;
     rc = slk_spot_setsockopt(node2, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
     TEST_SUCCESS(rc);
     rc = slk_spot_setsockopt(node3, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
@@ -348,7 +348,7 @@ static void test_spot_dynamic_membership()
     test_sleep_ms(100);
 
     /* Set receive timeout */
-    timeout_ms = 500;
+    int timeout_ms = 500;
     rc = slk_spot_setsockopt(node2, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
     TEST_SUCCESS(rc);
 
@@ -409,7 +409,7 @@ static void test_spot_dynamic_membership()
     TEST_ASSERT_STR_EQ(data, "reduced");
 
     /* Node2 should not receive (timeout expected) */
-    timeout_ms = 100;
+    int timeout_ms = 100;
     rc = slk_spot_setsockopt(node2, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
     TEST_SUCCESS(rc);
     rc = slk_spot_recv(node2, topic, sizeof(topic), &topic_len,

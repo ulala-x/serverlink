@@ -131,7 +131,7 @@ static void test_spot_multi_transport()
     test_sleep_ms(100);
 
     /* Set receive timeout for both subscribers */
-    timeout_ms = 500;
+    int timeout_ms = 500;
     rc = slk_spot_setsockopt(tcp_sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
     TEST_SUCCESS(rc);
     rc = slk_spot_setsockopt(ipc_sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
@@ -209,7 +209,7 @@ static void test_spot_topic_routing_mixed()
     test_sleep_ms(100);
 
     /* Set receive timeout */
-    timeout_ms = 500;
+    int timeout_ms = 500;
     rc = slk_spot_setsockopt(local_router, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
     TEST_SUCCESS(rc);
     rc = slk_spot_setsockopt(remote_sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
@@ -282,7 +282,7 @@ static void test_spot_pattern_mixed()
     test_sleep_ms(100);
 
     /* Set receive timeout */
-    timeout_ms = 500;
+    int timeout_ms = 500;
     rc = slk_spot_setsockopt(sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
     TEST_SUCCESS(rc);
 
@@ -362,7 +362,7 @@ static void test_spot_high_load_mixed()
     test_sleep_ms(300);
 
     /* Set receive timeout */
-    timeout_ms = 100;
+    int timeout_ms = 100;
     rc = slk_spot_setsockopt(local_sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
     TEST_SUCCESS(rc);
     rc = slk_spot_setsockopt(remote_sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));

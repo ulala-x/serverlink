@@ -98,7 +98,7 @@ static void test_spot_remote_inproc()
     test_sleep_ms(100);
 
     /* Set receive timeout */
-    timeout_ms = 500;
+    int timeout_ms = 500;
     rc = slk_spot_setsockopt(sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
     TEST_SUCCESS(rc);
 
@@ -241,7 +241,7 @@ static void test_spot_reconnect()
     test_sleep_ms(100);
 
     /* Set receive timeout */
-    timeout_ms = 500;
+    int timeout_ms = 500;
     rc = slk_spot_setsockopt(sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
     TEST_SUCCESS(rc);
 
@@ -331,7 +331,7 @@ static void test_spot_multiple_remote_subscribers()
     test_sleep_ms(100);
 
     /* Set receive timeout for all subscribers */
-    timeout_ms = 500;
+    int timeout_ms = 500;
     rc = slk_spot_setsockopt(sub1, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
     TEST_SUCCESS(rc);
     rc = slk_spot_setsockopt(sub2, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));

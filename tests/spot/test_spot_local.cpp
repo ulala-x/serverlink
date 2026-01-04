@@ -199,7 +199,7 @@ static void test_spot_pattern_matching()
     test_sleep_ms(100);
 
     /* Set receive timeout */
-    timeout_ms = 100;
+    int timeout_ms = 100;
     rc = slk_spot_setsockopt(spot, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
     TEST_SUCCESS(rc);
 
@@ -264,7 +264,7 @@ static void test_spot_selective_unsubscribe()
     test_sleep_ms(100);
 
     /* Set receive timeout */
-    timeout_ms = 100;
+    int timeout_ms = 100;
     rc = slk_spot_setsockopt(spot, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
     TEST_SUCCESS(rc);
 
@@ -371,7 +371,7 @@ static void test_spot_rapid_pubsub()
     test_sleep_ms(200);
 
     /* Set receive timeout */
-    timeout_ms = 100;
+    int timeout_ms = 100;
     rc = slk_spot_setsockopt(spot, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
     TEST_SUCCESS(rc);
 
