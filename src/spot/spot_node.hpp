@@ -138,6 +138,18 @@ class spot_node_t
     int recv_query_response (std::vector<std::string> &topics, int flags);
 
     /**
+     * @brief Receive QUERY_RESP from remote node with blocking timeout
+     *
+     * Polls for QUERY_RESP using non-blocking recv with a timeout.
+     * Implements busy-wait loop with 1ms sleep intervals.
+     *
+     * @param topics [out] Vector of topic IDs received from remote node
+     * @param timeout_ms Timeout in milliseconds (0 = return immediately, -1 = infinite)
+     * @return 0 on success, -1 on error (errno = ETIMEDOUT if timeout expires)
+     */
+    int recv_query_response_blocking (std::vector<std::string> &topics, int timeout_ms);
+
+    /**
      * @brief Receive message from remote node
      *
      * @param topic_id [out] Received topic ID
@@ -162,10 +174,18 @@ class spot_node_t
      */
     const std::string &endpoint () const;
 
+    /**
+     * @brief Get this node's routing ID
+     *
+     * @return Node routing ID string
+     */
+    const std::string &node_id () const;
+
   private:
     // Context and configuration
     ctx_t *_ctx;
     std::string _endpoint;
+    std::string _node_id;  // This node's routing ID for ROUTER-to-ROUTER communication
 
     // DEALER socket for communication
     socket_base_t *_socket;

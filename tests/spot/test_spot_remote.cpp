@@ -372,16 +372,11 @@ int main()
 {
     printf("=== ServerLink SPOT Remote Tests ===\n\n");
 
-    /* TODO: These tests require fixes to SPOT multi-instance and remote routing.
-     * The timeout implementation is complete and basic tests pass.
-     * These complex scenarios need further debugging.
-     *
-     * RUN_TEST(test_spot_remote_tcp);
-     * RUN_TEST(test_spot_remote_inproc);
-     * RUN_TEST(test_spot_bidirectional_remote);
-     * RUN_TEST(test_spot_reconnect);
-     * RUN_TEST(test_spot_multiple_remote_subscribers);
-     */
+    RUN_TEST(test_spot_remote_tcp);
+    RUN_TEST(test_spot_remote_inproc);
+    RUN_TEST(test_spot_bidirectional_remote);
+    RUN_TEST(test_spot_reconnect);
+    RUN_TEST(test_spot_multiple_remote_subscribers);
 
     printf("\n=== All SPOT Remote Tests Passed ===\n");
     return 0;

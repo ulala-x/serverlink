@@ -8,6 +8,7 @@
 #include <vector>
 #include <unordered_map>
 #include <shared_mutex>
+#include <optional>
 #include <cstdint>
 
 namespace slk
@@ -68,7 +69,7 @@ class topic_registry_t
     topic_registry_t &operator= (topic_registry_t &&) = delete;
 
     /**
-     * @brief Register a LOCAL topic
+     * @brief Register a LOCAL topic with auto-generated endpoint
      *
      * Creates an inproc endpoint for the topic.
      *
@@ -76,6 +77,17 @@ class topic_registry_t
      * @return 0 on success, -1 on error (sets errno to EEXIST if already registered)
      */
     int register_local (const std::string &topic_id);
+
+    /**
+     * @brief Register a LOCAL topic with specified endpoint
+     *
+     * Uses the provided endpoint for the topic.
+     *
+     * @param topic_id Topic identifier
+     * @param endpoint Endpoint (e.g., "inproc://spot-0" or "tcp://...")
+     * @return 0 on success, -1 on error (sets errno to EEXIST if already registered)
+     */
+    int register_local (const std::string &topic_id, const std::string &endpoint);
 
     /**
      * @brief Register a REMOTE topic
@@ -100,20 +112,12 @@ class topic_registry_t
     /**
      * @brief Lookup topic entry (similar to ROUTER's lookup_out_pipe)
      *
-     * O(1) hash-based lookup.
+     * O(1) hash-based lookup. Returns a copy to avoid pointer lifetime issues.
      *
      * @param topic_id Topic identifier
-     * @return Pointer to topic entry, or nullptr if not found
+     * @return Optional containing topic entry copy, or std::nullopt if not found
      */
-    topic_entry_t *lookup (const std::string &topic_id);
-
-    /**
-     * @brief Lookup topic entry (const version)
-     *
-     * @param topic_id Topic identifier
-     * @return Const pointer to topic entry, or nullptr if not found
-     */
-    const topic_entry_t *lookup (const std::string &topic_id) const;
+    std::optional<topic_entry_t> lookup (const std::string &topic_id) const;
 
     /**
      * @brief Check if topic is registered

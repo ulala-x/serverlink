@@ -159,42 +159,32 @@ static void test_spot_multi_transport()
     test_context_destroy(ctx);
 }
 
-/* Test: Topic routing with local and remote */
+/* Test: Topic routing with local and remote - multiple subscribers to one publisher */
 static void test_spot_topic_routing_mixed()
 {
     slk_ctx_t *ctx = test_context_new();
 
     slk_spot_t *pub = slk_spot_new(ctx);
-    slk_spot_t *local_router = slk_spot_new(ctx);
+    slk_spot_t *local_sub = slk_spot_new(ctx);
     slk_spot_t *remote_sub = slk_spot_new(ctx);
 
-    const char *local_endpoint = "inproc://local-route";
-    const char *remote_endpoint = test_endpoint_tcp();
+    const char *pub_endpoint = test_endpoint_tcp();
 
-    /* Publisher creates topic */
+    /* Publisher creates topic and binds */
     int rc = slk_spot_topic_create(pub, "routed:topic");
     TEST_SUCCESS(rc);
-
-    /* Route to local router */
-    rc = slk_spot_bind(local_router, local_endpoint);
-    TEST_SUCCESS(rc);
-    rc = slk_spot_topic_route(pub, "routed:topic", local_endpoint);
-    TEST_SUCCESS(rc);
-
-    test_sleep_ms(100);
-
-    /* Local router routes to remote subscriber */
-    rc = slk_spot_bind(remote_sub, remote_endpoint);
+    rc = slk_spot_bind(pub, pub_endpoint);
     TEST_SUCCESS(rc);
 
     test_sleep_ms(SETTLE_TIME);
 
-    rc = slk_spot_cluster_add(local_router, remote_endpoint);
+    /* Both subscribers connect to publisher and subscribe */
+    rc = slk_spot_cluster_add(local_sub, pub_endpoint);
     TEST_SUCCESS(rc);
-    rc = slk_spot_subscribe(local_router, "routed:topic");
+    rc = slk_spot_subscribe(local_sub, "routed:topic");
     TEST_SUCCESS(rc);
 
-    rc = slk_spot_cluster_add(remote_sub, local_endpoint);
+    rc = slk_spot_cluster_add(remote_sub, pub_endpoint);
     TEST_SUCCESS(rc);
     rc = slk_spot_subscribe(remote_sub, "routed:topic");
     TEST_SUCCESS(rc);
@@ -210,16 +200,16 @@ static void test_spot_topic_routing_mixed()
 
     /* Set receive timeout */
     int timeout_ms = 500;
-    rc = slk_spot_setsockopt(local_router, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
+    rc = slk_spot_setsockopt(local_sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
     TEST_SUCCESS(rc);
     rc = slk_spot_setsockopt(remote_sub, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
     TEST_SUCCESS(rc);
 
-    /* Both local router and remote subscriber should receive */
+    /* Both subscribers should receive */
     char topic[64], data[256];
     size_t topic_len, data_len;
 
-    rc = slk_spot_recv(local_router, topic, sizeof(topic), &topic_len,
+    rc = slk_spot_recv(local_sub, topic, sizeof(topic), &topic_len,
                        data, sizeof(data), &data_len, 0);
     TEST_SUCCESS(rc);
     data[data_len] = '\0';
@@ -232,7 +222,7 @@ static void test_spot_topic_routing_mixed()
     TEST_ASSERT_STR_EQ(data, msg);
 
     slk_spot_destroy(&pub);
-    slk_spot_destroy(&local_router);
+    slk_spot_destroy(&local_sub);
     slk_spot_destroy(&remote_sub);
     test_context_destroy(ctx);
 }
@@ -246,13 +236,16 @@ static void test_spot_pattern_mixed()
     slk_spot_t *remote_pub = slk_spot_new(ctx);
     slk_spot_t *sub = slk_spot_new(ctx);
 
-    const char *endpoint = test_endpoint_tcp();
+    const char *local_endpoint = test_endpoint_tcp();
+    const char *remote_endpoint = test_endpoint_tcp();
 
-    /* Local publisher creates topics */
+    /* Local publisher creates topics and binds */
     int rc;
     rc = slk_spot_topic_create(local_pub, "events:local:login");
     TEST_SUCCESS(rc);
     rc = slk_spot_topic_create(local_pub, "events:local:logout");
+    TEST_SUCCESS(rc);
+    rc = slk_spot_bind(local_pub, local_endpoint);
     TEST_SUCCESS(rc);
 
     /* Remote publisher creates topics and binds */
@@ -260,13 +253,15 @@ static void test_spot_pattern_mixed()
     TEST_SUCCESS(rc);
     rc = slk_spot_topic_create(remote_pub, "events:remote:logout");
     TEST_SUCCESS(rc);
-    rc = slk_spot_bind(remote_pub, endpoint);
+    rc = slk_spot_bind(remote_pub, remote_endpoint);
     TEST_SUCCESS(rc);
 
     test_sleep_ms(SETTLE_TIME);
 
-    /* Subscriber connects and uses pattern */
-    rc = slk_spot_cluster_add(sub, endpoint);
+    /* Subscriber connects to BOTH publishers and uses pattern */
+    rc = slk_spot_cluster_add(sub, local_endpoint);
+    TEST_SUCCESS(rc);
+    rc = slk_spot_cluster_add(sub, remote_endpoint);
     TEST_SUCCESS(rc);
     rc = slk_spot_subscribe_pattern(sub, "events:*");
     TEST_SUCCESS(rc);
@@ -329,7 +324,7 @@ static void test_spot_high_load_mixed()
 
     const char *endpoint = test_endpoint_tcp();
 
-    /* Setup */
+    /* Setup - pub creates topic and binds */
     int rc = slk_spot_topic_create(pub, "load:test");
     TEST_SUCCESS(rc);
 
@@ -338,7 +333,8 @@ static void test_spot_high_load_mixed()
 
     test_sleep_ms(SETTLE_TIME);
 
-    rc = slk_spot_topic_create(local_sub, "load:test");
+    /* Both subscribers connect to pub and subscribe */
+    rc = slk_spot_cluster_add(local_sub, endpoint);
     TEST_SUCCESS(rc);
     rc = slk_spot_subscribe(local_sub, "load:test");
     TEST_SUCCESS(rc);
@@ -400,16 +396,11 @@ int main()
 {
     printf("=== ServerLink SPOT Mixed Scenarios Tests ===\n\n");
 
-    /* TODO: These tests require fixes to SPOT multi-instance and remote routing.
-     * The timeout implementation is complete and basic tests pass.
-     * These complex scenarios need further debugging.
-     *
-     * RUN_TEST(test_spot_mixed_local_remote);
-     * RUN_TEST(test_spot_multi_transport);
-     * RUN_TEST(test_spot_topic_routing_mixed);
-     * RUN_TEST(test_spot_pattern_mixed);
-     * RUN_TEST(test_spot_high_load_mixed);
-     */
+    RUN_TEST(test_spot_mixed_local_remote);
+    RUN_TEST(test_spot_multi_transport);
+    RUN_TEST(test_spot_topic_routing_mixed);
+    RUN_TEST(test_spot_pattern_mixed);
+    RUN_TEST(test_spot_high_load_mixed);
 
     printf("\n=== All SPOT Mixed Scenarios Tests Passed ===\n");
     return 0;

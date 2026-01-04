@@ -45,6 +45,30 @@ int topic_registry_t::register_local (const std::string &topic_id)
     return 0;
 }
 
+int topic_registry_t::register_local (const std::string &topic_id,
+                                       const std::string &endpoint)
+{
+    std::unique_lock<std::shared_mutex> lock (_mutex);
+
+    // Check for duplicate registration
+    auto it = _topics.find (topic_id);
+    if (it != _topics.end ()) {
+        errno = EEXIST;
+        return -1;
+    }
+
+    // Create topic entry with provided endpoint
+    topic_entry_t entry;
+    entry.topic_id = topic_id;
+    entry.location = topic_location_t::LOCAL;
+    entry.endpoint = endpoint;
+
+    // Insert into map
+    _topics[topic_id] = entry;
+
+    return 0;
+}
+
 int topic_registry_t::register_remote (const std::string &topic_id,
                                         const std::string &tcp_endpoint)
 {
@@ -83,31 +107,18 @@ int topic_registry_t::unregister (const std::string &topic_id)
     return 0;
 }
 
-topic_registry_t::topic_entry_t *
-topic_registry_t::lookup (const std::string &topic_id)
+std::optional<topic_registry_t::topic_entry_t>
+topic_registry_t::lookup (const std::string &topic_id) const
 {
     // Use shared_lock for read access (allows multiple concurrent readers)
     std::shared_lock<std::shared_mutex> lock (_mutex);
 
     auto it = _topics.find (topic_id);
     if (it == _topics.end ())
-        return nullptr;
+        return std::nullopt;
 
-    // Note: Returning pointer to map element is safe only during lock lifetime
-    // Caller should copy data if needed beyond this scope
-    return &it->second;
-}
-
-const topic_registry_t::topic_entry_t *
-topic_registry_t::lookup (const std::string &topic_id) const
-{
-    std::shared_lock<std::shared_mutex> lock (_mutex);
-
-    auto it = _topics.find (topic_id);
-    if (it == _topics.end ())
-        return nullptr;
-
-    return &it->second;
+    // Return a copy to avoid pointer lifetime issues
+    return it->second;
 }
 
 bool topic_registry_t::has_topic (const std::string &topic_id) const

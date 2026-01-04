@@ -2,7 +2,6 @@
 /* ServerLink - SPOT PUB/SUB implementation (Scalable Partitioned Ordered Topics) */
 
 #include "spot_pubsub.hpp"
-#include "spot_node.hpp"
 #include "topic_registry.hpp"
 #include "subscription_manager.hpp"
 #include "../core/ctx.hpp"
@@ -18,60 +17,83 @@
 #include <stdexcept>
 #include <chrono>
 #include <thread>
+#include <atomic>
 
 namespace slk
 {
+
+// Generate unique instance ID for inproc endpoints
+static std::string generate_instance_id ()
+{
+    static std::atomic<uint64_t> counter {0};
+    char buf[64];
+    snprintf (buf, sizeof (buf), "spot-%llu",
+              static_cast<unsigned long long> (counter.fetch_add (1, std::memory_order_relaxed)));
+    return buf;
+}
 
 spot_pubsub_t::spot_pubsub_t (ctx_t *ctx_)
     : _ctx (ctx_)
     , _registry (new topic_registry_t ())
     , _sub_manager (new subscription_manager_t ())
     , _recv_socket (nullptr)
-    , _server_socket (nullptr)
+    , _pub_socket (nullptr)
     , _sndhwm (1000)
     , _rcvhwm (1000)
     , _rcvtimeo (-1)
-    , _topic_counter (0)
 {
     if (!_ctx) {
         throw std::invalid_argument ("Context pointer is null");
     }
 
+    // Generate unique inproc endpoint for this instance
+    _inproc_endpoint = "inproc://" + generate_instance_id ();
+
+    // Create shared XPUB socket for publishing (all topics go through this)
+    _pub_socket = _ctx->create_socket (SL_XPUB);
+    if (!_pub_socket) {
+        throw std::runtime_error ("Failed to create XPUB socket");
+    }
+
+    // Set HWM for publisher socket
+    _pub_socket->setsockopt (SL_SNDHWM, &_sndhwm, sizeof (_sndhwm));
+
+    // Bind to inproc endpoint (local subscriptions will connect here)
+    if (_pub_socket->bind (_inproc_endpoint.c_str ()) != 0) {
+        _pub_socket->close ();
+        throw std::runtime_error ("Failed to bind XPUB socket to inproc");
+    }
+
     // Create receive socket (XSUB) for all subscriptions
-    // Use create_socket() to properly initialize the context (reaper, I/O threads)
     _recv_socket = _ctx->create_socket (SL_XSUB);
     if (!_recv_socket) {
+        _pub_socket->close ();
         throw std::runtime_error ("Failed to create XSUB socket");
     }
 
     // Set HWM for receive socket
     _recv_socket->setsockopt (SL_RCVHWM, &_rcvhwm, sizeof (_rcvhwm));
+
+    // Connect XSUB to local XPUB for receiving local messages
+    if (_recv_socket->connect (_inproc_endpoint.c_str ()) != 0) {
+        _recv_socket->close ();
+        _pub_socket->close ();
+        throw std::runtime_error ("Failed to connect XSUB to local XPUB");
+    }
 }
 
 spot_pubsub_t::~spot_pubsub_t ()
 {
-    // Destroy all local publisher sockets
-    for (auto &kv : _local_publishers) {
-        if (kv.second) {
-            kv.second->close ();
-        }
-    }
-    _local_publishers.clear ();
-
-    // Destroy all remote nodes
-    _remote_topic_nodes.clear ();
-    _nodes.clear ();
-
     // Destroy receive socket
     if (_recv_socket) {
         _recv_socket->close ();
         _recv_socket = nullptr;
     }
 
-    // Destroy server socket
-    if (_server_socket) {
-        _server_socket->close ();
-        _server_socket = nullptr;
+    // Destroy publish socket
+    if (_pub_socket) {
+        _pub_socket->close ();
+        _pub_socket = nullptr;
     }
 }
 
@@ -89,36 +111,12 @@ int spot_pubsub_t::topic_create (const std::string &topic_id)
         return -1;
     }
 
-    // Register in topic registry (generates unique inproc endpoint)
-    if (_registry->register_local (topic_id) != 0) {
+    // Register in topic registry as LOCAL
+    // The endpoint is our shared inproc (or TCP if bound)
+    std::string endpoint = _bind_endpoint.empty () ? _inproc_endpoint : _bind_endpoint;
+    if (_registry->register_local (topic_id, endpoint) != 0) {
         return -1; // errno already set by registry
     }
-
-    // Get the generated endpoint
-    const auto *entry = _registry->lookup (topic_id);
-    assert (entry);
-    assert (entry->location == topic_registry_t::topic_location_t::LOCAL);
-
-    // Create XPUB socket for this topic
-    socket_base_t *xpub = _ctx->create_socket (SL_XPUB);
-    if (!xpub) {
-        _registry->unregister (topic_id);
-        errno = ENOMEM;
-        return -1;
-    }
-
-    // Set HWM for publisher socket
-    xpub->setsockopt (SL_SNDHWM, &_sndhwm, sizeof (_sndhwm));
-
-    // Bind to inproc endpoint
-    if (xpub->bind (entry->endpoint.c_str ()) != 0) {
-        xpub->close ();
-        _registry->unregister (topic_id);
-        return -1;
-    }
-
-    // Store in local publishers map
-    _local_publishers[topic_id] = xpub;
 
     return 0;
 }
@@ -127,19 +125,17 @@ int spot_pubsub_t::topic_destroy (const std::string &topic_id)
 {
     std::unique_lock<std::shared_mutex> lock (_mutex);
 
-    // Find topic
-    auto it = _local_publishers.find (topic_id);
-    if (it == _local_publishers.end ()) {
+    // Check if topic exists
+    auto entry = _registry->lookup (topic_id);
+    if (!entry.has_value ()) {
         errno = ENOENT;
         return -1;
     }
 
-    // Close and remove XPUB socket
-    socket_base_t *xpub = it->second;
-    if (xpub) {
-        xpub->close ();
+    if (entry->location != topic_registry_t::topic_location_t::LOCAL) {
+        errno = EINVAL;
+        return -1;
     }
-    _local_publishers.erase (it);
 
     // Unregister from topic registry
     _registry->unregister (topic_id);
@@ -158,38 +154,11 @@ int spot_pubsub_t::topic_route (const std::string &topic_id,
         return -1;
     }
 
-    // Find or create spot_node_t for this endpoint
-    spot_node_t *node = nullptr;
-    auto node_it = _nodes.find (endpoint);
-
-    if (node_it == _nodes.end ()) {
-        // Create new spot_node_t
-        auto new_node = std::make_unique<spot_node_t> (_ctx, endpoint);
-
-        // Connect to remote endpoint
-        if (new_node->connect () != 0) {
-            // Connection failed, errno already set (EHOSTUNREACH)
-            return -1;
-        }
-
-        node = new_node.get ();
-        _nodes[endpoint] = std::move (new_node);
-    } else {
-        node = node_it->second.get ();
-    }
-
     // Register topic as REMOTE in registry
+    // We just store the endpoint, the actual connection happens in subscribe()
     if (_registry->register_remote (topic_id, endpoint) != 0) {
-        // If this was a new node and registration failed, remove it
-        if (_nodes.find (endpoint) != _nodes.end () &&
-            _remote_topic_nodes.empty ()) {
-            _nodes.erase (endpoint);
-        }
         return -1; // errno already set by registry
     }
-
-    // Map topic to node
-    _remote_topic_nodes[topic_id] = node;
 
     return 0;
 }
@@ -203,17 +172,44 @@ int spot_pubsub_t::subscribe (const std::string &topic_id)
     std::unique_lock<std::shared_mutex> lock (_mutex);
 
     // Lookup topic in registry
-    const auto *entry = _registry->lookup (topic_id);
-    if (!entry) {
-        errno = ENOENT;
-        return -1;
+    auto entry = _registry->lookup (topic_id);
+
+    // If topic not found but we have cluster connections, treat as remote subscription
+    if (!entry.has_value ()) {
+        if (_connected_endpoints.empty ()) {
+            errno = ENOENT;
+            return -1;
+        }
+
+        // Add REMOTE subscription to manager (subscribed through cluster)
+        subscription_manager_t::subscriber_t sub;
+        sub.type = subscription_manager_t::subscriber_type_t::REMOTE;
+        sub.socket = _recv_socket;
+
+        if (_sub_manager->add_subscription (topic_id, sub) != 0) {
+            // Already subscribed - not an error, just idempotent
+            if (errno == EEXIST) {
+                return 0;
+            }
+            return -1;
+        }
+
+        // Send subscription message to all connected cluster endpoints
+        msg_t msg;
+        if (msg.init_subscribe (topic_id.size (),
+                                reinterpret_cast<const unsigned char *> (topic_id.data ())) != 0) {
+            return -1;
+        }
+
+        int rc = _recv_socket->send (&msg, 0);
+        msg.close ();
+
+        return rc;
     }
 
     if (entry->location == topic_registry_t::topic_location_t::LOCAL) {
-        // LOCAL topic: Connect XSUB to inproc endpoint
-        if (_recv_socket->connect (entry->endpoint.c_str ()) != 0) {
-            return -1;
-        }
+        // LOCAL topic: XSUB is already connected to local XPUB
+        // Just need to send subscription filter
 
         // Add LOCAL subscription to manager
         subscription_manager_t::subscriber_t sub;
@@ -241,24 +237,22 @@ int spot_pubsub_t::subscribe (const std::string &topic_id)
         return rc;
 
     } else {
-        // REMOTE topic: Send SUBSCRIBE to spot_node_t
-        auto node_it = _remote_topic_nodes.find (topic_id);
-        if (node_it == _remote_topic_nodes.end ()) {
-            errno = ENOENT;
-            return -1;
-        }
+        // REMOTE topic: Connect XSUB to remote XPUB endpoint
+        const std::string &remote_endpoint = entry->endpoint;
 
-        spot_node_t *node = node_it->second;
-
-        // Send SUBSCRIBE command to remote node
-        if (node->send_subscribe (topic_id) != 0) {
-            return -1;
+        // Check if already connected to this endpoint
+        if (_connected_endpoints.find (remote_endpoint) == _connected_endpoints.end ()) {
+            // Connect XSUB to remote XPUB
+            if (_recv_socket->connect (remote_endpoint.c_str ()) != 0) {
+                return -1;
+            }
+            _connected_endpoints.insert (remote_endpoint);
         }
 
         // Add REMOTE subscription to manager
         subscription_manager_t::subscriber_t sub;
         sub.type = subscription_manager_t::subscriber_type_t::REMOTE;
-        sub.socket = nullptr; // REMOTE subscriptions don't use socket
+        sub.socket = _recv_socket;
 
         if (_sub_manager->add_subscription (topic_id, sub) != 0) {
             // Already subscribed - not an error, just idempotent
@@ -268,7 +262,17 @@ int spot_pubsub_t::subscribe (const std::string &topic_id)
             return -1;
         }
 
-        return 0;
+        // Send subscription message to remote XPUB
+        msg_t msg;
+        if (msg.init_subscribe (topic_id.size (),
+                                reinterpret_cast<const unsigned char *> (topic_id.data ())) != 0) {
+            return -1;
+        }
+
+        int rc = _recv_socket->send (&msg, 0);
+        msg.close ();
+
+        return rc;
     }
 }
 
@@ -285,18 +289,27 @@ int spot_pubsub_t::subscribe_pattern (const std::string &pattern)
         return -1;
     }
 
-    // For pattern subscriptions, we need to subscribe to all matching topics
-    // that are currently registered
-    std::vector<std::string> local_topics = _registry->get_local_topics ();
-
-    for (const auto &topic_id : local_topics) {
-        // Check if pattern matches this topic
-        // Pattern matching logic is in subscription_manager_t
-        // For now, we subscribe to the pattern filter directly
-        // The actual filtering happens during recv()
+    // Convert glob pattern to XPUB prefix filter
+    // XPUB uses prefix matching, not glob patterns
+    // "events:*" -> "events:" (matches anything starting with "events:")
+    // "events:*:data" -> "events:" (only prefix up to first *)
+    std::string prefix = pattern;
+    size_t star_pos = prefix.find ('*');
+    if (star_pos != std::string::npos) {
+        prefix = prefix.substr (0, star_pos);
     }
 
-    return 0;
+    // Send subscription filter with prefix
+    msg_t msg;
+    if (msg.init_subscribe (prefix.size (),
+                            reinterpret_cast<const unsigned char *> (prefix.data ())) != 0) {
+        return -1;
+    }
+
+    int rc = _recv_socket->send (&msg, 0);
+    msg.close ();
+
+    return rc;
 }
 
 int spot_pubsub_t::subscribe_many (const std::vector<std::string> &topics)
@@ -322,60 +335,34 @@ int spot_pubsub_t::unsubscribe (const std::string &topic_id)
     std::unique_lock<std::shared_mutex> lock (_mutex);
 
     // Lookup topic in registry
-    const auto *entry = _registry->lookup (topic_id);
-    if (!entry) {
+    auto entry = _registry->lookup (topic_id);
+    if (!entry.has_value ()) {
         errno = ENOENT;
         return -1;
     }
 
-    if (entry->location == topic_registry_t::topic_location_t::LOCAL) {
-        // LOCAL topic: Remove local subscription
-        subscription_manager_t::subscriber_t sub;
-        sub.type = subscription_manager_t::subscriber_type_t::LOCAL;
-        sub.socket = _recv_socket;
+    // Remove subscription from manager
+    subscription_manager_t::subscriber_t sub;
+    sub.type = (entry->location == topic_registry_t::topic_location_t::LOCAL)
+                   ? subscription_manager_t::subscriber_type_t::LOCAL
+                   : subscription_manager_t::subscriber_type_t::REMOTE;
+    sub.socket = _recv_socket;
 
-        if (_sub_manager->remove_subscription (topic_id, sub) != 0) {
-            return -1; // errno already set
-        }
-
-        // Send unsubscription message to XPUB
-        msg_t msg;
-        if (msg.init_cancel (topic_id.size (),
-                             reinterpret_cast<const unsigned char *> (topic_id.data ())) != 0) {
-            return -1;
-        }
-
-        int rc = _recv_socket->send (&msg, 0);
-        msg.close ();
-
-        return rc;
-
-    } else {
-        // REMOTE topic: Send UNSUBSCRIBE to spot_node_t
-        auto node_it = _remote_topic_nodes.find (topic_id);
-        if (node_it == _remote_topic_nodes.end ()) {
-            errno = ENOENT;
-            return -1;
-        }
-
-        spot_node_t *node = node_it->second;
-
-        // Send UNSUBSCRIBE command to remote node
-        if (node->send_unsubscribe (topic_id) != 0) {
-            return -1;
-        }
-
-        // Remove REMOTE subscription from manager
-        subscription_manager_t::subscriber_t sub;
-        sub.type = subscription_manager_t::subscriber_type_t::REMOTE;
-        sub.socket = nullptr;
-
-        if (_sub_manager->remove_subscription (topic_id, sub) != 0) {
-            return -1; // errno already set
-        }
-
-        return 0;
+    if (_sub_manager->remove_subscription (topic_id, sub) != 0) {
+        return -1; // errno already set
     }
+
+    // Send unsubscription message to XPUB
+    msg_t msg;
+    if (msg.init_cancel (topic_id.size (),
+                         reinterpret_cast<const unsigned char *> (topic_id.data ())) != 0) {
+        return -1;
+    }
+
+    int rc = _recv_socket->send (&msg, 0);
+    msg.close ();
+
+    return rc;
 }
 
 // ============================================================================
@@ -389,57 +376,41 @@ int spot_pubsub_t::publish (const std::string &topic_id,
     std::shared_lock<std::shared_mutex> lock (_mutex);
 
     // Lookup topic in registry
-    const auto *entry = _registry->lookup (topic_id);
-    if (!entry) {
+    auto entry = _registry->lookup (topic_id);
+    if (!entry.has_value ()) {
         errno = ENOENT;
         return -1;
     }
 
-    if (entry->location == topic_registry_t::topic_location_t::LOCAL) {
-        // LOCAL topic: Send to XPUB socket
-        auto it = _local_publishers.find (topic_id);
-        if (it == _local_publishers.end ()) {
-            errno = ENOENT;
-            return -1;
-        }
-
-        socket_base_t *xpub = it->second;
-
-        // Send message in two parts: [topic_id][data]
-        // Frame 1: Topic ID
-        msg_t topic_msg;
-        if (topic_msg.init_buffer (topic_id.data (), topic_id.size ()) != 0) {
-            return -1;
-        }
-
-        if (xpub->send (&topic_msg, SL_SNDMORE) != 0) {
-            topic_msg.close ();
-            return -1;
-        }
-        topic_msg.close ();
-
-        // Frame 2: Data
-        msg_t data_msg;
-        if (data_msg.init_buffer (data, len) != 0) {
-            return -1;
-        }
-
-        int rc = xpub->send (&data_msg, 0);
-        data_msg.close ();
-
-        return rc;
-
-    } else {
-        // REMOTE topic: Send PUBLISH to spot_node_t
-        auto node_it = _remote_topic_nodes.find (topic_id);
-        if (node_it == _remote_topic_nodes.end ()) {
-            errno = ENOENT;
-            return -1;
-        }
-
-        spot_node_t *node = node_it->second;
-        return node->send_publish (topic_id, data, len);
+    if (entry->location != topic_registry_t::topic_location_t::LOCAL) {
+        // Can only publish to LOCAL topics
+        errno = EINVAL;
+        return -1;
     }
+
+    // Send message through shared XPUB: [topic_id][data]
+    // Frame 1: Topic ID
+    msg_t topic_msg;
+    if (topic_msg.init_buffer (topic_id.data (), topic_id.size ()) != 0) {
+        return -1;
+    }
+
+    if (_pub_socket->send (&topic_msg, SL_SNDMORE) != 0) {
+        topic_msg.close ();
+        return -1;
+    }
+    topic_msg.close ();
+
+    // Frame 2: Data
+    msg_t data_msg;
+    if (data_msg.init_buffer (data, len) != 0) {
+        return -1;
+    }
+
+    int rc = _pub_socket->send (&data_msg, 0);
+    data_msg.close ();
+
+    return rc;
 }
 
 // ============================================================================
@@ -454,10 +425,6 @@ int spot_pubsub_t::recv (char *topic_buf, size_t topic_buf_size,
 {
     std::shared_lock<std::shared_mutex> lock (_mutex);
 
-    // Process incoming QUERY requests from server socket (non-blocking)
-    // This allows the node to respond to cluster sync requests
-    const_cast<spot_pubsub_t *> (this)->process_incoming_messages ();
-
     // Determine if we should use non-blocking mode or timeout
     bool use_timeout = !(flags & SL_DONTWAIT) && _rcvtimeo != 0;
 
@@ -470,7 +437,7 @@ int spot_pubsub_t::recv (char *topic_buf, size_t topic_buf_size,
 
     // Retry loop for blocking mode with timeout
     while (true) {
-        // Try LOCAL topics first (XSUB socket)
+        // Try to receive from XSUB
         msg_t topic_msg;
         if (topic_msg.init () != 0) {
             return -1;
@@ -478,7 +445,7 @@ int spot_pubsub_t::recv (char *topic_buf, size_t topic_buf_size,
 
         int rc = _recv_socket->recv (&topic_msg, SL_DONTWAIT);
         if (rc == 0) {
-            // Got message from LOCAL topic
+            // Got message
             // Copy topic to buffer
             size_t topic_size = topic_msg.size ();
             if (topic_size > topic_buf_size) {
@@ -519,39 +486,7 @@ int spot_pubsub_t::recv (char *topic_buf, size_t topic_buf_size,
 
         topic_msg.close ();
 
-        // No LOCAL message, try REMOTE topics
-        for (auto &kv : _nodes) {
-            spot_node_t *node = kv.second.get ();
-
-            std::string remote_topic_id;
-            std::vector<uint8_t> remote_data;
-
-            rc = node->recv (remote_topic_id, remote_data, SL_DONTWAIT);
-            if (rc == 0) {
-                // Got message from REMOTE topic
-                // Copy topic to buffer
-                if (remote_topic_id.size () > topic_buf_size) {
-                    errno = EMSGSIZE;
-                    return -1;
-                }
-
-                memcpy (topic_buf, remote_topic_id.data (), remote_topic_id.size ());
-                *topic_len = remote_topic_id.size ();
-
-                // Copy data to buffer
-                if (remote_data.size () > data_buf_size) {
-                    errno = EMSGSIZE;
-                    return -1;
-                }
-
-                memcpy (data_buf, remote_data.data (), remote_data.size ());
-                *data_len = remote_data.size ();
-
-                return 0;
-            }
-        }
-
-        // No message available from LOCAL or REMOTE
+        // No message available
         if (flags & SL_DONTWAIT) {
             errno = EAGAIN;
             return -1;
@@ -594,8 +529,8 @@ bool spot_pubsub_t::topic_is_local (const std::string &topic_id) const
 {
     std::shared_lock<std::shared_mutex> lock (_mutex);
 
-    const auto *entry = _registry->lookup (topic_id);
-    if (!entry) {
+    auto entry = _registry->lookup (topic_id);
+    if (!entry.has_value ()) {
         return false;
     }
 
@@ -620,12 +555,10 @@ int spot_pubsub_t::set_hwm (int sndhwm, int rcvhwm)
         }
     }
 
-    // Apply to all existing publisher sockets
-    for (auto &kv : _local_publishers) {
-        if (kv.second) {
-            if (kv.second->setsockopt (SL_SNDHWM, &_sndhwm, sizeof (_sndhwm)) != 0) {
-                return -1;
-            }
+    // Apply to publish socket
+    if (_pub_socket) {
+        if (_pub_socket->setsockopt (SL_SNDHWM, &_sndhwm, sizeof (_sndhwm)) != 0) {
+            return -1;
         }
     }
 
@@ -683,24 +616,22 @@ int spot_pubsub_t::bind (const std::string &endpoint)
 {
     std::unique_lock<std::shared_mutex> lock (_mutex);
 
-    // Check if already bound
-    if (_server_socket) {
+    // Check if already bound to this endpoint
+    if (_bind_endpoints.find (endpoint) != _bind_endpoints.end ()) {
         errno = EEXIST;
         return -1;
     }
 
-    // Create ROUTER socket for server mode
-    _server_socket = _ctx->create_socket (SL_ROUTER);
-    if (!_server_socket) {
-        errno = ENOMEM;
+    // Bind shared XPUB to the endpoint (in addition to inproc)
+    if (_pub_socket->bind (endpoint.c_str ()) != 0) {
         return -1;
     }
 
-    // Bind to endpoint
-    if (_server_socket->bind (endpoint.c_str ()) != 0) {
-        _server_socket->close ();
-        _server_socket = nullptr;
-        return -1;
+    _bind_endpoints.insert (endpoint);
+
+    // Keep first TCP endpoint as primary for topic registration
+    if (_bind_endpoint.empty () && endpoint.find ("tcp://") != std::string::npos) {
+        _bind_endpoint = endpoint;
     }
 
     return 0;
@@ -710,22 +641,19 @@ int spot_pubsub_t::cluster_add (const std::string &endpoint)
 {
     std::unique_lock<std::shared_mutex> lock (_mutex);
 
-    // Check if node already exists
-    if (_nodes.find (endpoint) != _nodes.end ()) {
+    // Check if already connected
+    if (_connected_endpoints.find (endpoint) != _connected_endpoints.end ()) {
         errno = EEXIST;
         return -1;
     }
 
-    // Create new spot_node_t
-    auto new_node = std::make_unique<spot_node_t> (_ctx, endpoint);
-
-    // Connect to remote endpoint
-    if (new_node->connect () != 0) {
-        // Connection failed, errno already set (EHOSTUNREACH)
+    // Connect XSUB to remote XPUB
+    if (_recv_socket->connect (endpoint.c_str ()) != 0) {
         return -1;
     }
 
-    _nodes[endpoint] = std::move (new_node);
+    _connected_endpoints.insert (endpoint);
+
     return 0;
 }
 
@@ -733,215 +661,30 @@ int spot_pubsub_t::cluster_remove (const std::string &endpoint)
 {
     std::unique_lock<std::shared_mutex> lock (_mutex);
 
-    auto it = _nodes.find (endpoint);
-    if (it == _nodes.end ()) {
+    auto it = _connected_endpoints.find (endpoint);
+    if (it == _connected_endpoints.end ()) {
         errno = ENOENT;
         return -1;
     }
 
-    // Remove all remote topics associated with this node
-    auto topic_it = _remote_topic_nodes.begin ();
-    while (topic_it != _remote_topic_nodes.end ()) {
-        if (topic_it->second == it->second.get ()) {
-            // Unregister topic from registry
-            _registry->unregister (topic_it->first);
-            topic_it = _remote_topic_nodes.erase (topic_it);
-        } else {
-            ++topic_it;
+    // Disconnect XSUB from remote XPUB using term_endpoint
+    if (_recv_socket->term_endpoint (endpoint.c_str ()) != 0) {
+        // Endpoint might already be disconnected, continue anyway
+        if (errno != ENOENT) {
+            return -1;
         }
     }
 
-    // Remove node
-    _nodes.erase (it);
+    _connected_endpoints.erase (it);
+
     return 0;
 }
 
 int spot_pubsub_t::cluster_sync (int timeout_ms)
 {
-    std::unique_lock<std::shared_mutex> lock (_mutex);
-
-    if (_nodes.empty ()) {
-        // No cluster nodes to sync with
-        return 0;
-    }
-
-    // Send QUERY to all cluster nodes
-    for (auto &kv : _nodes) {
-        spot_node_t *node = kv.second.get ();
-        if (node->send_query () != 0) {
-            // Failed to send query to this node, continue with others
-            continue;
-        }
-    }
-
-    // Receive QUERY_RESP from all nodes (with timeout)
-    // Note: This is a simplified implementation that waits for all responses
-    // A more robust implementation would use poller with timeout
-    for (auto &kv : _nodes) {
-        const std::string &endpoint = kv.first;
-        spot_node_t *node = kv.second.get ();
-
-        std::vector<std::string> topics;
-        int rc = node->recv_query_response (topics, SL_DONTWAIT);
-
-        if (rc == 0) {
-            // Successfully received topic list
-            // Register each topic as REMOTE in registry
-            for (const auto &topic_id : topics) {
-                // Check if topic already exists
-                if (!_registry->has_topic (topic_id)) {
-                    // Register as REMOTE topic
-                    if (_registry->register_remote (topic_id, endpoint) == 0) {
-                        // Map topic to node
-                        _remote_topic_nodes[topic_id] = node;
-                    }
-                }
-            }
-        }
-        // If recv failed (EAGAIN or other error), skip this node
-    }
-
-    return 0;
-}
-
-// ============================================================================
-// Internal Helper Methods
-// ============================================================================
-
-void spot_pubsub_t::process_incoming_messages ()
-{
-    if (!_server_socket) {
-        return;
-    }
-
-    // Try to receive messages from server socket (QUERY requests)
-    msg_t routing_id_msg;
-    if (routing_id_msg.init () != 0) {
-        return;
-    }
-
-    int rc = _server_socket->recv (&routing_id_msg, SL_DONTWAIT);
-    if (rc != 0) {
-        routing_id_msg.close ();
-        return; // No message available
-    }
-
-    // Extract routing ID
-    std::string routing_id (static_cast<const char *> (routing_id_msg.data ()),
-                            routing_id_msg.size ());
-    routing_id_msg.close ();
-
-    // Receive empty delimiter frame
-    msg_t delimiter_msg;
-    if (delimiter_msg.init () != 0) {
-        return;
-    }
-    _server_socket->recv (&delimiter_msg, 0);
-    delimiter_msg.close ();
-
-    // Receive command frame
-    msg_t cmd_msg;
-    if (cmd_msg.init () != 0) {
-        return;
-    }
-
-    if (_server_socket->recv (&cmd_msg, 0) != 0) {
-        cmd_msg.close ();
-        return;
-    }
-
-    if (cmd_msg.size () != 1) {
-        cmd_msg.close ();
-        return;
-    }
-
-    uint8_t cmd = *static_cast<const uint8_t *> (cmd_msg.data ());
-    cmd_msg.close ();
-
-    // Handle QUERY command
-    if (cmd == static_cast<uint8_t> (spot_command_t::QUERY)) {
-        handle_query_request (routing_id);
-    }
-    // Other commands (SUBSCRIBE, UNSUBSCRIBE, PUBLISH) can be handled here in the future
-}
-
-int spot_pubsub_t::handle_query_request (const std::string &routing_id)
-{
-    if (!_server_socket) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    // Get list of local topics
-    std::vector<std::string> local_topics = _registry->get_local_topics ();
-
-    // Send QUERY_RESP message
-    // Frame 0: Routing ID
-    msg_t rid_msg;
-    if (rid_msg.init_buffer (routing_id.data (), routing_id.size ()) != 0) {
-        return -1;
-    }
-
-    if (_server_socket->send (&rid_msg, SL_SNDMORE) != 0) {
-        rid_msg.close ();
-        return -1;
-    }
-    rid_msg.close ();
-
-    // Frame 1: Empty delimiter
-    msg_t delim_msg;
-    if (delim_msg.init_buffer ("", 0) != 0) {
-        return -1;
-    }
-
-    if (_server_socket->send (&delim_msg, SL_SNDMORE) != 0) {
-        delim_msg.close ();
-        return -1;
-    }
-    delim_msg.close ();
-
-    // Frame 2: Command (QUERY_RESP)
-    msg_t cmd_msg;
-    uint8_t cmd = static_cast<uint8_t> (spot_command_t::QUERY_RESP);
-    if (cmd_msg.init_buffer (&cmd, sizeof (cmd)) != 0) {
-        return -1;
-    }
-
-    if (_server_socket->send (&cmd_msg, SL_SNDMORE) != 0) {
-        cmd_msg.close ();
-        return -1;
-    }
-    cmd_msg.close ();
-
-    // Frame 3: Topic count (uint32_t)
-    msg_t count_msg;
-    uint32_t topic_count = static_cast<uint32_t> (local_topics.size ());
-    if (count_msg.init_buffer (&topic_count, sizeof (topic_count)) != 0) {
-        return -1;
-    }
-
-    if (_server_socket->send (&count_msg, local_topics.empty () ? 0 : SL_SNDMORE) != 0) {
-        count_msg.close ();
-        return -1;
-    }
-    count_msg.close ();
-
-    // Frame 4+: Topic IDs
-    for (size_t i = 0; i < local_topics.size (); i++) {
-        msg_t topic_msg;
-        if (topic_msg.init_buffer (local_topics[i].data (),
-                                    local_topics[i].size ()) != 0) {
-            return -1;
-        }
-
-        int flags = (i == local_topics.size () - 1) ? 0 : SL_SNDMORE;
-        if (_server_socket->send (&topic_msg, flags) != 0) {
-            topic_msg.close ();
-            return -1;
-        }
-        topic_msg.close ();
-    }
-
+    // With the simplified XPUB/XSUB architecture, cluster sync is not needed
+    // Topics are discovered through subscription messages
+    (void) timeout_ms;
     return 0;
 }
 

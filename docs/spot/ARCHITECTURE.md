@@ -5,27 +5,30 @@ Internal architecture and design of ServerLink SPOT (Scalable Partitioned Ordere
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Component Architecture](#component-architecture)
-3. [Class Diagrams](#class-diagrams)
-4. [Data Flow](#data-flow)
-5. [Threading Model](#threading-model)
-6. [Memory Management](#memory-management)
-7. [Performance Characteristics](#performance-characteristics)
+2. [Architecture Evolution](#architecture-evolution)
+3. [Component Architecture](#component-architecture)
+4. [Class Diagrams](#class-diagrams)
+5. [Data Flow](#data-flow)
+6. [Threading Model](#threading-model)
+7. [Memory Management](#memory-management)
+8. [Performance Characteristics](#performance-characteristics)
+9. [Design Decisions](#design-decisions)
 
 ---
 
 ## Overview
 
-SPOT provides location-transparent pub/sub by combining:
-- **Topic Registry** (topic metadata and routing)
-- **Subscription Manager** (subscription tracking)
-- **SPOT PubSub** (main orchestrator)
-- **SPOT Node** (remote node connections)
+SPOT provides location-transparent pub/sub using a simplified **direct XPUB/XSUB** architecture:
+
+- **One shared XPUB** socket per SPOT instance (publishes all topics)
+- **One shared XSUB** socket per SPOT instance (receives from all connected publishers)
+- **Topic Registry** for topic metadata and routing
+- **Subscription Manager** for subscription tracking
 
 **Key Design Principles:**
-1. **Zero-copy LOCAL topics** using inproc transport
-2. **Transparent routing** between LOCAL and REMOTE topics
-3. **Cluster synchronization** via QUERY/QUERY_RESP protocol
+1. **Simplicity** - Direct XPUB/XSUB connections without intermediate routing
+2. **Zero-copy LOCAL topics** using inproc transport
+3. **Transparent remote topics** via TCP connections
 4. **Thread-safe** operations with read/write locking
 
 ---
@@ -33,254 +36,263 @@ SPOT provides location-transparent pub/sub by combining:
 ## Component Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      slk_spot_t                             │
-│                  (Main Orchestrator)                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌──────────────────┐  ┌──────────────────┐               │
-│  │ topic_registry_t │  │subscription_     │               │
-│  │                  │  │manager_t         │               │
-│  ├──────────────────┤  ├──────────────────┤               │
-│  │ - LOCAL topics   │  │ - Subscriptions  │               │
-│  │ - REMOTE topics  │  │ - Pattern subs   │               │
-│  │ - Endpoint map   │  │ - Subscriber map │               │
-│  └──────────────────┘  └──────────────────┘               │
-│                                                             │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │           Socket Layer                               │  │
-│  ├──────────────────────────────────────────────────────┤  │
-│  │ _recv_socket (XSUB) ──► Receives from LOCAL topics  │  │
-│  │ _local_publishers (XPUB map) ──► LOCAL publishers   │  │
-│  │ _server_socket (ROUTER) ──► Cluster server          │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                                                             │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │           Remote Nodes (spot_node_t)                 │  │
-│  ├──────────────────────────────────────────────────────┤  │
-│  │ _nodes (endpoint → spot_node_t)                      │  │
-│  │ _remote_topic_nodes (topic_id → spot_node_t)        │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                          slk_spot_t                                  │
+│                      (SPOT PUB/SUB Instance)                         │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌────────────────────┐    ┌────────────────────┐                  │
+│  │  topic_registry_t  │    │ subscription_      │                  │
+│  │                    │    │ manager_t          │                  │
+│  ├────────────────────┤    ├────────────────────┤                  │
+│  │ - LOCAL topics     │    │ - Topic subs       │                  │
+│  │ - REMOTE topics    │    │ - Pattern subs     │                  │
+│  │ - Endpoint mapping │    │ - Subscriber types │                  │
+│  └────────────────────┘    └────────────────────┘                  │
+│                                                                      │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │                     Socket Layer                              │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │                                                               │  │
+│  │   _pub_socket (XPUB)         _recv_socket (XSUB)             │  │
+│  │   ┌─────────────────┐        ┌─────────────────┐             │  │
+│  │   │ Bound to:       │        │ Connected to:   │             │  │
+│  │   │ - inproc://spot-N│       │ - Local XPUB    │             │  │
+│  │   │ - tcp://*:port  │        │ - Remote XPUBs  │             │  │
+│  │   └─────────────────┘        └─────────────────┘             │  │
+│  │          │                          │                         │  │
+│  │          ▼                          ▼                         │  │
+│  │   publish() sends here       recv() reads here               │  │
+│  │                                                               │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                                                                      │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │                     Endpoint Tracking                         │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │ _inproc_endpoint: "inproc://spot-0"  (always set)            │  │
+│  │ _bind_endpoint: "tcp://...:5555"      (after bind())         │  │
+│  │ _bind_endpoints: set of all bound endpoints                  │  │
+│  │ _connected_endpoints: set of cluster connections             │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Class Diagrams
 
-### Core Classes (ASCII UML)
+### Core Classes
 
 ```
-┌─────────────────────────────────────┐
-│         topic_registry_t            │
-├─────────────────────────────────────┤
-│ - _topics: map<string, topic_entry> │
-│ - _mutex: shared_mutex              │
-├─────────────────────────────────────┤
-│ + register_local(topic_id)          │
-│ + register_remote(topic_id, ep)     │
-│ + unregister(topic_id)              │
-│ + lookup(topic_id) → entry*         │
-│ + has_topic(topic_id) → bool        │
-│ + get_local_topics() → vector       │
-│ + get_all_topics() → vector         │
-└─────────────────────────────────────┘
+┌───────────────────────────────────────┐
+│           topic_registry_t            │
+├───────────────────────────────────────┤
+│ - _topics: map<string, topic_entry_t> │
+│ - _mutex: shared_mutex                │
+├───────────────────────────────────────┤
+│ + register_local(topic_id)            │
+│ + register_local(topic_id, endpoint)  │
+│ + register_remote(topic_id, endpoint) │
+│ + unregister(topic_id)                │
+│ + lookup(topic_id) → optional<entry>  │
+│ + has_topic(topic_id) → bool          │
+│ + get_local_topics() → vector         │
+│ + get_all_topics() → vector           │
+└───────────────────────────────────────┘
 
-┌─────────────────────────────────────┐
-│         topic_entry_t               │
-├─────────────────────────────────────┤
-│ + location: LOCAL | REMOTE          │
-│ + endpoint: string                  │
-│ + created_at: timestamp             │
-└─────────────────────────────────────┘
+┌───────────────────────────────────────┐
+│           topic_entry_t               │
+├───────────────────────────────────────┤
+│ + location: LOCAL | REMOTE            │
+│ + endpoint: string                    │
+│ + created_at: timestamp               │
+└───────────────────────────────────────┘
 
-┌─────────────────────────────────────┐
-│     subscription_manager_t          │
-├─────────────────────────────────────┤
-│ - _subscriptions: map<string, set>  │
-│ - _patterns: map<string, set>       │
-│ - _mutex: shared_mutex              │
-├─────────────────────────────────────┤
-│ + add_subscription(topic, sub)      │
-│ + add_pattern_subscription(pattern) │
-│ + remove_subscription(topic, sub)   │
-│ + is_subscribed(topic, sub) → bool  │
-│ + match_pattern(topic) → bool       │
-└─────────────────────────────────────┘
+┌───────────────────────────────────────┐
+│       subscription_manager_t          │
+├───────────────────────────────────────┤
+│ - _subscriptions: map<string, set>    │
+│ - _patterns: map<string, set>         │
+│ - _mutex: shared_mutex                │
+├───────────────────────────────────────┤
+│ + add_subscription(topic, sub)        │
+│ + add_pattern_subscription(pattern)   │
+│ + remove_subscription(topic, sub)     │
+│ + is_subscribed(topic, sub) → bool    │
+│ + match_pattern(topic) → bool         │
+└───────────────────────────────────────┘
 
-┌─────────────────────────────────────┐
-│            spot_node_t              │
-├─────────────────────────────────────┤
-│ - _socket: socket_base_t* (ROUTER)  │
-│ - _endpoint: string                 │
-│ - _connected: bool                  │
-│ - _mutex: mutex                     │
-├─────────────────────────────────────┤
-│ + connect() → int                   │
-│ + disconnect() → int                │
-│ + send_publish(topic, data) → int   │
-│ + send_subscribe(topic) → int       │
-│ + send_unsubscribe(topic) → int     │
-│ + send_query() → int                │
-│ + recv_query_response() → topics    │
-│ + recv(topic, data) → int           │
-└─────────────────────────────────────┘
-
-┌─────────────────────────────────────┐
-│          spot_pubsub_t              │
-├─────────────────────────────────────┤
-│ - _ctx: ctx_t*                      │
-│ - _registry: topic_registry_t*      │
-│ - _sub_manager: subscription_mgr*   │
-│ - _recv_socket: XSUB                │
-│ - _server_socket: ROUTER            │
-│ - _local_publishers: map<XPUB>      │
-│ - _nodes: map<spot_node_t>          │
-│ - _remote_topic_nodes: map          │
-│ - _mutex: shared_mutex              │
-├─────────────────────────────────────┤
-│ + topic_create(topic_id)            │
-│ + topic_destroy(topic_id)           │
-│ + topic_route(topic_id, endpoint)   │
-│ + subscribe(topic_id)               │
-│ + subscribe_pattern(pattern)        │
-│ + unsubscribe(topic_id)             │
-│ + publish(topic_id, data)           │
-│ + recv(topic, data)                 │
-│ + bind(endpoint)                    │
-│ + cluster_add(endpoint)             │
-│ + cluster_remove(endpoint)          │
-│ + cluster_sync(timeout)             │
-│ + list_topics()                     │
-│ + topic_exists(topic_id)            │
-│ + topic_is_local(topic_id)          │
-│ + set_hwm(sndhwm, rcvhwm)           │
-└─────────────────────────────────────┘
+┌───────────────────────────────────────┐
+│           spot_pubsub_t               │
+├───────────────────────────────────────┤
+│ - _ctx: ctx_t*                        │
+│ - _registry: unique_ptr<registry>     │
+│ - _sub_manager: unique_ptr<sub_mgr>   │
+│ - _pub_socket: socket_base_t* (XPUB)  │
+│ - _recv_socket: socket_base_t* (XSUB) │
+│ - _inproc_endpoint: string            │
+│ - _bind_endpoint: string              │
+│ - _bind_endpoints: set<string>        │
+│ - _connected_endpoints: set<string>   │
+│ - _sndhwm, _rcvhwm: int               │
+│ - _rcvtimeo: int                      │
+│ - _mutex: shared_mutex                │
+├───────────────────────────────────────┤
+│ + topic_create(topic_id)              │
+│ + topic_destroy(topic_id)             │
+│ + topic_route(topic_id, endpoint)     │
+│ + subscribe(topic_id)                 │
+│ + subscribe_pattern(pattern)          │
+│ + unsubscribe(topic_id)               │
+│ + publish(topic_id, data, len)        │
+│ + recv(topic, data, flags)            │
+│ + bind(endpoint)                      │
+│ + cluster_add(endpoint)               │
+│ + cluster_remove(endpoint)            │
+│ + cluster_sync(timeout)               │
+│ + list_topics() → vector              │
+│ + topic_exists(topic_id) → bool       │
+│ + topic_is_local(topic_id) → bool     │
+│ + set_hwm(sndhwm, rcvhwm)             │
+│ + setsockopt(option, value, len)      │
+│ + getsockopt(option, value, len)      │
+│ + fd() → int                          │
+└───────────────────────────────────────┘
 ```
 
 ---
 
 ## Data Flow
 
-### LOCAL Topic Publish/Subscribe
+### LOCAL Topic Publish/Subscribe (Same SPOT Instance)
 
 ```
-Publisher                    SPOT                       Subscriber
-    |                          |                            |
-    | slk_spot_publish()       |                            |
-    |──────────────────────────>|                            |
-    |                          |                            |
-    |                          | Lookup topic in registry   |
-    |                          | (location = LOCAL)         |
-    |                          |                            |
-    |                          | Find XPUB socket           |
-    |                          | Send [topic][data]         |
-    |                          | ────────────────────────>  |
-    |                          |    (inproc transport)      |
-    |                          |                            |
-    |                          |              XSUB receives |
-    |                          |              slk_spot_recv()|
-    |                          |<────────────────────────── |
-    |                          |                            |
-    | Return 0                 |                            |
-    |<─────────────────────────|                            |
-    |                          | Return [topic][data]       |
-    |                          |──────────────────────────> |
-    |                          |                            |
-```
+┌──────────────────────────────────────────────────────────────────┐
+│                         SPOT Instance                             │
+│                                                                   │
+│   Publisher Thread              Subscriber Thread                 │
+│         │                             │                           │
+│         │ slk_spot_publish()          │                           │
+│         │                             │                           │
+│         ▼                             │                           │
+│   ┌───────────┐                       │                           │
+│   │   XPUB    │◄── bound to inproc    │                           │
+│   └─────┬─────┘                       │                           │
+│         │                             │                           │
+│         │ [topic][data]               │                           │
+│         │                             │                           │
+│         └──────────── inproc ─────────┤                           │
+│                                       ▼                           │
+│                                 ┌───────────┐                     │
+│                                 │   XSUB    │◄── connected to XPUB│
+│                                 └─────┬─────┘                     │
+│                                       │                           │
+│                                       │ slk_spot_recv()           │
+│                                       ▼                           │
+│                              Return [topic][data]                 │
+│                                                                   │
+└──────────────────────────────────────────────────────────────────┘
 
-**Performance:**
+Performance:
 - Zero-copy via inproc (ypipe)
-- Nanosecond latency
+- Sub-microsecond latency
 - No serialization overhead
-
----
-
-### REMOTE Topic Publish/Subscribe
-
-```
-Publisher                  Node A (SPOT)              Node B (SPOT)              Subscriber
-    |                          |                          |                          |
-    | slk_spot_publish()       |                          |                          |
-    |──────────────────────────>|                          |                          |
-    |                          |                          |                          |
-    |                          | Lookup topic in registry |                          |
-    |                          | (location = REMOTE)      |                          |
-    |                          |                          |                          |
-    |                          | Find spot_node_t         |                          |
-    |                          | Send PUBLISH command     |                          |
-    |                          |──────────────────────────>|                          |
-    |                          |     [CMD][topic][data]   |                          |
-    |                          |     (TCP transport)      |                          |
-    |                          |                          |                          |
-    |                          |                          | Receive on ROUTER socket|
-    |                          |                          | Forward to XPUB         |
-    |                          |                          | ──────────────────────> |
-    |                          |                          |     (inproc)            |
-    |                          |                          |                          |
-    |                          |                          |          slk_spot_recv()|
-    |                          |                          |<────────────────────────|
-    |                          |                          |                          |
-    | Return 0                 |                          | Return [topic][data]    |
-    |<─────────────────────────|                          |──────────────────────────>|
-    |                          |                          |                          |
 ```
 
-**Performance:**
+### REMOTE Topic Publish/Subscribe (Cross-Node)
+
+```
+┌────────────────────────┐              ┌────────────────────────┐
+│        Node A          │              │        Node B          │
+│                        │              │                        │
+│  ┌─────────────────┐   │              │   ┌─────────────────┐  │
+│  │ slk_spot_publish│   │              │   │                 │  │
+│  └────────┬────────┘   │              │   │  slk_spot_recv  │  │
+│           │            │              │   │                 │  │
+│           ▼            │              │   └────────▲────────┘  │
+│      ┌─────────┐       │              │            │           │
+│      │  XPUB   │       │              │       ┌────┴────┐      │
+│      │ (bound) │       │              │       │  XSUB   │      │
+│      └────┬────┘       │              │       │(connect)│      │
+│           │            │              │       └────┬────┘      │
+│           │ TCP        │              │            │           │
+│           └────────────┼──────────────┼────────────┘           │
+│                        │  [topic]     │                        │
+│                        │  [data]      │                        │
+│                        │              │                        │
+└────────────────────────┘              └────────────────────────┘
+
+Setup:
+1. Node A: bind("tcp://*:5555")
+2. Node B: cluster_add("tcp://nodeA:5555")
+3. Node B: subscribe("topic")  → XSUB sends subscription to XPUB
+4. Node A: publish("topic", data) → XPUB forwards to matching XSUBs
+
+Performance:
 - TCP network overhead (~10-100 µs)
-- Persistent connections
-- Automatic reconnection
-
----
-
-### Cluster Synchronization (QUERY/QUERY_RESP)
-
-```
-Node A                      Node B (Server)
-  |                              |
-  | bind("tcp://*:5555")         |
-  |<─────────────────────────────|
-  |                              |
-  | cluster_add("tcp://nodeB:5555")|
-  |──────────────────────────────>|
-  |         (Connect)            |
-  |                              |
-  | cluster_sync(1000)           |
-  |──────────────────────────────>|
-  |                              |
-  | Send QUERY                   |
-  |──────────────────────────────>|
-  |  [routing_id][empty][CMD]    |
-  |                              |
-  |                              | Receive QUERY on ROUTER
-  |                              | Get local topics
-  |                              |
-  |         QUERY_RESP           |
-  |<──────────────────────────────|
-  |  [routing_id][empty][CMD][count][topic1][topic2]...|
-  |                              |
-  | Register remote topics       |
-  | (nodeB:topic1 → tcp://nodeB:5555)|
-  | (nodeB:topic2 → tcp://nodeB:5555)|
-  |                              |
-  | Return 0                     |
-  |                              |
+- Persistent connections with auto-reconnection
+- ZeroMQ handles subscription filtering
 ```
 
-**Message Format:**
-```
-QUERY:
-  Frame 0: Routing ID (variable)
-  Frame 1: Empty delimiter
-  Frame 2: Command byte (QUERY = 0x04)
+### Multi-Publisher Scenario
 
-QUERY_RESP:
-  Frame 0: Routing ID (variable)
-  Frame 1: Empty delimiter
-  Frame 2: Command byte (QUERY_RESP = 0x05)
-  Frame 3: Topic count (uint32_t, 4 bytes)
-  Frame 4+: Topic IDs (variable length strings)
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Publisher A   │    │   Publisher B   │    │   Subscriber    │
+│                 │    │                 │    │                 │
+│ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
+│ │    XPUB     │ │    │ │    XPUB     │ │    │ │    XSUB     │ │
+│ │ tcp://:5555 │ │    │ │ tcp://:5556 │ │    │ │ (connects)  │ │
+│ └──────┬──────┘ │    │ └──────┬──────┘ │    │ └──────┬──────┘ │
+│        │        │    │        │        │    │        │        │
+└────────┼────────┘    └────────┼────────┘    └────────┼────────┘
+         │                      │                      │
+         │     TCP              │     TCP              │
+         └──────────────────────┴──────────────────────┘
+                                │
+                   ┌────────────┴────────────┐
+                   │  Subscriber receives    │
+                   │  from BOTH publishers   │
+                   └─────────────────────────┘
+
+Setup:
+1. Publisher A: bind("tcp://*:5555")
+2. Publisher B: bind("tcp://*:5556")
+3. Subscriber: cluster_add("tcp://pubA:5555")
+4. Subscriber: cluster_add("tcp://pubB:5556")
+5. Subscriber: subscribe("topic")
+```
+
+### Pattern Subscription
+
+```
+Subscriber                                    Publisher
+    │                                            │
+    │ subscribe_pattern("events:*")              │
+    │                                            │
+    │ ┌─────────────────────────────────────┐   │
+    │ │ Convert to XPUB prefix:             │   │
+    │ │ "events:*" → "events:"              │   │
+    │ │                                     │   │
+    │ │ Send subscription message:          │   │
+    │ │ [0x01]["events:"]                   │   │
+    │ └─────────────────────────────────────┘   │
+    │                                            │
+    │           subscription message             │
+    │ ─────────────────────────────────────────► │
+    │                                            │
+    │                      publish("events:login", data)
+    │                      publish("events:logout", data)
+    │                      publish("metrics:cpu", data)
+    │                                            │
+    │ ◄──────── "events:login" matches ──────── │
+    │ ◄──────── "events:logout" matches ─────── │
+    │           "metrics:cpu" filtered out       │
+    │                                            │
+
+Note: XPUB uses prefix matching, not glob patterns.
+"events:*" pattern is converted to "events:" prefix.
 ```
 
 ---
@@ -289,46 +301,64 @@ QUERY_RESP:
 
 ### Concurrency Control
 
-**Read/Write Lock:**
 ```cpp
-std::shared_mutex _mutex;
+// All public methods use read/write locking
+class spot_pubsub_t {
+    mutable std::shared_mutex _mutex;
 
-// Read operations (shared lock)
-std::shared_lock<std::shared_mutex> lock(_mutex);
-const auto *entry = _registry->lookup(topic_id);
+    // Read operations (multiple concurrent readers)
+    bool topic_exists(const std::string& topic_id) const {
+        std::shared_lock<std::shared_mutex> lock(_mutex);
+        return _registry->has_topic(topic_id);
+    }
 
-// Write operations (exclusive lock)
-std::unique_lock<std::shared_mutex> lock(_mutex);
-_registry->register_local(topic_id);
+    // Write operations (exclusive access)
+    int topic_create(const std::string& topic_id) {
+        std::unique_lock<std::shared_mutex> lock(_mutex);
+        return _registry->register_local(topic_id, endpoint);
+    }
+};
 ```
 
-**Thread Safety Guarantees:**
-- Multiple concurrent readers
-- Single writer with blocking readers
-- All public API calls are thread-safe
+### Thread Safety Guarantees
 
-### Socket Thread Safety
+| Operation | Thread Safety | Lock Type |
+|-----------|---------------|-----------|
+| topic_create | Safe | Exclusive |
+| topic_destroy | Safe | Exclusive |
+| subscribe | Safe | Exclusive |
+| unsubscribe | Safe | Exclusive |
+| publish | Safe | Shared |
+| recv | Safe | Shared |
+| list_topics | Safe | Shared |
+| cluster_add | Safe | Exclusive |
+| cluster_remove | Safe | Exclusive |
 
-**ServerLink Socket Model:**
-- Sockets are **NOT** thread-safe
-- SPOT serializes socket operations internally
-- Each SPOT instance uses own socket set
+### Best Practices
 
-**Best Practices:**
 ```c
-// Good: One SPOT per thread
-void worker_thread() {
-    slk_ctx_t *ctx = slk_ctx_new();
-    slk_spot_t *spot = slk_spot_new(ctx);
-    // Use spot exclusively in this thread
+// Good: Shared SPOT instance with internal locking
+slk_spot_t *spot = slk_spot_new(ctx);
+
+// Thread 1: Publisher
+void publisher_thread() {
+    while (running) {
+        slk_spot_publish(spot, "topic", data, len);  // Thread-safe
+    }
 }
 
-// Good: Shared SPOT with internal locking
-slk_spot_t *shared_spot = slk_spot_new(ctx);
-slk_spot_publish(shared_spot, "topic", data, len); // Thread-safe
+// Thread 2: Subscriber
+void subscriber_thread() {
+    while (running) {
+        slk_spot_recv(spot, topic, &topic_len, data, &data_len, 0);  // Thread-safe
+    }
+}
 
-// Bad: Sharing sockets directly
-socket_base_t *socket = spot->_recv_socket; // Don't do this!
+// Good: Separate SPOT instances per thread (no contention)
+void worker_thread() {
+    slk_spot_t *local_spot = slk_spot_new(ctx);
+    // Use exclusively in this thread
+}
 ```
 
 ---
@@ -337,186 +367,138 @@ socket_base_t *socket = spot->_recv_socket; // Don't do this!
 
 ### Object Lifetime
 
-**SPOT Instance:**
 ```cpp
+// Constructor: Creates shared XPUB/XSUB sockets
+spot_pubsub_t::spot_pubsub_t(ctx_t *ctx_)
+{
+    // 1. Generate unique inproc endpoint
+    _inproc_endpoint = "inproc://" + generate_instance_id();
+
+    // 2. Create XPUB (for publishing)
+    _pub_socket = _ctx->create_socket(SL_XPUB);
+    _pub_socket->bind(_inproc_endpoint.c_str());
+
+    // 3. Create XSUB (for receiving)
+    _recv_socket = _ctx->create_socket(SL_XSUB);
+    _recv_socket->connect(_inproc_endpoint.c_str());
+}
+
+// Destructor: Proper cleanup order
 spot_pubsub_t::~spot_pubsub_t()
 {
-    // 1. Destroy local publishers (XPUB sockets)
-    for (auto &kv : _local_publishers) {
-        if (kv.second) {
-            kv.second->close();
-        }
-    }
-
-    // 2. Destroy remote nodes (spot_node_t)
-    _remote_topic_nodes.clear();
-    _nodes.clear(); // unique_ptr auto-delete
-
-    // 3. Destroy receive socket (XSUB)
+    // 1. Close receive socket first
     if (_recv_socket) {
         _recv_socket->close();
+        _recv_socket = nullptr;
     }
 
-    // 4. Destroy server socket (ROUTER)
-    if (_server_socket) {
-        _server_socket->close();
+    // 2. Close publish socket
+    if (_pub_socket) {
+        _pub_socket->close();
+        _pub_socket = nullptr;
     }
+
+    // 3. Registry and subscription manager cleaned up via unique_ptr
 }
 ```
 
-**Topic Registry:**
-- Topics stored in `std::map<std::string, topic_entry_t>`
-- Automatic cleanup via RAII
-- No manual memory management required
+### Message Format
 
-**Subscription Manager:**
-- Subscriptions stored in `std::map<std::string, std::set<subscriber_t>>`
-- Automatic cleanup via RAII
-
-### Message Buffers
-
-**Zero-Copy for LOCAL Topics:**
-```cpp
-// Publisher
-msg_t data_msg;
-data_msg.init_buffer(data, len);  // No copy, just pointer
-xpub->send(&data_msg, 0);         // Zero-copy inproc send
-
-// Subscriber
-msg_t data_msg;
-_recv_socket->recv(&data_msg, 0); // Zero-copy inproc recv
-memcpy(user_buffer, data_msg.data(), data_msg.size()); // Copy to user
 ```
+XPUB/XSUB Message Format (multipart):
+┌──────────────────┐
+│ Frame 1: Topic   │  (variable length string)
+├──────────────────┤
+│ Frame 2: Data    │  (variable length binary)
+└──────────────────┘
 
-**Copy for REMOTE Topics:**
-```cpp
-// TCP send requires serialization
-msg_t data_msg;
-data_msg.init_buffer(data, len);  // Copy to msg buffer
-node->send(&data_msg, 0);         // TCP send (kernel copy)
+Subscription Message (sent by XSUB to XPUB):
+┌──────────────────┐
+│ 0x01 + prefix    │  Subscribe to prefix
+├──────────────────┤
+│ 0x00 + prefix    │  Unsubscribe from prefix
+└──────────────────┘
 ```
 
 ---
 
 ## Performance Characteristics
 
-### Latency (Microseconds)
+### Latency
 
-| Operation | LOCAL | REMOTE (LAN) | REMOTE (WAN) |
-|-----------|-------|--------------|--------------|
-| Publish | 0.01-0.1 µs | 10-50 µs | 10-100 ms |
-| Subscribe | 0.1-1 µs | 50-100 µs | 50-200 ms |
-| Pattern match | 1-10 µs | N/A | N/A |
+| Operation | LOCAL (inproc) | REMOTE (LAN) | REMOTE (WAN) |
+|-----------|----------------|--------------|--------------|
+| Publish | 0.1-1 µs | 10-100 µs | 1-100 ms |
+| Subscribe | 1-10 µs | 50-200 µs | 50-500 ms |
+| Disconnect | 1-10 µs | 10-50 µs | 10-100 ms |
 
 ### Throughput (Messages/Second)
 
-| Message Size | LOCAL | REMOTE (1Gbps) |
-|--------------|-------|----------------|
+| Message Size | LOCAL (inproc) | REMOTE (1Gbps) |
+|--------------|----------------|----------------|
 | 64B | 10M msg/s | 1M msg/s |
-| 1KB | 8M msg/s | 500K msg/s |
-| 8KB | 5M msg/s | 100K msg/s |
-| 64KB | 500K msg/s | 20K msg/s |
+| 1KB | 5M msg/s | 500K msg/s |
+| 8KB | 2M msg/s | 100K msg/s |
+| 64KB | 200K msg/s | 15K msg/s |
 
 ### Memory Usage
 
-**Per SPOT Instance:**
-- Base overhead: ~4KB (XSUB socket)
-- Per LOCAL topic: ~2KB (XPUB socket)
-- Per REMOTE topic: ~1KB (registry entry)
-- Per subscription: ~200 bytes
-
-**Example:**
-- 100 LOCAL topics: 4KB + 100×2KB = ~200KB
-- 1000 REMOTE topics: 4KB + 1000×1KB = ~1MB
-- 10000 subscriptions: 10000×200B = ~2MB
-
-### Scalability Limits
-
-**Topic Count:**
-- Practical limit: 100,000 topics per node
-- Registry lookup: O(log N) via `std::map`
-- Pattern matching: O(N×M) where M = patterns
-
-**Cluster Size:**
-- Tested up to 100 nodes
-- Mesh topology: N×(N-1) connections
-- Hub-spoke topology: N connections per hub
-
-**Message Rate:**
-- LOCAL: Limited by CPU (millions/sec)
-- REMOTE: Limited by network bandwidth
-- HWM limits queue depth (default: 1000)
+| Component | Memory |
+|-----------|--------|
+| SPOT instance base | ~8 KB |
+| Per topic (registry) | ~200 bytes |
+| Per subscription | ~200 bytes |
+| Per cluster connection | ~4 KB |
+| Message buffer (default HWM=1000) | ~1 MB |
 
 ---
 
 ## Design Decisions
 
-### Why Separate Registry and Subscription Manager?
+### Shared XPUB/XSUB Per Instance
 
-**Separation of Concerns:**
-- **Registry**: Topic metadata and routing (WHERE)
-- **Subscription Manager**: Subscription tracking (WHO)
+SPOT uses a single shared XPUB/XSUB socket pair per instance:
 
-**Benefits:**
-- Independent evolution
-- Easier testing
-- Clearer responsibilities
+**장점:**
+- 토픽 수와 관계없이 일정한 소켓 수
+- 간단한 리소스 관리
+- ZeroMQ의 효율적인 토픽 필터링 (trie 기반)
 
-### Why XPUB/XSUB Instead of PUB/SUB?
+**고려사항:**
+- 모든 메시지가 같은 소켓을 통과 (직렬화 지점)
+- 고처리량 시나리오에서는 다중 인스턴스 고려
 
-**XPUB Advantages:**
-- Subscription visibility (for monitoring)
-- Manual subscription management
-- Supports XPUB_VERBOSE for debugging
+### Pattern Subscription (Prefix Matching)
 
-**XSUB Advantages:**
-- Allows upstream subscription forwarding
-- Supports pattern subscriptions
-- Compatible with XPUB
+XPUB/XSUB는 prefix 매칭을 사용합니다:
 
-### Why ROUTER for Cluster Protocol?
+```
+"events:*" 패턴 → "events:" prefix로 변환
+```
 
-**ROUTER Advantages:**
-- Routing ID for reply-to addressing
-- Handles multiple concurrent connections
-- Compatible with DEALER (future)
+**매칭 예시:**
+- `events:` prefix는 `events:login`, `events:logout`, `events:user:created` 모두 매칭
+- `game:player:` prefix는 `game:player:spawn`, `game:player:death` 매칭
 
-**Alternative Considered:**
-- **REQ/REP**: Too rigid, no async support
-- **DEALER/DEALER**: No routing ID
+### Cluster Connection Management
 
----
+`cluster_add()`는 XSUB 소켓에 새 endpoint를 연결하고, `cluster_remove()`는 `term_endpoint()`를 통해 연결을 종료합니다:
 
-## Future Enhancements
+```cpp
+// cluster_add(): XSUB에 새 endpoint 연결
+_recv_socket->connect(endpoint.c_str());
+_connected_endpoints.insert(endpoint);
 
-### Planned Features
-
-1. **DEALER Socket Support**
-   - Replace ROUTER in spot_node_t
-   - Simpler request/reply semantics
-
-2. **Last Value Caching**
-   - Store last published value per topic
-   - Send to new subscribers immediately
-
-3. **Message Filtering**
-   - Server-side filtering for REMOTE topics
-   - Reduce network traffic
-
-4. **Authentication**
-   - Topic-level access control
-   - Secure cluster protocol
-
-5. **Monitoring**
-   - Topic statistics (publish/subscribe counts)
-   - Network health metrics
-   - Latency histograms
+// cluster_remove(): endpoint 연결 해제
+_recv_socket->term_endpoint(endpoint.c_str());
+_connected_endpoints.erase(endpoint);
+```
 
 ---
 
 ## See Also
 
-- [API Reference](API.md)
-- [Protocol Specification](PROTOCOL.md)
-- [Clustering Guide](CLUSTERING.md)
-- [Usage Patterns](PATTERNS.md)
+- [API Reference](API.md) - Complete API documentation
+- [Quick Start](QUICK_START.md) - Getting started guide
+- [Clustering Guide](CLUSTERING.md) - Multi-node setup
+- [Usage Patterns](PATTERNS.md) - Common patterns and best practices

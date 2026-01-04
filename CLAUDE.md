@@ -1,6 +1,36 @@
 # ServerLink 프로젝트 상태
 
-## 최근 업데이트 (2026-01-03)
+## 최근 업데이트 (2026-01-05)
+
+### ✅ SPOT PUB/SUB 구현 완료!
+
+**SPOT (Scalable Partitioned Ordered Topics)** - 위치 투명 pub/sub 시스템
+
+**아키텍처:**
+- Direct XPUB/XSUB 연결 (ROUTER 프로토콜 없음)
+- 인스턴스당 하나의 공유 XPUB/XSUB 소켓 쌍
+- 토픽 레지스트리 및 구독 관리자
+- Thread-safe (shared_mutex 사용)
+
+**주요 기능:**
+- LOCAL 토픽: inproc를 통한 제로카피 메시징
+- REMOTE 토픽: TCP를 통한 자동 라우팅
+- 패턴 구독: XPUB prefix 매칭 (`events:*` → `events:`)
+- 클러스터 동기화: 노드 간 자동 토픽 발견
+- 동적 멤버십: `cluster_add()`/`cluster_remove()` 지원
+
+**모든 31개 SPOT 테스트 통과:**
+- test_spot_basic: 11/11 ✅
+- test_spot_local: 6/6 ✅
+- test_spot_remote: 5/5 ✅
+- test_spot_cluster: 4/4 ✅
+- test_spot_mixed: 5/5 ✅
+
+**문서:** `docs/spot/` 참조
+
+---
+
+## 이전 업데이트 (2026-01-03)
 
 ### 🎉 6-Platform CI/CD 완료!
 
@@ -213,6 +243,14 @@ slk_recv(socket, buf, size, 0);  // payload
 
 ```
 docs/
+├── spot/                          # SPOT PUB/SUB 문서
+│   ├── README.md                  # SPOT 개요 및 빠른 참조
+│   ├── API.md                     # API 레퍼런스
+│   ├── ARCHITECTURE.md            # 내부 아키텍처
+│   ├── QUICK_START.md             # 빠른 시작 가이드
+│   ├── CLUSTERING.md              # 클러스터 배포 가이드
+│   ├── PATTERNS.md                # 사용 패턴
+│   └── PROTOCOL.md                # 프로토콜 명세
 ├── impl/                          # 구현 상세 문서
 │   └── WINDOWS_FDSET_OPTIMIZATION.md  # Windows fd_set 최적화 설명
 ├── CPP20_PORTING_COMPLETE.md      # C++20 포팅 완료 보고서
@@ -260,5 +298,5 @@ ctest --test-dir build-x64 -C Release --output-on-failure
 ---
 
 **최초 작성:** 2026-01-01
-**최종 업데이트:** 2026-01-03
-**상태:** 완료 - 모든 테스트 통과 (47/47), 6-Platform CI/CD 완료, 프로덕션 준비 완료
+**최종 업데이트:** 2026-01-05
+**상태:** 완료 - Core 47/47 + SPOT 31/31 테스트 통과, 6-Platform CI/CD 완료, 프로덕션 준비 완료

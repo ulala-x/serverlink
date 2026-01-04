@@ -11,9 +11,23 @@
 #include <cassert>
 #include <cerrno>
 #include <cstring>
+#include <atomic>
+#include <chrono>
+#include <thread>
 
 namespace slk
 {
+
+// Generate unique node ID for DEALER socket identity
+static std::string generate_node_id ()
+{
+    // Use counter-based unique ID generation
+    static std::atomic<uint64_t> counter {0};
+    char buf[64];
+    snprintf (buf, sizeof (buf), "spot-node-%llu",
+              static_cast<unsigned long long> (counter.fetch_add (1, std::memory_order_relaxed)));
+    return buf;
+}
 
 spot_node_t::spot_node_t (ctx_t *ctx, const std::string &endpoint)
     : _ctx (ctx)
@@ -29,8 +43,13 @@ spot_node_t::spot_node_t (ctx_t *ctx, const std::string &endpoint)
 
 spot_node_t::~spot_node_t ()
 {
-    if (is_connected ()) {
-        disconnect ();
+    // Use single lock to avoid race condition between is_connected() and disconnect()
+    std::lock_guard<std::mutex> lock (_mutex);
+
+    if (_connected && _socket) {
+        _socket->close ();
+        _socket = nullptr;
+        _connected = false;
     }
 }
 
@@ -42,12 +61,24 @@ int spot_node_t::connect ()
         return 0; // Already connected
     }
 
-    // Create DEALER socket (Note: ServerLink doesn't have DEALER yet, using ROUTER as placeholder)
-    // TODO: When DEALER is implemented, change SL_ROUTER to SL_DEALER
-    _socket = _ctx->create_socket (SL_ROUTER);
+    // Create DEALER socket for DEALER-to-ROUTER communication
+    _socket = _ctx->create_socket (SL_DEALER);
     if (!_socket) {
         errno = ENOMEM;
         return -1;
+    }
+
+    // Generate unique node ID if not already set
+    if (_node_id.empty ()) {
+        _node_id = generate_node_id ();
+    }
+
+    // Set CONNECT_ROUTING_ID to identify this DEALER to the remote ROUTER
+    // The ROUTER will use this as the routing ID when sending messages back
+    int rc = _socket->setsockopt (SL_CONNECT_ROUTING_ID, _node_id.data (), _node_id.size ());
+    if (rc != 0) {
+        // Note: If this fails, we continue anyway as it's not critical for basic operation
+        // The connection will still work with an auto-generated routing ID
     }
 
     // Set reconnection parameters
@@ -99,6 +130,8 @@ int spot_node_t::send_publish (const std::string &topic_id,
         return -1;
     }
 
+    // DEALER→ROUTER: Send frames directly (no routing ID needed)
+
     // Frame 0: Command (PUBLISH)
     msg_t cmd_msg;
     uint8_t cmd = static_cast<uint8_t> (spot_command_t::PUBLISH);
@@ -112,7 +145,19 @@ int spot_node_t::send_publish (const std::string &topic_id,
     }
     cmd_msg.close ();
 
-    // Frame 1: Topic ID
+    // Frame 1: Origin ID (for loop prevention)
+    msg_t origin_msg;
+    if (origin_msg.init_buffer (_node_id.data (), _node_id.size ()) != 0) {
+        return -1;
+    }
+
+    if (_socket->send (&origin_msg, SL_SNDMORE) != 0) {
+        origin_msg.close ();
+        return -1;
+    }
+    origin_msg.close ();
+
+    // Frame 2: Topic ID
     msg_t topic_msg;
     if (topic_msg.init_buffer (topic_id.data (), topic_id.size ()) != 0) {
         return -1;
@@ -124,7 +169,7 @@ int spot_node_t::send_publish (const std::string &topic_id,
     }
     topic_msg.close ();
 
-    // Frame 2: Data
+    // Frame 3: Data
     msg_t data_msg;
     if (data_msg.init_buffer (data, len) != 0) {
         return -1;
@@ -144,6 +189,9 @@ int spot_node_t::send_subscribe (const std::string &topic_id)
         errno = EHOSTUNREACH;
         return -1;
     }
+
+    // DEALER→ROUTER: Send frames directly (no routing ID needed)
+    // The ROUTER will automatically prepend the DEALER's routing ID
 
     // Frame 0: Command (SUBSCRIBE)
     msg_t cmd_msg;
@@ -179,6 +227,8 @@ int spot_node_t::send_unsubscribe (const std::string &topic_id)
         return -1;
     }
 
+    // DEALER→ROUTER: Send frames directly (no routing ID needed)
+
     // Frame 0: Command (UNSUBSCRIBE)
     msg_t cmd_msg;
     uint8_t cmd = static_cast<uint8_t> (spot_command_t::UNSUBSCRIBE);
@@ -213,6 +263,8 @@ int spot_node_t::send_query ()
         return -1;
     }
 
+    // DEALER→ROUTER: Send frames directly (no routing ID needed)
+
     // Frame 0: Command (QUERY)
     msg_t cmd_msg;
     uint8_t cmd = static_cast<uint8_t> (spot_command_t::QUERY);
@@ -238,13 +290,28 @@ int spot_node_t::recv_query_response (std::vector<std::string> &topics,
 
     topics.clear ();
 
-    // Frame 0: Command (QUERY_RESP)
+    // DEALER receives: [empty][cmd][count][topics...]
+    // The routing ID is stripped by DEALER socket
+
+    // Frame 0: Empty delimiter
+    msg_t empty_msg;
+    if (empty_msg.init () != 0) {
+        return -1;
+    }
+
+    if (_socket->recv (&empty_msg, flags) != 0) {
+        empty_msg.close ();
+        return -1;
+    }
+    empty_msg.close ();
+
+    // Frame 1: Command (QUERY_RESP)
     msg_t cmd_msg;
     if (cmd_msg.init () != 0) {
         return -1;
     }
 
-    if (_socket->recv (&cmd_msg, flags) != 0) {
+    if (_socket->recv (&cmd_msg, 0) != 0) {
         cmd_msg.close ();
         return -1;
     }
@@ -264,13 +331,13 @@ int spot_node_t::recv_query_response (std::vector<std::string> &topics,
         return -1;
     }
 
-    // Frame 1: Topic count (uint32_t)
+    // Frame 2: Topic count (uint32_t)
     msg_t count_msg;
     if (count_msg.init () != 0) {
         return -1;
     }
 
-    if (_socket->recv (&count_msg, flags) != 0) {
+    if (_socket->recv (&count_msg, 0) != 0) {
         count_msg.close ();
         return -1;
     }
@@ -285,14 +352,14 @@ int spot_node_t::recv_query_response (std::vector<std::string> &topics,
     memcpy (&topic_count, count_msg.data (), sizeof (uint32_t));
     count_msg.close ();
 
-    // Frame 2+: Topic IDs
+    // Frame 3+: Topic IDs
     for (uint32_t i = 0; i < topic_count; i++) {
         msg_t topic_msg;
         if (topic_msg.init () != 0) {
             return -1;
         }
 
-        if (_socket->recv (&topic_msg, flags) != 0) {
+        if (_socket->recv (&topic_msg, 0) != 0) {
             topic_msg.close ();
             return -1;
         }
@@ -306,6 +373,47 @@ int spot_node_t::recv_query_response (std::vector<std::string> &topics,
     return 0;
 }
 
+int spot_node_t::recv_query_response_blocking (std::vector<std::string> &topics,
+                                                 int timeout_ms)
+{
+    // Handle special timeout values
+    if (timeout_ms == 0) {
+        // Return immediately
+        return recv_query_response (topics, SL_DONTWAIT);
+    }
+
+    // Calculate deadline for timeout
+    auto start = std::chrono::steady_clock::now ();
+    std::chrono::milliseconds timeout_duration (timeout_ms);
+    // Use parentheses around max to prevent Windows macro expansion
+    auto deadline = (timeout_ms > 0) ? (start + timeout_duration)
+                                     : (std::chrono::steady_clock::time_point::max) ();
+
+    // Retry loop with timeout
+    while (true) {
+        // Try non-blocking receive
+        int rc = recv_query_response (topics, SL_DONTWAIT);
+        if (rc == 0) {
+            return 0; // Success
+        }
+
+        // Check if error is not EAGAIN (actual error)
+        if (errno != EAGAIN) {
+            return -1; // Propagate error
+        }
+
+        // Check timeout
+        auto now = std::chrono::steady_clock::now ();
+        if (now >= deadline) {
+            errno = ETIMEDOUT;
+            return -1;
+        }
+
+        // Sleep briefly to avoid busy-waiting
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+}
+
 int spot_node_t::recv (std::string &topic_id,
                        std::vector<uint8_t> &data,
                        int flags)
@@ -317,13 +425,28 @@ int spot_node_t::recv (std::string &topic_id,
         return -1;
     }
 
-    // Frame 0: Command
+    // DEALER receives: [empty][cmd][origin][topic][data]
+    // The routing ID is stripped by DEALER socket
+
+    // Frame 0: Empty delimiter
+    msg_t empty_msg;
+    if (empty_msg.init () != 0) {
+        return -1;
+    }
+
+    if (_socket->recv (&empty_msg, flags) != 0) {
+        empty_msg.close ();
+        return -1;
+    }
+    empty_msg.close ();
+
+    // Frame 1: Command
     msg_t cmd_msg;
     if (cmd_msg.init () != 0) {
         return -1;
     }
 
-    if (_socket->recv (&cmd_msg, flags) != 0) {
+    if (_socket->recv (&cmd_msg, 0) != 0) {
         cmd_msg.close ();
         return -1;
     }
@@ -343,13 +466,21 @@ int spot_node_t::recv (std::string &topic_id,
         return -1;
     }
 
-    // Frame 1: Topic ID
+    // Frame 2: Origin ID (for loop prevention - discard)
+    msg_t origin_msg;
+    if (origin_msg.init () != 0) {
+        return -1;
+    }
+    _socket->recv (&origin_msg, 0);
+    origin_msg.close ();
+
+    // Frame 3: Topic ID
     msg_t topic_msg;
     if (topic_msg.init () != 0) {
         return -1;
     }
 
-    if (_socket->recv (&topic_msg, flags) != 0) {
+    if (_socket->recv (&topic_msg, 0) != 0) {
         topic_msg.close ();
         return -1;
     }
@@ -358,13 +489,13 @@ int spot_node_t::recv (std::string &topic_id,
                      topic_msg.size ());
     topic_msg.close ();
 
-    // Frame 2: Data
+    // Frame 4: Data
     msg_t data_msg;
     if (data_msg.init () != 0) {
         return -1;
     }
 
-    if (_socket->recv (&data_msg, flags) != 0) {
+    if (_socket->recv (&data_msg, 0) != 0) {
         data_msg.close ();
         return -1;
     }
@@ -392,6 +523,11 @@ int spot_node_t::fd (slk_fd_t *fd) const
 const std::string &spot_node_t::endpoint () const
 {
     return _endpoint;
+}
+
+const std::string &spot_node_t::node_id () const
+{
+    return _node_id;
 }
 
 } // namespace slk

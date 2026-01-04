@@ -5,7 +5,7 @@
 
 #include <string>
 #include <vector>
-#include <unordered_map>
+#include <unordered_set>
 #include <memory>
 #include <shared_mutex>
 #include <cstdint>
@@ -17,7 +17,6 @@ class ctx_t;
 class socket_base_t;
 class topic_registry_t;
 class subscription_manager_t;
-class spot_node_t;
 
 /**
  * @brief SPOT PUB/SUB - Single Point Of Topic
@@ -27,16 +26,13 @@ class spot_node_t;
  * - Subscription management with exact and pattern matching
  * - Position-transparent publish/subscribe (inproc/tcp)
  *
- * Phase 2 Implementation:
- * - Local topics only (inproc transport)
- * - Pattern subscriptions (LOCAL only)
- * - XPUB/XSUB socket pattern
- *
- * Architecture (Phase 2):
- *   topic_create() → XPUB socket per topic (inproc://spot-{counter})
- *   subscribe()    → XSUB connects to topic's inproc endpoint
- *   publish()      → Send to topic's XPUB
- *   recv()         → Receive from XSUB
+ * Architecture:
+ *   - One shared XPUB socket per SPOT instance (bound to inproc + optional TCP)
+ *   - One shared XSUB socket per SPOT instance (connects to local and remote XPUBs)
+ *   - topic_create() → registers topic, publishes through shared XPUB
+ *   - subscribe()    → connects XSUB to XPUB (local or remote)
+ *   - publish()      → sends to shared XPUB
+ *   - recv()         → receives from XSUB
  *
  * Thread-safety:
  *   - All public methods are thread-safe
@@ -72,8 +68,7 @@ class spot_pubsub_t
     /**
      * @brief Create a local topic (this node is the publisher)
      *
-     * Creates an XPUB socket bound to inproc://spot-{counter}.
-     * Registers the topic in topic_registry as LOCAL.
+     * Registers the topic. Messages are published through the shared XPUB.
      *
      * @param topic_id Topic identifier
      * @return 0 on success, -1 on error (sets errno to EEXIST if already exists)
@@ -83,7 +78,7 @@ class spot_pubsub_t
     /**
      * @brief Destroy a topic
      *
-     * Closes the XPUB socket and unregisters from topic_registry.
+     * Unregisters the topic.
      *
      * @param topic_id Topic identifier
      * @return 0 on success, -1 on error (sets errno to ENOENT if not found)
@@ -93,14 +88,12 @@ class spot_pubsub_t
     /**
      * @brief Route a topic to a remote endpoint
      *
-     * Creates spot_node_t connection to remote endpoint if needed.
-     * Registers topic as REMOTE in topic_registry.
+     * Registers topic as REMOTE. The actual connection happens in subscribe().
      *
      * @param topic_id Topic identifier
      * @param endpoint Remote endpoint (e.g., "tcp://192.168.1.100:5555")
      * @return 0 on success, -1 on error
      *         errno = EEXIST if topic already exists
-     *         errno = EHOSTUNREACH if connection fails
      */
     int topic_route (const std::string &topic_id, const std::string &endpoint);
 
@@ -111,7 +104,8 @@ class spot_pubsub_t
     /**
      * @brief Subscribe to a topic
      *
-     * Looks up topic in registry and connects XSUB to its inproc endpoint.
+     * For LOCAL topics: sends subscription filter to local XPUB.
+     * For REMOTE topics: connects XSUB to remote XPUB and sends subscription filter.
      *
      * @param topic_id Topic identifier
      * @return 0 on success, -1 on error (sets errno to ENOENT if topic not found)
@@ -152,7 +146,7 @@ class spot_pubsub_t
     /**
      * @brief Publish a message to a topic
      *
-     * Sends message to topic's XPUB socket.
+     * Sends message to shared XPUB socket.
      * Message format: [topic_id][data]
      *
      * @param topic_id Topic identifier
@@ -252,10 +246,9 @@ class spot_pubsub_t
     // ========================================================================
 
     /**
-     * @brief Bind to an endpoint for server mode (accepting cluster connections)
+     * @brief Bind XPUB to an endpoint for remote subscribers
      *
-     * Creates a ROUTER socket to accept connections from other SPOT nodes.
-     * Enables this node to respond to QUERY requests from cluster peers.
+     * Binds the shared XPUB socket to accept remote connections.
      *
      * @param endpoint Bind endpoint (e.g., "tcp://*:5555")
      * @return 0 on success, -1 on error
@@ -263,21 +256,16 @@ class spot_pubsub_t
     int bind (const std::string &endpoint);
 
     /**
-     * @brief Add a cluster node
-     *
-     * Establishes connection to a remote SPOT node for cluster synchronization.
+     * @brief Add a cluster node (connect XSUB to remote XPUB)
      *
      * @param endpoint Remote node endpoint (e.g., "tcp://192.168.1.100:5555")
      * @return 0 on success, -1 on error
      *         errno = EEXIST if node already added
-     *         errno = EHOSTUNREACH if connection fails
      */
     int cluster_add (const std::string &endpoint);
 
     /**
-     * @brief Remove a cluster node
-     *
-     * Disconnects from a remote SPOT node and removes it from the cluster.
+     * @brief Remove a cluster node (disconnect XSUB from remote XPUB)
      *
      * @param endpoint Remote node endpoint
      * @return 0 on success, -1 on error
@@ -288,11 +276,10 @@ class spot_pubsub_t
     /**
      * @brief Synchronize topics with cluster nodes
      *
-     * Sends QUERY commands to all cluster nodes and updates the local topic
-     * registry with discovered remote topics.
+     * With XPUB/XSUB architecture, this is a no-op (topics discovered via subscription).
      *
-     * @param timeout_ms Timeout in milliseconds for sync operation
-     * @return 0 on success, -1 on error
+     * @param timeout_ms Timeout in milliseconds (unused)
+     * @return 0 always
      */
     int cluster_sync (int timeout_ms);
 
@@ -319,20 +306,19 @@ class spot_pubsub_t
     std::unique_ptr<topic_registry_t> _registry;
     std::unique_ptr<subscription_manager_t> _sub_manager;
 
-    // Local topic publishers: topic_id → XPUB socket
-    std::unordered_map<std::string, socket_base_t *> _local_publishers;
+    // Shared publish socket (XPUB) - bound to inproc and optionally TCP
+    socket_base_t *_pub_socket;
 
-    // Remote node connections: endpoint → spot_node_t
-    std::unordered_map<std::string, std::unique_ptr<spot_node_t>> _nodes;
-
-    // Remote topic routing: topic_id → spot_node_t*
-    std::unordered_map<std::string, spot_node_t *> _remote_topic_nodes;
-
-    // Receive socket (XSUB) - connects to all subscribed LOCAL topics
+    // Receive socket (XSUB) - connects to local XPUB and remote XPUBs
     socket_base_t *_recv_socket;
 
-    // Server socket (ROUTER) - for accepting cluster connections and QUERY requests
-    socket_base_t *_server_socket;
+    // Endpoints
+    std::string _inproc_endpoint;  // Local inproc endpoint (always set)
+    std::string _bind_endpoint;    // Primary TCP bind endpoint (first TCP bind)
+    std::unordered_set<std::string> _bind_endpoints;  // All bound endpoints
+
+    // Connected remote endpoints (for deduplication)
+    std::unordered_set<std::string> _connected_endpoints;
 
     // High water marks
     int _sndhwm;
@@ -344,13 +330,6 @@ class spot_pubsub_t
 
     // Thread safety
     mutable std::shared_mutex _mutex;
-
-    // Counter for generating unique inproc endpoints
-    uint64_t _topic_counter;
-
-    // Internal helper methods
-    void process_incoming_messages ();
-    int handle_query_request (const std::string &routing_id);
 };
 
 } // namespace slk
