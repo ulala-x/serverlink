@@ -409,7 +409,7 @@ static void test_spot_dynamic_membership()
     TEST_ASSERT_STR_EQ(data, "reduced");
 
     /* Node2 should not receive (timeout expected) */
-    int timeout_ms = 100;
+    timeout_ms = 100;
     rc = slk_spot_setsockopt(node2, SLK_RCVTIMEO, &timeout_ms, sizeof(timeout_ms));
     TEST_SUCCESS(rc);
     rc = slk_spot_recv(node2, topic, sizeof(topic), &topic_len,
