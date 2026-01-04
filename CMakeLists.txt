@@ -63,13 +63,11 @@ set(SERVERLINK_SOURCES
     src/pattern/glob_pattern.cpp
     src/pattern/pattern_trie.cpp
 
-    # Pub/Sub sources
-    src/pubsub/pubsub_registry.cpp
-    src/pubsub/shard_hash.cpp
-    src/pubsub/sharded_pubsub.cpp
-    src/pubsub/pubsub_broker.cpp
-    src/pubsub/cluster_node.cpp
-    src/pubsub/pubsub_cluster.cpp
+    # SPOT PUB/SUB sources
+    src/spot/spot_pubsub.cpp
+    src/spot/topic_registry.cpp
+    src/spot/subscription_manager.cpp
+    src/spot/spot_node.cpp
 
     # Core sources
     src/core/options.cpp

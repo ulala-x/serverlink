@@ -26,7 +26,6 @@ class io_thread_t;
 class socket_base_t;
 class reaper_t;
 class pipe_t;
-class pubsub_registry_t;
 
 // Information associated with inproc endpoint. Note that endpoint options
 // are registered as well so that the peer can access them without a need
@@ -110,7 +109,6 @@ class ctx_t : public thread_ctx_t
     slk::object_t *get_reaper () const;
 
     // Returns pub/sub registry for introspection
-    slk::pubsub_registry_t *get_pubsub_registry () const;
 
     // Management of inproc endpoints
     int register_endpoint (const char *addr_, const endpoint_t &endpoint_);
@@ -173,7 +171,6 @@ class ctx_t : public thread_ctx_t
     slk::reaper_t *_reaper;
 
     // Pub/Sub introspection registry
-    slk::pubsub_registry_t *_pubsub_registry;
 
     // I/O threads
     typedef std::vector<slk::io_thread_t *> io_threads_t;

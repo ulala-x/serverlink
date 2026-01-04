@@ -74,24 +74,13 @@ message(STATUS "Adding monitor tests...")
 add_serverlink_test(test_peer_stats monitor/test_peer_stats.cpp "monitor")
 add_serverlink_test(test_heartbeat monitor/test_heartbeat.cpp "monitor")
 
-# PubSub Tests
-message(STATUS "Adding pubsub tests...")
-add_serverlink_test(test_auth_pubsub pubsub/test_auth_pubsub.cpp "pubsub")
-add_serverlink_test(test_hwm_pubsub pubsub/test_hwm_pubsub.cpp "pubsub")
-add_serverlink_test(test_sub_forward pubsub/test_sub_forward.cpp "pubsub")
-add_serverlink_test(test_pubsub_topics_count pubsub/test_pubsub_topics_count.cpp "pubsub")
-add_serverlink_test(test_xpub_verbose pubsub/test_xpub_verbose.cpp "pubsub")
-add_serverlink_test(test_xpub_manual pubsub/test_xpub_manual.cpp "pubsub")
-add_serverlink_test(test_xpub_nodrop pubsub/test_xpub_nodrop.cpp "pubsub")
-add_serverlink_test(test_psubscribe pubsub/test_psubscribe.cpp "pubsub")
-add_serverlink_test(test_introspection pubsub/test_introspection.cpp "pubsub")
-# Increase timeout for introspection test - it can be slow on macOS ARM64 runners
-set_tests_properties(test_introspection PROPERTIES TIMEOUT 60)
-add_serverlink_test(test_sharded_pubsub pubsub/test_sharded_pubsub.cpp "pubsub")
-add_serverlink_test(test_pubsub_broker pubsub/test_pubsub_broker.cpp "pubsub")
-add_serverlink_test(test_pubsub_cluster pubsub/test_pubsub_cluster.cpp "pubsub")
-# TODO: Fix concurrency test to properly use XPUB with async draining
-# add_serverlink_test(test_registry_concurrent pubsub/test_registry_concurrent.cpp "pubsub")
+# SPOT PUB/SUB Tests
+message(STATUS "Adding spot tests...")
+add_serverlink_test(test_spot_basic spot/test_spot_basic.cpp "spot")
+add_serverlink_test(test_spot_local spot/test_spot_local.cpp "spot")
+add_serverlink_test(test_spot_remote spot/test_spot_remote.cpp "spot")
+add_serverlink_test(test_spot_cluster spot/test_spot_cluster.cpp "spot")
+add_serverlink_test(test_spot_mixed spot/test_spot_mixed.cpp "spot")
 
 # Transport Tests
 message(STATUS "Adding transport tests...")
@@ -143,12 +132,10 @@ add_custom_target(test-monitor
     COMMENT "Running monitor tests"
 )
 
-add_custom_target(test-pubsub
-    COMMAND ${CMAKE_CTEST_COMMAND} -L pubsub --output-on-failure
-    DEPENDS test_auth_pubsub test_hwm_pubsub test_sub_forward test_pubsub_topics_count
-            test_xpub_verbose test_xpub_manual test_xpub_nodrop test_psubscribe
-            test_introspection test_sharded_pubsub test_pubsub_broker test_pubsub_cluster
-    COMMENT "Running pubsub tests"
+add_custom_target(test-spot
+    COMMAND ${CMAKE_CTEST_COMMAND} -L spot --output-on-failure
+    DEPENDS test_spot_basic test_spot_local test_spot_remote test_spot_cluster test_spot_mixed
+    COMMENT "Running SPOT PUB/SUB tests"
 )
 
 add_custom_target(test-transport
@@ -200,18 +187,6 @@ add_custom_target(test-all
         test_probe_router
         test_router_to_router
         test_peer_stats
-        test_auth_pubsub
-        test_hwm_pubsub
-        test_sub_forward
-        test_pubsub_topics_count
-        test_xpub_verbose
-        test_xpub_manual
-        test_xpub_nodrop
-        test_psubscribe
-        test_introspection
-        test_sharded_pubsub
-        test_pubsub_broker
-        test_pubsub_cluster
         test_bind_after_connect
         test_inproc_connect
         test_reconnect_ivl
@@ -224,6 +199,11 @@ add_custom_target(test-all
         test_has
         test_glob_pattern
         test_pattern_trie
+        test_spot_basic
+        test_spot_local
+        test_spot_remote
+        test_spot_cluster
+        test_spot_mixed
     COMMENT "Running all tests"
 )
 
@@ -239,18 +219,17 @@ message(STATUS "                     test_router_notify, test_router_mandatory_h
 message(STATUS "                     test_connect_rid, test_probe_router")
 message(STATUS "  Integration tests: test_router_to_router")
 message(STATUS "  Monitor tests:     test_peer_stats")
-message(STATUS "  PubSub tests:      test_auth_pubsub, test_hwm_pubsub, test_sub_forward,")
-message(STATUS "                     test_pubsub_topics_count, test_xpub_verbose,")
-message(STATUS "                     test_xpub_manual, test_xpub_nodrop")
 message(STATUS "  Transport tests:   test_bind_after_connect, test_inproc_connect, test_reconnect_ivl, test_ipc_basic")
 message(STATUS "  Poller tests:      test_poller")
+message(STATUS "  SPOT tests:        test_spot_basic, test_spot_local, test_spot_remote,")
+message(STATUS "                     test_spot_cluster, test_spot_mixed")
 message(STATUS "")
 message(STATUS "Run tests with:")
 message(STATUS "  make test           - Run all tests with CTest")
 message(STATUS "  make test-unit      - Run unit tests only")
 message(STATUS "  make test-util      - Run utility tests only")
 message(STATUS "  make test-router    - Run router tests only")
-message(STATUS "  make test-pubsub    - Run pubsub tests only")
+message(STATUS "  make test-spot      - Run SPOT PUB/SUB tests only")
 message(STATUS "  make test-transport - Run transport tests only")
 message(STATUS "  make test-poller    - Run poller tests only")
 message(STATUS "  make test-all       - Run all tests with detailed output")

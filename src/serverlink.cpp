@@ -19,10 +19,12 @@
 #include "core/socket_base.hpp"
 #include "core/router.hpp"
 #include "core/proxy.hpp"
-#include "pubsub/pubsub_registry.hpp"
-#include "pubsub/sharded_pubsub.hpp"
-#include "pubsub/pubsub_broker.hpp"
-#include "pubsub/pubsub_cluster.hpp"
+// TODO: pubsub implementation files not created yet
+// #include "pubsub/pubsub_registry.hpp"
+// #include "pubsub/sharded_pubsub.hpp"
+// #include "pubsub/pubsub_broker.hpp"
+// #include "pubsub/pubsub_cluster.hpp"
+#include "spot/spot_pubsub.hpp"
 #include "msg/msg.hpp"
 #include "util/err.hpp"
 #include "util/clock.hpp"
@@ -1853,40 +1855,250 @@ int SL_CALL slk_poller_fd(void *poller_, slk_fd_t *fd_)
 }
 
 /****************************************************************************/
-/*  Pub/Sub Introspection API                                              */
+/*  SPOT PUB/SUB API Implementation                                         */
 /****************************************************************************/
 
-int SL_CALL slk_pubsub_channels(slk_ctx_t *ctx_, const char *pattern_,
-                                 char ***channels_, size_t *count_)
+slk_spot_t* SL_CALL slk_spot_new(slk_ctx_t *ctx_)
 {
-    CHECK_PTR(ctx_, -1);
-    CHECK_PTR(channels_, -1);
-    CHECK_PTR(count_, -1);
+    CHECK_PTR(ctx_, nullptr);
 
     try {
         slk::ctx_t *ctx = reinterpret_cast<slk::ctx_t*>(ctx_);
-        slk::pubsub_registry_t *registry = ctx->get_pubsub_registry();
+        slk::spot_pubsub_t *spot = new slk::spot_pubsub_t(ctx);
+        return reinterpret_cast<slk_spot_t*>(spot);
+    } catch (const std::bad_alloc &) {
+        errno = ENOMEM;
+        return nullptr;
+    } catch (...) {
+        errno = EINVAL;
+        return nullptr;
+    }
+}
 
-        if (!registry) {
-            errno = EINVAL;
-            return -1;
-        }
+void SL_CALL slk_spot_destroy(slk_spot_t **spot_)
+{
+    if (!spot_ || !*spot_) {
+        return;
+    }
 
-        // Get channel list from registry
-        std::string pattern = pattern_ ? pattern_ : "";
-        std::vector<std::string> channel_vec = registry->get_channels(pattern);
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(*spot_);
+        delete spot;
+        *spot_ = nullptr;
+    } catch (...) {
+        // Silently ignore errors during destruction
+    }
+}
+
+int SL_CALL slk_spot_topic_create(slk_spot_t *spot_, const char *topic_id_)
+{
+    CHECK_PTR(spot_, -1);
+    CHECK_PTR(topic_id_, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        std::string topic_id(topic_id_);
+        return spot->topic_create(topic_id);
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+int SL_CALL slk_spot_topic_route(slk_spot_t *spot_, const char *topic_id_,
+                                  const char *endpoint_)
+{
+    CHECK_PTR(spot_, -1);
+    CHECK_PTR(topic_id_, -1);
+    CHECK_PTR(endpoint_, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        std::string topic_id(topic_id_);
+        std::string endpoint(endpoint_);
+        return spot->topic_route(topic_id, endpoint);
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+int SL_CALL slk_spot_topic_destroy(slk_spot_t *spot_, const char *topic_id_)
+{
+    CHECK_PTR(spot_, -1);
+    CHECK_PTR(topic_id_, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        std::string topic_id(topic_id_);
+        return spot->topic_destroy(topic_id);
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+int SL_CALL slk_spot_subscribe(slk_spot_t *spot_, const char *topic_id_)
+{
+    CHECK_PTR(spot_, -1);
+    CHECK_PTR(topic_id_, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        std::string topic_id(topic_id_);
+        return spot->subscribe(topic_id);
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+int SL_CALL slk_spot_subscribe_pattern(slk_spot_t *spot_, const char *pattern_)
+{
+    CHECK_PTR(spot_, -1);
+    CHECK_PTR(pattern_, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        std::string pattern(pattern_);
+        return spot->subscribe_pattern(pattern);
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+int SL_CALL slk_spot_unsubscribe(slk_spot_t *spot_, const char *topic_id_)
+{
+    CHECK_PTR(spot_, -1);
+    CHECK_PTR(topic_id_, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        std::string topic_id(topic_id_);
+        return spot->unsubscribe(topic_id);
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+int SL_CALL slk_spot_publish(slk_spot_t *spot_, const char *topic_id_,
+                              const void *data_, size_t len_)
+{
+    CHECK_PTR(spot_, -1);
+    CHECK_PTR(topic_id_, -1);
+    CHECK_PTR(data_, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        std::string topic_id(topic_id_);
+        return spot->publish(topic_id, data_, len_);
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+int SL_CALL slk_spot_recv(slk_spot_t *spot_, char *topic_, size_t topic_size_,
+                          size_t *topic_len_, void *data_, size_t data_size_,
+                          size_t *data_len_, int flags_)
+{
+    CHECK_PTR(spot_, -1);
+    CHECK_PTR(topic_, -1);
+    CHECK_PTR(topic_len_, -1);
+    CHECK_PTR(data_, -1);
+    CHECK_PTR(data_len_, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        return spot->recv(topic_, topic_size_, topic_len_,
+                         data_, data_size_, data_len_, flags_);
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+int SL_CALL slk_spot_bind(slk_spot_t *spot_, const char *endpoint_)
+{
+    CHECK_PTR(spot_, -1);
+    CHECK_PTR(endpoint_, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        std::string endpoint(endpoint_);
+        return spot->bind(endpoint);
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+int SL_CALL slk_spot_cluster_add(slk_spot_t *spot_, const char *endpoint_)
+{
+    CHECK_PTR(spot_, -1);
+    CHECK_PTR(endpoint_, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        std::string endpoint(endpoint_);
+        return spot->cluster_add(endpoint);
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+int SL_CALL slk_spot_cluster_remove(slk_spot_t *spot_, const char *endpoint_)
+{
+    CHECK_PTR(spot_, -1);
+    CHECK_PTR(endpoint_, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        std::string endpoint(endpoint_);
+        return spot->cluster_remove(endpoint);
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+int SL_CALL slk_spot_cluster_sync(slk_spot_t *spot_, int timeout_ms_)
+{
+    CHECK_PTR(spot_, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        return spot->cluster_sync(timeout_ms_);
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+int SL_CALL slk_spot_list_topics(slk_spot_t *spot_, char ***topics_, size_t *count_)
+{
+    CHECK_PTR(spot_, -1);
+    CHECK_PTR(topics_, -1);
+    CHECK_PTR(count_, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        std::vector<std::string> topic_vec = spot->list_topics();
 
         // Allocate array of string pointers
-        const size_t num_channels = channel_vec.size();
-        char **result = static_cast<char**>(malloc(num_channels * sizeof(char*)));
-        if (!result && num_channels > 0) {
+        const size_t num_topics = topic_vec.size();
+        char **result = static_cast<char**>(malloc(num_topics * sizeof(char*)));
+        if (!result && num_topics > 0) {
             errno = ENOMEM;
             return -1;
         }
 
-        // Copy each channel name
-        for (size_t i = 0; i < num_channels; ++i) {
-            result[i] = strdup(channel_vec[i].c_str());
+        // Copy each topic name
+        for (size_t i = 0; i < num_topics; ++i) {
+            result[i] = strdup(topic_vec[i].c_str());
             if (!result[i]) {
                 // Cleanup on failure
                 for (size_t j = 0; j < i; ++j) {
@@ -1898,612 +2110,8 @@ int SL_CALL slk_pubsub_channels(slk_ctx_t *ctx_, const char *pattern_,
             }
         }
 
-        *channels_ = result;
-        *count_ = num_channels;
-        return 0;
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-void SL_CALL slk_pubsub_channels_free(char **channels_, size_t count_)
-{
-    if (!channels_)
-        return;
-
-    for (size_t i = 0; i < count_; ++i) {
-        free(channels_[i]);
-    }
-    free(channels_);
-}
-
-int SL_CALL slk_pubsub_numsub(slk_ctx_t *ctx_, const char **channels_,
-                               size_t count_, size_t *numsub_)
-{
-    CHECK_PTR(ctx_, -1);
-    CHECK_PTR(channels_, -1);
-    CHECK_PTR(numsub_, -1);
-
-    try {
-        slk::ctx_t *ctx = reinterpret_cast<slk::ctx_t*>(ctx_);
-        slk::pubsub_registry_t *registry = ctx->get_pubsub_registry();
-
-        if (!registry) {
-            errno = EINVAL;
-            return -1;
-        }
-
-        // Query subscriber count for each channel
-        for (size_t i = 0; i < count_; ++i) {
-            if (!channels_[i]) {
-                errno = EINVAL;
-                return -1;
-            }
-            numsub_[i] = registry->get_numsub(channels_[i]);
-        }
-
-        return 0;
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-int SL_CALL slk_pubsub_numpat(slk_ctx_t *ctx_)
-{
-    CHECK_PTR(ctx_, -1);
-
-    try {
-        slk::ctx_t *ctx = reinterpret_cast<slk::ctx_t*>(ctx_);
-        slk::pubsub_registry_t *registry = ctx->get_pubsub_registry();
-
-        if (!registry) {
-            errno = EINVAL;
-            return -1;
-        }
-
-        return static_cast<int>(registry->get_numpat());
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-/****************************************************************************/
-/*  Sharded Pub/Sub API                                                     */
-/****************************************************************************/
-
-slk_sharded_pubsub_t* SL_CALL slk_sharded_pubsub_new(slk_ctx_t *ctx_, int shard_count_)
-{
-    CHECK_PTR(ctx_, nullptr);
-
-    if (shard_count_ <= 0 || shard_count_ > 1024) {
-        errno = EINVAL;
-        return nullptr;
-    }
-
-    try {
-        slk::ctx_t *ctx = reinterpret_cast<slk::ctx_t*>(ctx_);
-        slk::sharded_pubsub_t *shard_ctx = new slk::sharded_pubsub_t(ctx, shard_count_);
-        return reinterpret_cast<slk_sharded_pubsub_t*>(shard_ctx);
-
-    } catch (const std::bad_alloc &) {
-        errno = ENOMEM;
-        return nullptr;
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return nullptr;
-    }
-}
-
-int SL_CALL slk_sharded_pubsub_destroy(slk_sharded_pubsub_t **shard_ctx_)
-{
-    CHECK_PTR(shard_ctx_, -1);
-    CHECK_PTR(*shard_ctx_, -1);
-
-    try {
-        slk::sharded_pubsub_t *shard_ctx =
-            reinterpret_cast<slk::sharded_pubsub_t*>(*shard_ctx_);
-        delete shard_ctx;
-        *shard_ctx_ = nullptr;
-        return 0;
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-int SL_CALL slk_spublish(slk_sharded_pubsub_t *shard_ctx_, const char *channel_,
-                          const void *data_, size_t len_)
-{
-    CHECK_PTR(shard_ctx_, -1);
-    CHECK_PTR(channel_, -1);
-
-    try {
-        slk::sharded_pubsub_t *shard_ctx =
-            reinterpret_cast<slk::sharded_pubsub_t*>(shard_ctx_);
-
-        return shard_ctx->publish(channel_, data_, len_);
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-int SL_CALL slk_ssubscribe(slk_sharded_pubsub_t *shard_ctx_, slk_socket_t *sub_,
-                            const char *channel_)
-{
-    CHECK_PTR(shard_ctx_, -1);
-    CHECK_PTR(sub_, -1);
-    CHECK_PTR(channel_, -1);
-
-    try {
-        slk::sharded_pubsub_t *shard_ctx =
-            reinterpret_cast<slk::sharded_pubsub_t*>(shard_ctx_);
-        slk::socket_base_t *sub = reinterpret_cast<slk::socket_base_t*>(sub_);
-
-        return shard_ctx->subscribe(sub, channel_);
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-int SL_CALL slk_sunsubscribe(slk_sharded_pubsub_t *shard_ctx_, slk_socket_t *sub_,
-                              const char *channel_)
-{
-    CHECK_PTR(shard_ctx_, -1);
-    CHECK_PTR(sub_, -1);
-    CHECK_PTR(channel_, -1);
-
-    try {
-        slk::sharded_pubsub_t *shard_ctx =
-            reinterpret_cast<slk::sharded_pubsub_t*>(shard_ctx_);
-        slk::socket_base_t *sub = reinterpret_cast<slk::socket_base_t*>(sub_);
-
-        return shard_ctx->unsubscribe(sub, channel_);
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-int SL_CALL slk_sharded_pubsub_set_hwm(slk_sharded_pubsub_t *shard_ctx_, int hwm_)
-{
-    CHECK_PTR(shard_ctx_, -1);
-
-    if (hwm_ < 0) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    try {
-        slk::sharded_pubsub_t *shard_ctx =
-            reinterpret_cast<slk::sharded_pubsub_t*>(shard_ctx_);
-
-        return shard_ctx->set_hwm(hwm_);
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-/****************************************************************************/
-/*  Proxy API                                                               */
-/****************************************************************************/
-
-int SL_CALL slk_proxy(void *frontend_, void *backend_, void *capture_)
-{
-    CHECK_PTR(frontend_, -1);
-    CHECK_PTR(backend_, -1);
-
-    try {
-        slk::socket_base_t *frontend = reinterpret_cast<slk::socket_base_t*>(frontend_);
-        slk::socket_base_t *backend = reinterpret_cast<slk::socket_base_t*>(backend_);
-        slk::socket_base_t *capture = capture_ ?
-            reinterpret_cast<slk::socket_base_t*>(capture_) : nullptr;
-
-        return slk::proxy(frontend, backend, capture);
-    } catch (...) {
-        return set_errno(SLK_EPROTO);
-    }
-}
-
-int SL_CALL slk_proxy_steerable(void *frontend_, void *backend_,
-                                 void *capture_, void *control_)
-{
-    CHECK_PTR(frontend_, -1);
-    CHECK_PTR(backend_, -1);
-
-    try {
-        slk::socket_base_t *frontend = reinterpret_cast<slk::socket_base_t*>(frontend_);
-        slk::socket_base_t *backend = reinterpret_cast<slk::socket_base_t*>(backend_);
-        slk::socket_base_t *capture = capture_ ?
-            reinterpret_cast<slk::socket_base_t*>(capture_) : nullptr;
-        slk::socket_base_t *control = control_ ?
-            reinterpret_cast<slk::socket_base_t*>(control_) : nullptr;
-
-        return slk::proxy_steerable(frontend, backend, capture, control);
-    } catch (...) {
-        return set_errno(SLK_EPROTO);
-    }
-}
-
-/****************************************************************************/
-/*  Broker Pub/Sub API                                                      */
-/****************************************************************************/
-
-slk_pubsub_broker_t* SL_CALL slk_pubsub_broker_new(slk_ctx_t *ctx_,
-                                                     const char *frontend_,
-                                                     const char *backend_)
-{
-    CHECK_PTR(ctx_, nullptr);
-    CHECK_PTR(frontend_, nullptr);
-    CHECK_PTR(backend_, nullptr);
-
-    try {
-        slk::ctx_t *ctx = reinterpret_cast<slk::ctx_t*>(ctx_);
-        slk::pubsub_broker_t *broker = new slk::pubsub_broker_t(ctx, frontend_, backend_);
-        return reinterpret_cast<slk_pubsub_broker_t*>(broker);
-
-    } catch (const std::bad_alloc &) {
-        errno = ENOMEM;
-        return nullptr;
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return nullptr;
-    }
-}
-
-int SL_CALL slk_pubsub_broker_destroy(slk_pubsub_broker_t **broker_)
-{
-    CHECK_PTR(broker_, -1);
-    CHECK_PTR(*broker_, -1);
-
-    try {
-        slk::pubsub_broker_t *broker =
-            reinterpret_cast<slk::pubsub_broker_t*>(*broker_);
-        delete broker;
-        *broker_ = nullptr;
-        return 0;
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-int SL_CALL slk_pubsub_broker_run(slk_pubsub_broker_t *broker_)
-{
-    CHECK_PTR(broker_, -1);
-
-    try {
-        slk::pubsub_broker_t *broker =
-            reinterpret_cast<slk::pubsub_broker_t*>(broker_);
-
-        return broker->run();
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-int SL_CALL slk_pubsub_broker_start(slk_pubsub_broker_t *broker_)
-{
-    CHECK_PTR(broker_, -1);
-
-    try {
-        slk::pubsub_broker_t *broker =
-            reinterpret_cast<slk::pubsub_broker_t*>(broker_);
-
-        return broker->start();
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-int SL_CALL slk_pubsub_broker_stop(slk_pubsub_broker_t *broker_)
-{
-    CHECK_PTR(broker_, -1);
-
-    try {
-        slk::pubsub_broker_t *broker =
-            reinterpret_cast<slk::pubsub_broker_t*>(broker_);
-
-        return broker->stop();
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-int SL_CALL slk_pubsub_broker_stats(slk_pubsub_broker_t *broker_,
-                                     size_t *messages_)
-{
-    CHECK_PTR(broker_, -1);
-
-    try {
-        slk::pubsub_broker_t *broker =
-            reinterpret_cast<slk::pubsub_broker_t*>(broker_);
-
-        if (messages_) {
-            *messages_ = broker->get_message_count();
-        }
-
-        return 0;
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-/****************************************************************************/
-/*  Cluster Pub/Sub API                                                     */
-/****************************************************************************/
-
-slk_pubsub_cluster_t* SL_CALL slk_pubsub_cluster_new(slk_ctx_t *ctx_)
-{
-    CHECK_PTR(ctx_, nullptr);
-
-    try {
-        slk::ctx_t *ctx = reinterpret_cast<slk::ctx_t*>(ctx_);
-        slk::pubsub_cluster_t *cluster = new slk::pubsub_cluster_t(ctx);
-        return reinterpret_cast<slk_pubsub_cluster_t*>(cluster);
-
-    } catch (const std::bad_alloc &) {
-        errno = ENOMEM;
-        return nullptr;
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return nullptr;
-    }
-}
-
-void SL_CALL slk_pubsub_cluster_destroy(slk_pubsub_cluster_t **cluster_)
-{
-    if (!cluster_ || !*cluster_) {
-        return;
-    }
-
-    try {
-        slk::pubsub_cluster_t *cluster =
-            reinterpret_cast<slk::pubsub_cluster_t*>(*cluster_);
-        delete cluster;
-        *cluster_ = nullptr;
-
-    } catch (const std::exception &) {
-        // Ignore exceptions during cleanup
-    }
-}
-
-int SL_CALL slk_pubsub_cluster_add_node(slk_pubsub_cluster_t *cluster_,
-                                         const char *endpoint_)
-{
-    CHECK_PTR(cluster_, -1);
-    CHECK_PTR(endpoint_, -1);
-
-    try {
-        slk::pubsub_cluster_t *cluster =
-            reinterpret_cast<slk::pubsub_cluster_t*>(cluster_);
-
-        return cluster->add_node(endpoint_);
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-int SL_CALL slk_pubsub_cluster_remove_node(slk_pubsub_cluster_t *cluster_,
-                                            const char *endpoint_)
-{
-    CHECK_PTR(cluster_, -1);
-    CHECK_PTR(endpoint_, -1);
-
-    try {
-        slk::pubsub_cluster_t *cluster =
-            reinterpret_cast<slk::pubsub_cluster_t*>(cluster_);
-
-        return cluster->remove_node(endpoint_);
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-int SL_CALL slk_pubsub_cluster_publish(slk_pubsub_cluster_t *cluster_,
-                                        const char *channel_,
-                                        const void *data_,
-                                        size_t len_)
-{
-    CHECK_PTR(cluster_, -1);
-    CHECK_PTR(channel_, -1);
-    CHECK_PTR(data_, -1);
-
-    try {
-        slk::pubsub_cluster_t *cluster =
-            reinterpret_cast<slk::pubsub_cluster_t*>(cluster_);
-
-        return cluster->publish(channel_, data_, len_);
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-int SL_CALL slk_pubsub_cluster_subscribe(slk_pubsub_cluster_t *cluster_,
-                                          const char *channel_)
-{
-    CHECK_PTR(cluster_, -1);
-    CHECK_PTR(channel_, -1);
-
-    try {
-        slk::pubsub_cluster_t *cluster =
-            reinterpret_cast<slk::pubsub_cluster_t*>(cluster_);
-
-        return cluster->subscribe(channel_);
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-int SL_CALL slk_pubsub_cluster_psubscribe(slk_pubsub_cluster_t *cluster_,
-                                           const char *pattern_)
-{
-    CHECK_PTR(cluster_, -1);
-    CHECK_PTR(pattern_, -1);
-
-    try {
-        slk::pubsub_cluster_t *cluster =
-            reinterpret_cast<slk::pubsub_cluster_t*>(cluster_);
-
-        return cluster->psubscribe(pattern_);
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-int SL_CALL slk_pubsub_cluster_unsubscribe(slk_pubsub_cluster_t *cluster_,
-                                            const char *channel_)
-{
-    CHECK_PTR(cluster_, -1);
-    CHECK_PTR(channel_, -1);
-
-    try {
-        slk::pubsub_cluster_t *cluster =
-            reinterpret_cast<slk::pubsub_cluster_t*>(cluster_);
-
-        return cluster->unsubscribe(channel_);
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-int SL_CALL slk_pubsub_cluster_punsubscribe(slk_pubsub_cluster_t *cluster_,
-                                             const char *pattern_)
-{
-    CHECK_PTR(cluster_, -1);
-    CHECK_PTR(pattern_, -1);
-
-    try {
-        slk::pubsub_cluster_t *cluster =
-            reinterpret_cast<slk::pubsub_cluster_t*>(cluster_);
-
-        return cluster->punsubscribe(pattern_);
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-int SL_CALL slk_pubsub_cluster_recv(slk_pubsub_cluster_t *cluster_,
-                                     char *channel_,
-                                     size_t *channel_len_,
-                                     void *data_,
-                                     size_t *data_len_,
-                                     int flags_)
-{
-    CHECK_PTR(cluster_, -1);
-    CHECK_PTR(channel_, -1);
-    CHECK_PTR(channel_len_, -1);
-    CHECK_PTR(data_, -1);
-    CHECK_PTR(data_len_, -1);
-
-    try {
-        slk::pubsub_cluster_t *cluster =
-            reinterpret_cast<slk::pubsub_cluster_t*>(cluster_);
-
-        std::string channel;
-        std::vector<uint8_t> data;
-
-        int rc = cluster->recv(channel, data, flags_);
-        if (rc < 0) {
-            return -1;
-        }
-
-        // Copy channel name
-        // Use parentheses to avoid Windows min/max macro conflict
-        size_t channel_copy_len = (std::min)(channel.size(), *channel_len_ - 1);
-        std::memcpy(channel_, channel.data(), channel_copy_len);
-        channel_[channel_copy_len] = '\0';
-        *channel_len_ = channel.size();
-
-        // Copy data
-        size_t data_copy_len = (std::min)(data.size(), *data_len_);
-        std::memcpy(data_, data.data(), data_copy_len);
-        *data_len_ = data.size();
-
-        return static_cast<int>(data.size());
-
-    } catch (const std::exception &) {
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-int SL_CALL slk_pubsub_cluster_nodes(slk_pubsub_cluster_t *cluster_,
-                                      char ***nodes_,
-                                      size_t *count_)
-{
-    CHECK_PTR(cluster_, -1);
-    CHECK_PTR(nodes_, -1);
-    CHECK_PTR(count_, -1);
-
-    try {
-        slk::pubsub_cluster_t *cluster =
-            reinterpret_cast<slk::pubsub_cluster_t*>(cluster_);
-
-        std::vector<std::string> endpoints = cluster->get_nodes();
-
-        // Allocate array of string pointers
-        char **nodes = static_cast<char**>(malloc(endpoints.size() * sizeof(char*)));
-        if (!nodes) {
-            errno = ENOMEM;
-            return -1;
-        }
-
-        // Copy each endpoint string
-        for (size_t i = 0; i < endpoints.size(); ++i) {
-            nodes[i] = static_cast<char*>(malloc(endpoints[i].size() + 1));
-            if (!nodes[i]) {
-                // Cleanup on error
-                for (size_t j = 0; j < i; ++j) {
-                    free(nodes[j]);
-                }
-                free(nodes);
-                errno = ENOMEM;
-                return -1;
-            }
-            std::memcpy(nodes[i], endpoints[i].data(), endpoints[i].size());
-            nodes[i][endpoints[i].size()] = '\0';
-        }
-
-        *nodes_ = nodes;
-        *count_ = endpoints.size();
-
+        *topics_ = result;
+        *count_ = num_topics;
         return 0;
 
     } catch (const std::bad_alloc &) {
@@ -2515,18 +2123,84 @@ int SL_CALL slk_pubsub_cluster_nodes(slk_pubsub_cluster_t *cluster_,
     }
 }
 
-void SL_CALL slk_pubsub_cluster_nodes_free(char **nodes_, size_t count_)
+void SL_CALL slk_spot_list_topics_free(char **topics_, size_t count_)
 {
-    if (!nodes_) {
+    if (!topics_) {
         return;
     }
 
     for (size_t i = 0; i < count_; ++i) {
-        if (nodes_[i]) {
-            free(nodes_[i]);
+        if (topics_[i]) {
+            free(topics_[i]);
         }
     }
-    free(nodes_);
+    free(topics_);
+}
+
+int SL_CALL slk_spot_topic_exists(slk_spot_t *spot_, const char *topic_id_)
+{
+    CHECK_PTR(spot_, -1);
+    CHECK_PTR(topic_id_, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        std::string topic_id(topic_id_);
+        return spot->topic_exists(topic_id) ? 1 : 0;
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+int SL_CALL slk_spot_topic_is_local(slk_spot_t *spot_, const char *topic_id_)
+{
+    CHECK_PTR(spot_, -1);
+    CHECK_PTR(topic_id_, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        std::string topic_id(topic_id_);
+        return spot->topic_is_local(topic_id) ? 1 : 0;
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+int SL_CALL slk_spot_set_hwm(slk_spot_t *spot_, int sndhwm_, int rcvhwm_)
+{
+    CHECK_PTR(spot_, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        return spot->set_hwm(sndhwm_, rcvhwm_);
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+int SL_CALL slk_spot_fd(slk_spot_t *spot_, slk_fd_t *fd_)
+{
+    CHECK_PTR(spot_, -1);
+    CHECK_PTR(fd_, -1);
+
+    try {
+        slk::spot_pubsub_t *spot = reinterpret_cast<slk::spot_pubsub_t*>(spot_);
+        int fd_int = 0;
+        int rc = spot->fd(&fd_int);
+        if (rc == 0) {
+#ifdef _WIN32
+            *fd_ = static_cast<slk_fd_t>(fd_int);
+#else
+            *fd_ = fd_int;
+#endif
+        }
+        return rc;
+    } catch (const std::exception &) {
+        errno = EINVAL;
+        return -1;
+    }
 }
 
 } // extern "C"

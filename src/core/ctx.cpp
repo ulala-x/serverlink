@@ -7,7 +7,6 @@
 #include "../io/reaper.hpp"
 #include "../io/ip.hpp"
 #include "../pipe/pipe.hpp"
-#include "../pubsub/pubsub_registry.hpp"
 #include "../util/err.hpp"
 #include "../msg/msg.hpp"
 #include "../util/random.hpp"
@@ -35,7 +34,6 @@ slk::ctx_t::ctx_t () :
     _starting (true),
     _terminating (false),
     _reaper (NULL),
-    _pubsub_registry (NULL),
     _max_sockets (clipped_maxsocket (SL_MAX_SOCKETS_DFLT)),
     _max_msgsz (INT_MAX),
     _io_thread_count (SL_IO_THREADS_DFLT),
@@ -44,11 +42,7 @@ slk::ctx_t::ctx_t () :
     _zero_copy (true)
 {
     // Initialise crypto library, if needed
-    slk::random_open ();
-
-    // Create pub/sub registry for introspection
-    _pubsub_registry = new (std::nothrow) pubsub_registry_t ();
-}
+    slk::random_open ();}
 
 bool slk::ctx_t::check_tag () const
 {
@@ -74,12 +68,7 @@ slk::ctx_t::~ctx_t ()
     }
 
     // Deallocate the reaper thread object
-    delete _reaper;
-
-    // Deallocate pub/sub registry
-    delete _pubsub_registry;
-
-    // The mailboxes in _slots themselves were deallocated with their
+    delete _reaper;    // The mailboxes in _slots themselves were deallocated with their
     // corresponding io_thread/socket objects
 
     // De-initialise crypto library, if needed
@@ -459,11 +448,6 @@ void slk::ctx_t::destroy_socket (class socket_base_t *socket_)
 slk::object_t *slk::ctx_t::get_reaper () const
 {
     return _reaper;
-}
-
-slk::pubsub_registry_t *slk::ctx_t::get_pubsub_registry () const
-{
-    return _pubsub_registry;
 }
 
 slk::thread_ctx_t::thread_ctx_t () :

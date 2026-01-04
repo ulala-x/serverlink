@@ -7,7 +7,6 @@
 
 #include "xpub.hpp"
 #include "../pipe/pipe.hpp"
-#include "../pubsub/pubsub_registry.hpp"
 #include "../util/err.hpp"
 #include "../msg/msg.hpp"
 #include "../util/macros.hpp"
@@ -125,27 +124,10 @@ void slk::xpub_t::xread_activated (pipe_t *pipe_)
                     notify =
                       rm_result != mtrie_t<pipe_t>::values_remain || _verbose_unsubs;
 
-                    // Update registry for introspection
-                    if (rm_result != mtrie_t<pipe_t>::values_remain) {
-                        pubsub_registry_t *registry =
-                            get_ctx()->get_pubsub_registry();
-                        if (registry) {
-                            std::string channel(reinterpret_cast<const char*>(data), size);
-                            registry->unregister_subscription(channel);
-                        }
-                    }
                 } else {
                     const bool first_added =
                       _subscriptions.add (data, size, pipe_);
                     notify = first_added || _verbose_subs;
-
-                    // Update registry for introspection (count every subscription)
-                    pubsub_registry_t *registry =
-                        get_ctx()->get_pubsub_registry();
-                    if (registry) {
-                        std::string channel(reinterpret_cast<const char*>(data), size);
-                        registry->register_subscription(channel);
-                    }
                 }
             }
 

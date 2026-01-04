@@ -40,5 +40,30 @@ target_link_libraries(cluster_example serverlink pthread)
 add_executable(mesh_topology_example pubsub/mesh_topology_example.c)
 target_link_libraries(mesh_topology_example serverlink pthread)
 
+# ========================================
+# SPOT PUB/SUB Examples
+# ========================================
+
+# Basic SPOT Usage
+add_executable(spot_basic spot_basic.c)
+target_link_libraries(spot_basic serverlink)
+
+# Multi-Topic Management
+add_executable(spot_multi_topic spot_multi_topic.c)
+target_link_libraries(spot_multi_topic serverlink)
+
+# Cluster Publisher
+add_executable(spot_cluster_publisher spot_cluster_publisher.c)
+target_link_libraries(spot_cluster_publisher serverlink)
+
+# Cluster Subscriber
+add_executable(spot_cluster_subscriber spot_cluster_subscriber.c)
+target_link_libraries(spot_cluster_subscriber serverlink)
+
+# MMORPG Cell-Based Example
+add_executable(spot_mmorpg_cell spot_mmorpg_cell.c)
+target_link_libraries(spot_mmorpg_cell serverlink)
+
 message(STATUS "Examples built: test_simple, test_c_api, router_to_router_simple, test_inproc_timing")
 message(STATUS "Pub/Sub examples: psubscribe_example, broker_example, sharded_example, cluster_example, mesh_topology_example")
+message(STATUS "SPOT examples: spot_basic, spot_multi_topic, spot_cluster_publisher, spot_cluster_subscriber, spot_mmorpg_cell")

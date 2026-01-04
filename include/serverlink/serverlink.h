@@ -429,665 +429,317 @@ SL_EXPORT unsigned long SL_CALL slk_stopwatch_intermediate(void *watch);
 /* Stop stopwatch and return elapsed time (microseconds) */
 SL_EXPORT unsigned long SL_CALL slk_stopwatch_stop(void *watch);
 
-/****************************************************************************/
-/*  Pub/Sub Introspection API (Redis-style)                                */
-/****************************************************************************/
-
-/* Get list of active channels matching a pattern
- *
- * This function retrieves all active channels (channels with at least one
- * subscriber) that match the specified glob pattern.
- *
- * Pattern matching:
- *   - Empty string or "*" returns all channels
- *   - "news.*" matches "news.sports", "news.tech", etc.
- *   - "user.?" matches "user.1", "user.a", etc.
- *
- * Memory management:
- *   - The function allocates an array of strings via malloc()
- *   - Caller must free the result using slk_pubsub_channels_free()
- *
- * Parameters:
- *   ctx      - Context to query
- *   pattern  - Glob pattern (NULL or empty string matches all)
- *   channels - Output: array of channel name strings
- *   count    - Output: number of channels in array
- *
- * Returns:
- *   0 on success, -1 on error (sets errno)
- */
-SL_EXPORT int SL_CALL slk_pubsub_channels(slk_ctx_t *ctx, const char *pattern,
-                                           char ***channels, size_t *count);
-
-/* Free channel list returned by slk_pubsub_channels
- *
- * Parameters:
- *   channels - Array of channel name strings (from slk_pubsub_channels)
- *   count    - Number of channels in array
- */
-SL_EXPORT void SL_CALL slk_pubsub_channels_free(char **channels, size_t count);
-
-/* Get subscriber count for specific channels
- *
- * This function returns the number of subscribers for each specified channel.
- * Channels with no subscribers return 0.
- *
- * Memory management:
- *   - Caller provides output array (numsub) with size >= count
- *   - No memory allocation performed by this function
- *
- * Parameters:
- *   ctx      - Context to query
- *   channels - Array of channel names to query
- *   count    - Number of channels in array
- *   numsub   - Output: array of subscriber counts (must be pre-allocated)
- *
- * Returns:
- *   0 on success, -1 on error (sets errno)
- *
- * Example:
- *   const char *channels[] = {"news", "sports"};
- *   size_t numsub[2];
- *   slk_pubsub_numsub(ctx, channels, 2, numsub);
- *   // numsub[0] = subscriber count for "news"
- *   // numsub[1] = subscriber count for "sports"
- */
-SL_EXPORT int SL_CALL slk_pubsub_numsub(slk_ctx_t *ctx, const char **channels,
-                                         size_t count, size_t *numsub);
-
-/* Get total number of pattern subscriptions
- *
- * This function returns the total count of active pattern subscriptions
- * (subscriptions using glob patterns via SLK_PSUBSCRIBE).
- *
- * Parameters:
- *   ctx - Context to query
- *
- * Returns:
- *   Number of pattern subscriptions, -1 on error (sets errno)
- */
-SL_EXPORT int SL_CALL slk_pubsub_numpat(slk_ctx_t *ctx);
 
 /****************************************************************************/
-/*  Sharded Pub/Sub API (Redis-style)                                      */
+/*  SPOT PUB/SUB API (Scalable Partitioned Ordered Topics)                 */
 /****************************************************************************/
 
-/* Opaque type for sharded pub/sub context */
-typedef struct slk_sharded_pubsub_s slk_sharded_pubsub_t;
+/* Opaque type for SPOT PUB/SUB context */
+typedef struct slk_spot_s slk_spot_t;
 
-/* Create a new sharded pub/sub manager
+/* Create a new SPOT PUB/SUB instance
  *
- * This function creates a sharded pub/sub manager that distributes channels
- * across multiple internal shards using CRC16 hashing (Redis Cluster compatible).
- * Each shard runs on a separate inproc XPUB socket, allowing parallel processing
- * and reduced lock contention.
+ * SPOT (Scalable Partitioned Ordered Topics) provides location-transparent
+ * pub/sub using topic ID-based routing. Topics can be local (hosted on this
+ * node) or remote (routed to other nodes).
  *
  * Features:
- *   - Redis Cluster-compatible CRC16 slot hashing (16384 slots)
- *   - Hash tag support: {tag}channel hashes "tag" only
- *   - Thread-safe operations with fine-grained per-shard locking
- *   - Automatic subscriber routing to appropriate shards
- *
- * Limitations:
- *   - Pattern subscriptions (PSUBSCRIBE) are NOT supported
- *   - Single process only (use cluster API for multi-process)
- *
- * Parameters:
- *   ctx         - ServerLink context
- *   shard_count - Number of shards to create (default: 16, max: 1024)
- *                 More shards = better parallelism but more overhead
- *
- * Returns:
- *   New sharded pub/sub context on success, NULL on error (sets errno)
- *
- * Example:
- *   slk_sharded_pubsub_t *shard_ctx = slk_sharded_pubsub_new(ctx, 16);
- */
-SL_EXPORT slk_sharded_pubsub_t* SL_CALL slk_sharded_pubsub_new(slk_ctx_t *ctx, int shard_count);
-
-/* Destroy a sharded pub/sub manager
- *
- * Closes all internal shard sockets and frees resources.
- * All subscribers should be closed before calling this function.
- *
- * Parameters:
- *   shard_ctx - Pointer to sharded pub/sub context (set to NULL on return)
- *
- * Returns:
- *   0 on success, -1 on error (sets errno)
- */
-SL_EXPORT int SL_CALL slk_sharded_pubsub_destroy(slk_sharded_pubsub_t **shard_ctx);
-
-/* Publish a message to a sharded channel
- *
- * The channel is hashed using CRC16 to determine which shard handles it.
- * Hash tags are supported: "{user}messages" hashes "user" only, allowing
- * related channels to be grouped on the same shard.
- *
- * Thread-safe: can be called from multiple threads concurrently.
- *
- * Parameters:
- *   shard_ctx - Sharded pub/sub context
- *   channel   - Channel name (supports {tag} hash tags)
- *   data      - Message data pointer
- *   len       - Message data length
- *
- * Returns:
- *   Number of bytes published on success, -1 on error (sets errno)
- *
- * Example:
- *   slk_spublish(shard_ctx, "{room:1}chat", "Hello!", 6);
- *   // Both "{room:1}chat" and "{room:1}members" go to same shard
- */
-SL_EXPORT int SL_CALL slk_spublish(slk_sharded_pubsub_t *shard_ctx, const char *channel,
-                                    const void *data, size_t len);
-
-/* Subscribe a SUB socket to a sharded channel
- *
- * Automatically connects the SUB socket to the appropriate shard and sets
- * up the subscription filter. The SUB socket will receive messages published
- * to this channel.
- *
- * Thread-safe: can be called from multiple threads concurrently.
- *
- * Note: The SUB socket must be created with slk_socket(ctx, SLK_SUB).
- *       Do not manually connect the SUB socket to shard endpoints.
- *
- * Parameters:
- *   shard_ctx  - Sharded pub/sub context
- *   sub        - SUB socket to subscribe
- *   channel    - Channel name to subscribe to
- *
- * Returns:
- *   0 on success, -1 on error (sets errno)
- *
- * Example:
- *   slk_socket_t *sub = slk_socket(ctx, SLK_SUB);
- *   slk_ssubscribe(shard_ctx, sub, "{room:1}chat");
- *   slk_ssubscribe(shard_ctx, sub, "{room:1}members");  // Same shard
- */
-SL_EXPORT int SL_CALL slk_ssubscribe(slk_sharded_pubsub_t *shard_ctx, slk_socket_t *sub,
-                                      const char *channel);
-
-/* Unsubscribe a SUB socket from a sharded channel
- *
- * Removes the subscription filter from the SUB socket. The socket remains
- * connected to the shard for other subscriptions.
- *
- * Thread-safe: can be called from multiple threads concurrently.
- *
- * Parameters:
- *   shard_ctx  - Sharded pub/sub context
- *   sub        - SUB socket to unsubscribe
- *   channel    - Channel name to unsubscribe from
- *
- * Returns:
- *   0 on success, -1 on error (sets errno)
- */
-SL_EXPORT int SL_CALL slk_sunsubscribe(slk_sharded_pubsub_t *shard_ctx, slk_socket_t *sub,
-                                        const char *channel);
-
-/* Set high water mark for all shards
- *
- * Controls the maximum number of messages queued per shard before blocking
- * or dropping messages. Default is 1000 messages.
- *
- * Thread-safe: can be called from multiple threads concurrently.
- *
- * Parameters:
- *   shard_ctx - Sharded pub/sub context
- *   hwm       - High water mark value (messages)
- *
- * Returns:
- *   0 on success, -1 on error (sets errno)
- */
-SL_EXPORT int SL_CALL slk_sharded_pubsub_set_hwm(slk_sharded_pubsub_t *shard_ctx, int hwm);
-
-/****************************************************************************/
-/*  Proxy API                                                               */
-/****************************************************************************/
-
-/* Simple proxy - forwards messages between frontend and backend sockets
- *
- * The proxy connects a frontend socket to a backend socket. Conceptually,
- * data flows from the frontend to the backend. Messages are read from the
- * frontend and written to the backend, and vice versa.
- *
- * If the capture socket is not NULL, the proxy sends all messages received
- * on both frontend and backend to the capture socket, enabling message
- * monitoring and logging.
- *
- * This function blocks until an error occurs or a signal is received.
- *
- * Example usage:
- *   Frontend: ROUTER socket bound to tcp://0.0.0.0:5555
- *   Backend:  DEALER socket bound to tcp://0.0.0.0:5556
- *   Capture:  PUB socket bound to tcp://0.0.0.0:5557 (optional)
- *
- * Parameters:
- *   frontend - Frontend socket (receives from clients)
- *   backend  - Backend socket (sends to workers)
- *   capture  - Optional capture socket for monitoring (can be NULL)
- *
- * Returns:
- *   0 on success (graceful termination)
- *   -1 on error (sets errno)
- */
-SL_EXPORT int SL_CALL slk_proxy(void *frontend, void *backend, void *capture);
-
-/* Steerable proxy - adds runtime control via control socket
- *
- * This is an extended version of slk_proxy that accepts a control socket
- * for runtime control. The control socket must be a REQ socket (or compatible).
- *
- * Control commands (single-part messages):
- *   "PAUSE"      - Stop forwarding messages (messages queue up)
- *   "RESUME"     - Resume forwarding messages
- *   "TERMINATE"  - Terminate the proxy and return
- *   "STATISTICS" - Return statistics (8-part message)
- *
- * The STATISTICS reply is an 8-part message containing uint64_t values:
- *   Part 0: Frontend messages received count
- *   Part 1: Frontend bytes received
- *   Part 2: Frontend messages sent count
- *   Part 3: Frontend bytes sent
- *   Part 4: Backend messages received count
- *   Part 5: Backend bytes received
- *   Part 6: Backend messages sent count
- *   Part 7: Backend bytes sent
- *
- * Example usage with control:
- *   void *control = slk_socket(ctx, SLK_REQ);
- *   slk_connect(control, "inproc://proxy-control");
- *
- *   // In proxy thread:
- *   void *control_rep = slk_socket(ctx, SLK_REP);
- *   slk_bind(control_rep, "inproc://proxy-control");
- *   slk_proxy_steerable(frontend, backend, capture, control_rep);
- *
- *   // In main thread:
- *   slk_send(control, "PAUSE", 5, 0);
- *   slk_recv(control, reply, 256, 0); // Wait for acknowledgment
- *
- * Parameters:
- *   frontend - Frontend socket (receives from clients)
- *   backend  - Backend socket (sends to workers)
- *   capture  - Optional capture socket for monitoring (can be NULL)
- *   control  - Optional control socket for runtime control (can be NULL)
- *
- * Returns:
- *   0 on success (graceful termination via TERMINATE command)
- *   -1 on error (sets errno)
- */
-SL_EXPORT int SL_CALL slk_proxy_steerable(void *frontend, void *backend,
-                                           void *capture, void *control);
-
-/****************************************************************************/
-/*  Broker Pub/Sub API (Proxy Wrapper)                                     */
-/****************************************************************************/
-
-/* Opaque type for pub/sub broker */
-typedef struct slk_pubsub_broker_s slk_pubsub_broker_t;
-
-/* Create a new pub/sub broker
- *
- * This function creates a high-level pub/sub broker that wraps the XSUB/XPUB
- * proxy pattern. The broker runs a proxy that forwards messages from publishers
- * (connected to frontend) to subscribers (connected to backend).
- *
- * Architecture:
- *   Publishers → XSUB (frontend) → Proxy → XPUB (backend) → Subscribers
- *
- * The broker can run in blocking mode (slk_pubsub_broker_run) or background
- * mode (slk_pubsub_broker_start). It provides statistics tracking and graceful
- * shutdown capabilities.
- *
- * Thread-safety:
- *   - All functions are thread-safe
- *   - The broker can be stopped from any thread
- *   - Statistics can be queried from any thread
- *
- * Parameters:
- *   ctx      - ServerLink context
- *   frontend - Frontend endpoint for publishers (e.g., "tcp://0.0.0.0:5555")
- *   backend  - Backend endpoint for subscribers (e.g., "tcp://0.0.0.0:5556")
- *
- * Returns:
- *   New broker instance on success, NULL on error (sets errno)
- *
- * Example:
- *   slk_pubsub_broker_t *broker = slk_pubsub_broker_new(ctx,
- *       "tcp://0.0.0.0:5555",  // Publishers connect here
- *       "tcp://0.0.0.0:5556"); // Subscribers connect here
- */
-SL_EXPORT slk_pubsub_broker_t* SL_CALL slk_pubsub_broker_new(slk_ctx_t *ctx,
-                                                               const char *frontend,
-                                                               const char *backend);
-
-/* Destroy a pub/sub broker
- *
- * This function stops the broker (if running) and frees all resources.
- * Automatically handles graceful shutdown.
- *
- * Parameters:
- *   broker - Pointer to broker instance (set to NULL on return)
- *
- * Returns:
- *   0 on success, -1 on error (sets errno)
- */
-SL_EXPORT int SL_CALL slk_pubsub_broker_destroy(slk_pubsub_broker_t **broker);
-
-/* Run the broker in the current thread (blocking)
- *
- * This function runs the broker's proxy in the current thread. It blocks
- * until an error occurs or slk_pubsub_broker_stop() is called from another
- * thread.
- *
- * Use this when you want to dedicate a thread to running the broker.
- *
- * Parameters:
- *   broker - Broker instance
- *
- * Returns:
- *   0 on success (normal shutdown), -1 on error (sets errno)
- *
- * Example:
- *   // In dedicated broker thread:
- *   slk_pubsub_broker_run(broker);  // Blocks until stopped
- */
-SL_EXPORT int SL_CALL slk_pubsub_broker_run(slk_pubsub_broker_t *broker);
-
-/* Start the broker in a background thread
- *
- * This function creates a new thread and runs the broker's proxy in it.
- * Returns immediately, allowing the caller to continue with other work.
- *
- * The broker can be stopped later with slk_pubsub_broker_stop().
- *
- * Parameters:
- *   broker - Broker instance
- *
- * Returns:
- *   0 on success, -1 on error (sets errno)
- *
- * Example:
- *   slk_pubsub_broker_start(broker);  // Returns immediately
- *   // ... do other work ...
- *   slk_pubsub_broker_stop(broker);   // Stop when done
- */
-SL_EXPORT int SL_CALL slk_pubsub_broker_start(slk_pubsub_broker_t *broker);
-
-/* Stop the broker
- *
- * This function gracefully stops the broker by:
- * 1. Setting a stop flag
- * 2. Closing sockets (interrupts proxy)
- * 3. Waiting for background thread to finish (if applicable)
- *
- * Can be called from any thread. Safe to call multiple times.
- *
- * Parameters:
- *   broker - Broker instance
- *
- * Returns:
- *   0 on success, -1 on error (sets errno)
- */
-SL_EXPORT int SL_CALL slk_pubsub_broker_stop(slk_pubsub_broker_t *broker);
-
-/* Get broker statistics
- *
- * This function retrieves runtime statistics from the broker.
- *
- * Note: Currently, only the message count parameter is implemented.
- * Publisher and subscriber counts would require additional tracking
- * and are reserved for future implementation.
- *
- * Parameters:
- *   broker   - Broker instance
- *   messages - Output: total messages forwarded (can be NULL)
- *
- * Returns:
- *   0 on success, -1 on error (sets errno)
- *
- * Example:
- *   size_t msg_count;
- *   slk_pubsub_broker_stats(broker, &msg_count);
- *   printf("Forwarded %zu messages\n", msg_count);
- */
-SL_EXPORT int SL_CALL slk_pubsub_broker_stats(slk_pubsub_broker_t *broker,
-                                                size_t *messages);
-
-/****************************************************************************/
-/*  Cluster Pub/Sub API (Server-to-Server Distribution)                    */
-/****************************************************************************/
-
-/* Opaque type for pub/sub cluster */
-typedef struct slk_pubsub_cluster_s slk_pubsub_cluster_t;
-
-/* Create a new pub/sub cluster
- *
- * This function creates a distributed pub/sub cluster manager that enables
- * Redis Cluster-style pub/sub across multiple servers. Messages are
- * automatically routed to the appropriate nodes based on channel hashing.
- *
- * Architecture:
- *   - Each node is a remote XPUB endpoint
- *   - Channels are hashed (CRC16) to determine target node
- *   - Pattern subscriptions are broadcast to all nodes
- *   - Automatic reconnection with subscription restoration
- *
- * Thread-safety:
- *   - All functions are thread-safe
- *   - Uses reader-writer locks for concurrent access
+ *   - Topic ownership and registration
+ *   - Exact and pattern subscriptions
+ *   - Position-transparent publish/subscribe (inproc/tcp)
+ *   - Cluster synchronization for distributed topics
  *
  * Parameters:
  *   ctx - ServerLink context
  *
  * Returns:
- *   New cluster instance on success, NULL on error (sets errno)
+ *   New SPOT instance on success, NULL on error (sets errno)
  *
  * Example:
- *   slk_pubsub_cluster_t *cluster = slk_pubsub_cluster_new(ctx);
- *   slk_pubsub_cluster_add_node(cluster, "tcp://node1:5555");
- *   slk_pubsub_cluster_add_node(cluster, "tcp://node2:5555");
+ *   slk_spot_t *spot = slk_spot_new(ctx);
  */
-SL_EXPORT slk_pubsub_cluster_t* SL_CALL slk_pubsub_cluster_new(slk_ctx_t *ctx);
+SL_EXPORT slk_spot_t* SL_CALL slk_spot_new(slk_ctx_t *ctx);
 
-/* Destroy a pub/sub cluster
+/* Destroy a SPOT PUB/SUB instance
  *
- * This function disconnects all nodes and frees all resources.
+ * Closes all sockets and frees resources. All topics and subscriptions
+ * are automatically cleaned up.
  *
  * Parameters:
- *   cluster - Pointer to cluster instance (set to NULL on return)
+ *   spot - Pointer to SPOT instance (set to NULL on return)
  */
-SL_EXPORT void SL_CALL slk_pubsub_cluster_destroy(slk_pubsub_cluster_t **cluster);
+SL_EXPORT void SL_CALL slk_spot_destroy(slk_spot_t **spot);
 
-/* Add a node to the cluster
+/* Create a local topic (this node is the publisher)
  *
- * Creates a connection to a remote node and subscribes to existing patterns.
+ * Creates an XPUB socket bound to an inproc endpoint. The topic becomes
+ * locally owned and can be published to directly.
  *
  * Parameters:
- *   cluster  - Cluster instance
- *   endpoint - Remote XPUB endpoint (e.g., "tcp://192.168.1.10:5555")
+ *   spot     - SPOT instance
+ *   topic_id - Topic identifier
+ *
+ * Returns:
+ *   0 on success, -1 on error
+ *   errno = EEXIST if topic already exists
+ */
+SL_EXPORT int SL_CALL slk_spot_topic_create(slk_spot_t *spot, const char *topic_id);
+
+/* Route a topic to a remote endpoint
+ *
+ * Registers a topic as remote and routes it to the specified endpoint.
+ * Establishes connection to remote node if needed.
+ *
+ * Parameters:
+ *   spot     - SPOT instance
+ *   topic_id - Topic identifier
+ *   endpoint - Remote endpoint (e.g., "tcp://192.168.1.100:5555")
+ *
+ * Returns:
+ *   0 on success, -1 on error
+ *   errno = EEXIST if topic already exists
+ *   errno = EHOSTUNREACH if connection fails
+ */
+SL_EXPORT int SL_CALL slk_spot_topic_route(slk_spot_t *spot, const char *topic_id,
+                                            const char *endpoint);
+
+/* Destroy a topic
+ *
+ * Closes the topic's XPUB socket and unregisters it.
+ *
+ * Parameters:
+ *   spot     - SPOT instance
+ *   topic_id - Topic identifier
+ *
+ * Returns:
+ *   0 on success, -1 on error
+ *   errno = ENOENT if topic not found
+ */
+SL_EXPORT int SL_CALL slk_spot_topic_destroy(slk_spot_t *spot, const char *topic_id);
+
+/* Subscribe to a topic
+ *
+ * Connects the XSUB socket to the topic's endpoint and sets up
+ * the subscription filter.
+ *
+ * Parameters:
+ *   spot     - SPOT instance
+ *   topic_id - Topic identifier
+ *
+ * Returns:
+ *   0 on success, -1 on error
+ *   errno = ENOENT if topic not found
+ */
+SL_EXPORT int SL_CALL slk_spot_subscribe(slk_spot_t *spot, const char *topic_id);
+
+/* Subscribe to a pattern (LOCAL topics only)
+ *
+ * Pattern matching uses prefix matching with '*' wildcard.
+ * Example: "player:*" matches "player:123", "player:456"
+ *
+ * Parameters:
+ *   spot    - SPOT instance
+ *   pattern - Pattern string with optional '*' wildcard
+ *
+ * Returns:
+ *   0 on success, -1 on error
+ */
+SL_EXPORT int SL_CALL slk_spot_subscribe_pattern(slk_spot_t *spot, const char *pattern);
+
+/* Unsubscribe from a topic
+ *
+ * Removes the subscription filter from the XSUB socket.
+ *
+ * Parameters:
+ *   spot     - SPOT instance
+ *   topic_id - Topic identifier
+ *
+ * Returns:
+ *   0 on success, -1 on error
+ *   errno = ENOENT if not subscribed
+ */
+SL_EXPORT int SL_CALL slk_spot_unsubscribe(slk_spot_t *spot, const char *topic_id);
+
+/* Publish a message to a topic
+ *
+ * Sends message to topic's XPUB socket.
+ * Message format: [topic_id][data]
+ *
+ * Parameters:
+ *   spot     - SPOT instance
+ *   topic_id - Topic identifier
+ *   data     - Message data pointer
+ *   len      - Message data length
+ *
+ * Returns:
+ *   0 on success, -1 on error
+ *   errno = ENOENT if topic not found
+ *   errno = EAGAIN if HWM reached (non-blocking)
+ */
+SL_EXPORT int SL_CALL slk_spot_publish(slk_spot_t *spot, const char *topic_id,
+                                        const void *data, size_t len);
+
+/* Receive a message (topic and data separated)
+ *
+ * Receives from XSUB socket and separates topic from data.
+ *
+ * Parameters:
+ *   spot           - SPOT instance
+ *   topic          - Output buffer for topic ID
+ *   topic_size     - Size of topic buffer
+ *   topic_len      - Output: actual topic length
+ *   data           - Output buffer for message data
+ *   data_size      - Size of data buffer
+ *   data_len       - Output: actual data length
+ *   flags          - Receive flags (SLK_DONTWAIT)
+ *
+ * Returns:
+ *   0 on success, -1 on error
+ *   errno = EAGAIN if no message available (non-blocking)
+ */
+SL_EXPORT int SL_CALL slk_spot_recv(slk_spot_t *spot, char *topic, size_t topic_size,
+                                     size_t *topic_len, void *data, size_t data_size,
+                                     size_t *data_len, int flags);
+
+/* Bind to an endpoint for server mode (accepting cluster connections)
+ *
+ * Creates a ROUTER socket to accept connections from other SPOT nodes.
+ * Enables this node to respond to QUERY requests from cluster peers.
+ *
+ * Parameters:
+ *   spot     - SPOT instance
+ *   endpoint - Bind endpoint (e.g., "tcp://*:5555")
+ *
+ * Returns:
+ *   0 on success, -1 on error
+ */
+SL_EXPORT int SL_CALL slk_spot_bind(slk_spot_t *spot, const char *endpoint);
+
+/* Add a cluster node
+ *
+ * Establishes connection to a remote SPOT node for cluster synchronization.
+ *
+ * Parameters:
+ *   spot     - SPOT instance
+ *   endpoint - Remote node endpoint (e.g., "tcp://192.168.1.100:5555")
+ *
+ * Returns:
+ *   0 on success, -1 on error
+ *   errno = EEXIST if node already added
+ *   errno = EHOSTUNREACH if connection fails
+ */
+SL_EXPORT int SL_CALL slk_spot_cluster_add(slk_spot_t *spot, const char *endpoint);
+
+/* Remove a cluster node
+ *
+ * Disconnects from a remote SPOT node and removes it from the cluster.
+ *
+ * Parameters:
+ *   spot     - SPOT instance
+ *   endpoint - Remote node endpoint
+ *
+ * Returns:
+ *   0 on success, -1 on error
+ *   errno = ENOENT if node not found
+ */
+SL_EXPORT int SL_CALL slk_spot_cluster_remove(slk_spot_t *spot, const char *endpoint);
+
+/* Synchronize topics with cluster nodes
+ *
+ * Sends QUERY commands to all cluster nodes and updates the local topic
+ * registry with discovered remote topics.
+ *
+ * Parameters:
+ *   spot       - SPOT instance
+ *   timeout_ms - Timeout in milliseconds for sync operation
+ *
+ * Returns:
+ *   0 on success, -1 on error
+ */
+SL_EXPORT int SL_CALL slk_spot_cluster_sync(slk_spot_t *spot, int timeout_ms);
+
+/* List all registered topics
+ *
+ * Returns a dynamically allocated array of topic ID strings.
+ * Caller must free using slk_spot_list_topics_free().
+ *
+ * Parameters:
+ *   spot   - SPOT instance
+ *   topics - Output: array of topic ID strings
+ *   count  - Output: number of topics
  *
  * Returns:
  *   0 on success, -1 on error (sets errno)
  *
  * Example:
- *   slk_pubsub_cluster_add_node(cluster, "tcp://node1.example.com:5555");
- */
-SL_EXPORT int SL_CALL slk_pubsub_cluster_add_node(slk_pubsub_cluster_t *cluster,
-                                                    const char *endpoint);
-
-/* Remove a node from the cluster
- *
- * Disconnects from the node and removes it from routing.
- *
- * Parameters:
- *   cluster  - Cluster instance
- *   endpoint - Remote endpoint to remove
- *
- * Returns:
- *   0 on success, -1 if node not found (sets errno to ENOENT)
- */
-SL_EXPORT int SL_CALL slk_pubsub_cluster_remove_node(slk_pubsub_cluster_t *cluster,
-                                                       const char *endpoint);
-
-/* Publish a message to a channel (with automatic routing)
- *
- * Routes the message to the appropriate node based on CRC16 hash of the
- * channel name. Supports hash tags: {tag}channel hashes "tag" only.
- *
- * Parameters:
- *   cluster - Cluster instance
- *   channel - Channel name (supports {tag} hash tags)
- *   data    - Message data
- *   len     - Message length
- *
- * Returns:
- *   0 on success, -1 on error (sets errno)
- *
- * Example:
- *   slk_pubsub_cluster_publish(cluster, "news.sports", data, len);
- *   slk_pubsub_cluster_publish(cluster, "{user:123}messages", data, len);
- */
-SL_EXPORT int SL_CALL slk_pubsub_cluster_publish(slk_pubsub_cluster_t *cluster,
-                                                   const char *channel,
-                                                   const void *data,
-                                                   size_t len);
-
-/* Subscribe to a channel
- *
- * Routes subscription to the appropriate node based on channel hash.
- *
- * Parameters:
- *   cluster - Cluster instance
- *   channel - Channel name
- *
- * Returns:
- *   0 on success, -1 on error (sets errno)
- *
- * Example:
- *   slk_pubsub_cluster_subscribe(cluster, "news.sports");
- */
-SL_EXPORT int SL_CALL slk_pubsub_cluster_subscribe(slk_pubsub_cluster_t *cluster,
-                                                     const char *channel);
-
-/* Subscribe to a pattern (broadcast to all nodes)
- *
- * Pattern subscriptions are sent to ALL nodes in the cluster since
- * patterns can match channels on any shard.
- *
- * Parameters:
- *   cluster - Cluster instance
- *   pattern - Glob pattern (e.g., "news.*")
- *
- * Returns:
- *   0 on success, -1 on error (sets errno)
- *
- * Example:
- *   slk_pubsub_cluster_psubscribe(cluster, "news.*");
- */
-SL_EXPORT int SL_CALL slk_pubsub_cluster_psubscribe(slk_pubsub_cluster_t *cluster,
-                                                      const char *pattern);
-
-/* Unsubscribe from a channel
- *
- * Parameters:
- *   cluster - Cluster instance
- *   channel - Channel name
- *
- * Returns:
- *   0 on success, -1 on error (sets errno)
- */
-SL_EXPORT int SL_CALL slk_pubsub_cluster_unsubscribe(slk_pubsub_cluster_t *cluster,
-                                                       const char *channel);
-
-/* Unsubscribe from a pattern
- *
- * Parameters:
- *   cluster - Cluster instance
- *   pattern - Glob pattern
- *
- * Returns:
- *   0 on success, -1 on error (sets errno)
- */
-SL_EXPORT int SL_CALL slk_pubsub_cluster_punsubscribe(slk_pubsub_cluster_t *cluster,
-                                                        const char *pattern);
-
-/* Receive a message from any node
- *
- * Receives messages from all connected nodes. This should be called from
- * a dedicated receiver thread.
- *
- * Note: Blocking mode (flags=0) is not fully implemented. Use SLK_DONTWAIT
- * and implement your own polling loop.
- *
- * Parameters:
- *   cluster     - Cluster instance
- *   channel     - Output buffer for channel name
- *   channel_len - Input: buffer size, Output: actual channel length
- *   data        - Output buffer for message data
- *   data_len    - Input: buffer size, Output: actual data length
- *   flags       - Receive flags (0 or SLK_DONTWAIT)
- *
- * Returns:
- *   Number of bytes received, -1 on error (sets errno)
- *   EAGAIN if no messages available (with SLK_DONTWAIT)
- *
- * Example:
- *   char channel[256];
- *   size_t channel_len = sizeof(channel);
- *   uint8_t data[4096];
- *   size_t data_len = sizeof(data);
- *
- *   int rc = slk_pubsub_cluster_recv(cluster, channel, &channel_len,
- *                                     data, &data_len, SLK_DONTWAIT);
- *   if (rc > 0) {
- *       printf("Received %d bytes on channel: %.*s\n",
- *              rc, (int)channel_len, channel);
- *   }
- */
-SL_EXPORT int SL_CALL slk_pubsub_cluster_recv(slk_pubsub_cluster_t *cluster,
-                                                char *channel,
-                                                size_t *channel_len,
-                                                void *data,
-                                                size_t *data_len,
-                                                int flags);
-
-/* Get list of all node endpoints
- *
- * Returns a dynamically allocated array of endpoint strings.
- * Caller must free using slk_pubsub_cluster_nodes_free().
- *
- * Parameters:
- *   cluster - Cluster instance
- *   nodes   - Output: array of endpoint strings
- *   count   - Output: number of nodes
- *
- * Returns:
- *   0 on success, -1 on error (sets errno)
- *
- * Example:
- *   char **nodes;
+ *   char **topics;
  *   size_t count;
- *   slk_pubsub_cluster_nodes(cluster, &nodes, &count);
+ *   slk_spot_list_topics(spot, &topics, &count);
  *   for (size_t i = 0; i < count; i++) {
- *       printf("Node %zu: %s\n", i, nodes[i]);
+ *       printf("Topic %zu: %s\n", i, topics[i]);
  *   }
- *   slk_pubsub_cluster_nodes_free(nodes, count);
+ *   slk_spot_list_topics_free(topics, count);
  */
-SL_EXPORT int SL_CALL slk_pubsub_cluster_nodes(slk_pubsub_cluster_t *cluster,
-                                                 char ***nodes,
-                                                 size_t *count);
+SL_EXPORT int SL_CALL slk_spot_list_topics(slk_spot_t *spot, char ***topics, size_t *count);
 
-/* Free node list returned by slk_pubsub_cluster_nodes
+/* Free topic list returned by slk_spot_list_topics
  *
  * Parameters:
- *   nodes - Array of endpoint strings
- *   count - Number of nodes
+ *   topics - Array of topic ID strings
+ *   count  - Number of topics
  */
-SL_EXPORT void SL_CALL slk_pubsub_cluster_nodes_free(char **nodes, size_t count);
+SL_EXPORT void SL_CALL slk_spot_list_topics_free(char **topics, size_t count);
+
+/* Check if a topic exists
+ *
+ * Parameters:
+ *   spot     - SPOT instance
+ *   topic_id - Topic identifier
+ *
+ * Returns:
+ *   1 if topic exists, 0 if not found, -1 on error
+ */
+SL_EXPORT int SL_CALL slk_spot_topic_exists(slk_spot_t *spot, const char *topic_id);
+
+/* Check if a topic is local
+ *
+ * Parameters:
+ *   spot     - SPOT instance
+ *   topic_id - Topic identifier
+ *
+ * Returns:
+ *   1 if topic is local, 0 if remote or not found, -1 on error
+ */
+SL_EXPORT int SL_CALL slk_spot_topic_is_local(slk_spot_t *spot, const char *topic_id);
+
+/* Set high water marks
+ *
+ * Controls the maximum number of messages queued before blocking
+ * or dropping messages.
+ *
+ * Parameters:
+ *   spot   - SPOT instance
+ *   sndhwm - Send high water mark (messages)
+ *   rcvhwm - Receive high water mark (messages)
+ *
+ * Returns:
+ *   0 on success, -1 on error
+ */
+SL_EXPORT int SL_CALL slk_spot_set_hwm(slk_spot_t *spot, int sndhwm, int rcvhwm);
+
+/* Get pollable file descriptor
+ *
+ * Returns the file descriptor for the receive socket (XSUB).
+ * Can be used with poll/epoll/select.
+ *
+ * Parameters:
+ *   spot - SPOT instance
+ *   fd   - Output: file descriptor
+ *
+ * Returns:
+ *   0 on success, -1 on error
+ */
+SL_EXPORT int SL_CALL slk_spot_fd(slk_spot_t *spot, slk_fd_t *fd);
 
 #ifdef __cplusplus
 }
