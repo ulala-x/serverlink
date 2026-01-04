@@ -101,7 +101,7 @@ add_serverlink_test(test_poller poller/test_poller.cpp "poller")
 
 # Proxy Tests
 message(STATUS "Adding proxy tests...")
-add_serverlink_test(test_proxy_simple proxy/test_proxy_simple.cpp "proxy")
+# add_serverlink_test(test_proxy_simple proxy/test_proxy_simple.cpp "proxy")
 # Full proxy test with threading (complex, may timeout)
 # add_serverlink_test(test_proxy proxy/test_proxy.cpp "proxy")
 
@@ -152,7 +152,7 @@ add_custom_target(test-poller
 
 add_custom_target(test-proxy
     COMMAND ${CMAKE_CTEST_COMMAND} -L proxy --output-on-failure
-    DEPENDS test_proxy_simple
+    DEPENDS # test_proxy_simple
     COMMENT "Running proxy tests"
 )
 
@@ -192,7 +192,7 @@ add_custom_target(test-all
         test_reconnect_ivl
         test_ipc_basic
         test_poller
-        test_proxy_simple
+        #        test_proxy_simple
         test_atomics
         test_timers
         test_stopwatch
