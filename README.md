@@ -1,5 +1,9 @@
 # ServerLink
 
+[![CI](https://github.com/ulalax/serverlink/actions/workflows/ci.yml/badge.svg)](https://github.com/ulalax/serverlink/actions/workflows/ci.yml)
+[![Release](https://github.com/ulalax/serverlink/actions/workflows/release.yml/badge.svg)](https://github.com/ulalax/serverlink/actions/workflows/release.yml)
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
+
 High-performance messaging library with ZeroMQ-compatible API and Redis-style Pub/Sub features.
 
 ## Overview
@@ -9,7 +13,7 @@ ServerLink is a C/C++ messaging library that provides:
 - **ZeroMQ-compatible Socket Patterns**: ROUTER, PUB/SUB, XPUB/XSUB, PAIR
 - **Redis-style Pub/Sub**: Pattern subscriptions, introspection, sharding, clustering
 - **High Performance**: Optimized I/O with epoll/kqueue, zero-copy messaging
-- **Cross-Platform**: Linux, macOS, BSD (Windows planned)
+- **Cross-Platform**: Linux, macOS, Windows, BSD
 - **Simple C API**: Clean interface with C++ compatibility
 
 ## Socket Types
@@ -454,27 +458,34 @@ Example programs are in `examples/pubsub/`:
 ## Test Results
 
 ```
-100% tests passed, 0 tests failed out of 41
+100% tests passed (78 tests total)
 
-Test Categories:
+Core Tests (47):
 - ROUTER socket: 8 tests
 - PUB/SUB socket: 12 tests
-- Transport (tcp/inproc): 3 tests
-- Pattern matching: 2 tests
-- Unit tests: 7 tests
+- Transport (tcp/inproc): 4 tests
+- Unit tests: 11 tests
 - Utilities: 4 tests
-- Integration: 2 tests
-- Poller/Proxy/Monitor: 3 tests
+- Integration: 1 test
+- Poller/Proxy/Monitor: 4 tests
+- Windows specific: 1 test
+
+SPOT PUB/SUB Tests (31):
+- Basic: 11 tests
+- Local: 6 tests
+- Remote: 5 tests
+- Cluster: 4 tests
+- Mixed: 5 tests
 ```
 
 ## Platform Support
 
-| Platform | I/O Backend | Status |
-|----------|-------------|--------|
-| Linux | epoll | ✅ Supported |
-| macOS | kqueue | ✅ Supported |
-| BSD | kqueue | ✅ Supported |
-| Windows | select/IOCP | ⏳ Planned |
+| Platform | Architecture | I/O Backend | Status |
+|----------|--------------|-------------|--------|
+| Linux | x64, ARM64 | epoll | ✅ Supported |
+| macOS | x64, ARM64 | kqueue | ✅ Supported |
+| Windows | x64, ARM64 | select | ✅ Supported |
+| BSD | x64 | kqueue | ✅ Supported |
 
 ## License
 
