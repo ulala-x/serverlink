@@ -16,6 +16,7 @@
 #include <serverlink/serverlink.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>  // For rand()
 #include <time.h>
 #include <assert.h>
 
