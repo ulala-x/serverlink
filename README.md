@@ -2,8 +2,8 @@
 
 # ServerLink
 
-[![CI](https://github.com/ulalax/serverlink/actions/workflows/ci.yml/badge.svg)](https://github.com/ulalax/serverlink/actions/workflows/ci.yml)
-[![Release](https://github.com/ulalax/serverlink/actions/workflows/release.yml/badge.svg)](https://github.com/ulalax/serverlink/actions/workflows/release.yml)
+[![CI](https://github.com/ulala-x/serverlink/actions/workflows/ci.yml/badge.svg)](https://github.com/ulala-x/serverlink/actions/workflows/ci.yml)
+[![Release](https://github.com/ulala-x/serverlink/actions/workflows/release.yml/badge.svg)](https://github.com/ulala-x/serverlink/actions/workflows/release.yml)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 
 High-performance messaging library with ZeroMQ-compatible API and location-transparent Pub/Sub system.
