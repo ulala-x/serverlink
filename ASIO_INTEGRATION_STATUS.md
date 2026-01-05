@@ -27,7 +27,7 @@
 
 ### 📊 빌드 및 테스트 결과
 *   **빌드:** `build-asio` 디렉토리에서 Windows(MSVC) 기준 **성공**.
-*   **기본 기능:** `test_router_basic` 테스트에서 컨텍스트와 소켓 생성 단계까지 정상 작동 확인.
+*   **기본 기능:** `test_router_create` 테스트에서 컨텍스트와 소켓 생성 단계까지 정상 작동 확인.
 *   **현안:** `test_router_bind` 이후 또는 `ctx_destroy` 시점에서 프로세스가 무한 대기(Hang)하는 현상 발생.
 
 ### 🔍 병목 지점 및 원인 추정
@@ -51,8 +51,3 @@ Asio 스트림 모델 위에서 기존 `ypipe`를 활용한 Inproc 통신의 초
 빌드 성공을 확인했으므로, 이제 사용되지 않는 구식 플랫폼 코드들을 정리합니다.
 *   `wepoll.cpp`, `epoll.cpp`, `kqueue.cpp`, `select.cpp` 삭제.
 *   `CMakeLists.txt`에서 불필요한 플랫폼 분기 제거.
-
-### 4단계: Phase 5 - WebSocket 및 SSL 확장
-안정화된 Asio 인프라 위에 신규 기능을 추가합니다.
-*   Boost.Beast를 활용한 WebSocket 전송 계층 추가.
-*   OpenSSL 기반의 보안 통신(SSL/TLS) 기능 통합.
