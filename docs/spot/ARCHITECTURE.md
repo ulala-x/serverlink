@@ -459,37 +459,37 @@ Subscription Message (sent by XSUB to XPUB):
 
 SPOT uses a single shared XPUB/XSUB socket pair per instance:
 
-**장점:**
-- 토픽 수와 관계없이 일정한 소켓 수
-- 간단한 리소스 관리
-- ZeroMQ의 효율적인 토픽 필터링 (trie 기반)
+**Advantages:**
+- Constant socket count regardless of topic count
+- Simple resource management
+- Efficient topic filtering using ZeroMQ's trie-based matching
 
-**고려사항:**
-- 모든 메시지가 같은 소켓을 통과 (직렬화 지점)
-- 고처리량 시나리오에서는 다중 인스턴스 고려
+**Considerations:**
+- All messages pass through the same socket (serialization point)
+- Consider multiple instances for high-throughput scenarios
 
 ### Pattern Subscription (Prefix Matching)
 
-XPUB/XSUB는 prefix 매칭을 사용합니다:
+XPUB/XSUB uses prefix matching:
 
 ```
-"events:*" 패턴 → "events:" prefix로 변환
+"events:*" pattern → converted to "events:" prefix
 ```
 
-**매칭 예시:**
-- `events:` prefix는 `events:login`, `events:logout`, `events:user:created` 모두 매칭
-- `game:player:` prefix는 `game:player:spawn`, `game:player:death` 매칭
+**Matching Examples:**
+- `events:` prefix matches `events:login`, `events:logout`, `events:user:created`
+- `game:player:` prefix matches `game:player:spawn`, `game:player:death`
 
 ### Cluster Connection Management
 
-`cluster_add()`는 XSUB 소켓에 새 endpoint를 연결하고, `cluster_remove()`는 `term_endpoint()`를 통해 연결을 종료합니다:
+`cluster_add()` connects a new endpoint to the XSUB socket, and `cluster_remove()` terminates the connection via `term_endpoint()`:
 
 ```cpp
-// cluster_add(): XSUB에 새 endpoint 연결
+// cluster_add(): Connect new endpoint to XSUB
 _recv_socket->connect(endpoint.c_str());
 _connected_endpoints.insert(endpoint);
 
-// cluster_remove(): endpoint 연결 해제
+// cluster_remove(): Disconnect endpoint
 _recv_socket->term_endpoint(endpoint.c_str());
 _connected_endpoints.erase(endpoint);
 ```

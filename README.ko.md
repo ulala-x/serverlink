@@ -6,17 +6,17 @@
 [![Release](https://github.com/ulalax/serverlink/actions/workflows/release.yml/badge.svg)](https://github.com/ulalax/serverlink/actions/workflows/release.yml)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 
-High-performance messaging library with ZeroMQ-compatible API and location-transparent Pub/Sub system.
+고성능 메시징 라이브러리 - ZeroMQ 호환 API와 위치 투명 Pub/Sub 시스템 제공
 
-## Features
+## 주요 특징
 
-- **ZeroMQ-compatible Socket Patterns**: ROUTER, PUB/SUB, XPUB/XSUB, PAIR
-- **SPOT PUB/SUB**: Location-transparent topic-based messaging system
-- **High Performance**: Optimized I/O with epoll/kqueue/select, zero-copy messaging
-- **Cross-platform**: Linux, macOS, Windows, BSD support
-- **C/C++ API**: Clean C API with C++ compatibility
+- **ZeroMQ 호환 Socket Pattern**: ROUTER, PUB/SUB, XPUB/XSUB, PAIR
+- **SPOT PUB/SUB**: 위치 투명 Topic 기반 메시징 시스템
+- **고성능**: epoll/kqueue/select 기반 최적화된 I/O, Zero-copy 메시징
+- **Cross-platform**: Linux, macOS, Windows, BSD 지원
+- **C/C++ API**: 간결한 C API와 C++ 호환성
 
-## Quick Start
+## 빠른 시작
 
 ### Build
 
@@ -27,17 +27,17 @@ cd serverlink
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 
-# Run tests
+# 테스트 실행
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-### Basic Example
+### 기본 사용 예제
 
 ```c
 #include <serverlink/serverlink.h>
 
 int main() {
-    // Create context
+    // Context 생성
     slk_ctx_t *ctx = slk_ctx_new();
 
     // Publisher
@@ -48,7 +48,7 @@ int main() {
     // Subscriber
     slk_socket_t *sub = slk_socket(ctx, SLK_SUB);
     slk_connect(sub, "tcp://localhost:5555");
-    slk_setsockopt(sub, SLK_SUBSCRIBE, "", 0);  // Subscribe to all messages
+    slk_setsockopt(sub, SLK_SUBSCRIBE, "", 0);  // 모든 메시지 구독
 
     char buf[256];
     slk_recv(sub, buf, sizeof(buf), 0);
@@ -65,43 +65,43 @@ int main() {
 
 ## Socket Types
 
-| Type | Description |
-|------|-------------|
-| `SLK_ROUTER` | Server-side routing socket with client identity |
-| `SLK_PUB` | Publisher socket (fan-out) |
-| `SLK_SUB` | Subscriber socket with topic filtering |
-| `SLK_XPUB` | Extended publisher with subscription visibility |
-| `SLK_XSUB` | Extended subscriber with manual subscription control |
-| `SLK_PAIR` | Exclusive 1:1 bidirectional socket |
+| Type | 설명 |
+|------|------|
+| `SLK_ROUTER` | Client 식별 기반 Server 측 Routing Socket |
+| `SLK_PUB` | Publisher Socket (fan-out) |
+| `SLK_SUB` | Topic Filtering Subscriber Socket |
+| `SLK_XPUB` | 구독 가시성이 있는 Extended Publisher |
+| `SLK_XSUB` | 수동 구독 제어가 있는 Extended Subscriber |
+| `SLK_PAIR` | 1:1 양방향 전용 Socket |
 
-## Transport Protocols
+## Transport Protocol
 
-| Protocol | Description | Latency |
-|----------|-------------|---------|
-| `tcp://` | TCP/IP networking | 10-100 µs |
-| `inproc://` | In-process (inter-thread) | < 1 µs |
+| Protocol | 설명 | Latency |
+|----------|------|---------|
+| `tcp://` | TCP/IP Networking | 10-100 µs |
+| `inproc://` | Process 내 (Thread 간) | < 1 µs |
 
 ---
 
 ## SPOT PUB/SUB
 
-**SPOT** (Scalable Partitioned Ordered Topics) - Location-transparent topic-based messaging system
+**SPOT** (Scalable Partitioned Ordered Topics) - 위치 투명 Topic 기반 메시징 시스템
 
-### Features
+### 특징
 
-- **Location Transparency**: Subscribe/publish regardless of topic location
-- **LOCAL Topics**: Zero-copy via inproc (nanosecond latency)
-- **REMOTE Topics**: Automatic routing via TCP
-- **Pattern Subscription**: Prefix matching (`events:*` → `events:`)
-- **Cluster Sync**: Automatic topic discovery across nodes
+- **Location Transparency**: Topic 위치와 관계없이 Subscribe/Publish
+- **LOCAL Topic**: inproc를 통한 Zero-copy (나노초 Latency)
+- **REMOTE Topic**: TCP를 통한 자동 Routing
+- **Pattern Subscription**: Prefix Matching (`events:*` → `events:`)
+- **Cluster Sync**: Node 간 자동 Topic 발견
 
-### Basic Usage
+### 기본 사용
 
 ```c
 slk_ctx_t *ctx = slk_ctx_new();
 slk_spot_t *spot = slk_spot_new(ctx);
 
-// Create LOCAL topic
+// LOCAL Topic 생성
 slk_spot_topic_create(spot, "game:player");
 
 // Subscribe
@@ -120,7 +120,7 @@ slk_spot_destroy(&spot);
 slk_ctx_destroy(ctx);
 ```
 
-### Cluster Configuration
+### Cluster 설정
 
 ```c
 // Server Node
@@ -135,25 +135,25 @@ slk_spot_subscribe(spot, "sensor:temp");
 ### Pattern Subscription
 
 ```c
-// Subscribe to all topics starting with "events:" prefix
+// "events:" Prefix로 시작하는 모든 Topic 구독
 slk_spot_subscribe_pattern(spot, "events:*");
 
-// Matches: events:login, events:logout, events:user:created
+// Matching: events:login, events:logout, events:user:created
 ```
 
-**Detailed Documentation**: [docs/spot/](docs/spot/)
+**상세 문서**: [docs/spot/](docs/spot/)
 
 ---
 
 ## ROUTER Socket
 
-Server-side routing with client identity:
+Client 식별 기반 Server 측 Routing:
 
 ```c
 slk_socket_t *router = slk_socket(ctx, SLK_ROUTER);
 slk_bind(router, "tcp://*:5555");
 
-// Enable connection notifications
+// 연결 알림 활성화
 int notify = 1;
 slk_setsockopt(router, SLK_ROUTER_NOTIFY, &notify, sizeof(notify));
 
@@ -163,23 +163,23 @@ slk_recv(router, id, sizeof(id), 0);
 slk_recv(router, empty, sizeof(empty), 0);
 slk_recv(router, msg, sizeof(msg), 0);
 
-// Reply to specific client
+// 특정 Client에 응답
 slk_send(router, id, id_len, SLK_SNDMORE);
 slk_send(router, "", 0, SLK_SNDMORE);
 slk_send(router, "response", 8, 0);
 ```
 
 **Options:**
-- `SLK_ROUTER_MANDATORY` - Fail on send to disconnected peer
-- `SLK_ROUTER_HANDOVER` - Handover to new peer with same ID
-- `SLK_ROUTER_NOTIFY` - Enable connect/disconnect events
-- `SLK_CONNECT_ROUTING_ID` - Set routing ID on connect
+- `SLK_ROUTER_MANDATORY` - 연결되지 않은 Peer에 전송 시 실패
+- `SLK_ROUTER_HANDOVER` - 동일 ID의 새 Peer로 전환
+- `SLK_ROUTER_NOTIFY` - 연결/해제 Event 활성화
+- `SLK_CONNECT_ROUTING_ID` - 연결 시 Routing ID 설정
 
 ---
 
 ## PUB/SUB
 
-### Basic Pub/Sub
+### 기본 Pub/Sub
 
 ```c
 // Publisher
@@ -190,7 +190,7 @@ slk_send(pub, "news.sports Hello!", 18, 0);
 // Subscriber
 slk_socket_t *sub = slk_socket(ctx, SLK_SUB);
 slk_connect(sub, "tcp://localhost:5556");
-slk_setsockopt(sub, SLK_SUBSCRIBE, "news.", 5);  // Topic filter
+slk_setsockopt(sub, SLK_SUBSCRIBE, "news.", 5);  // Topic Filter
 
 char buf[256];
 slk_recv(sub, buf, sizeof(buf), 0);
@@ -204,29 +204,29 @@ slk_setsockopt(sub, SLK_PSUBSCRIBE, "user.?", 6);       // user.1, user.a
 slk_setsockopt(sub, SLK_PSUBSCRIBE, "alert.[0-9]", 11); // alert.0 ~ alert.9
 ```
 
-| Pattern | Description | Example |
-|---------|-------------|---------|
-| `*` | Any string | `news.*` → `news.sports` |
-| `?` | Single character | `user.?` → `user.1` |
-| `[abc]` | Character set | `[abc]def` → `adef` |
-| `[a-z]` | Character range | `id.[0-9]` → `id.5` |
+| Pattern | 설명 | 예시 |
+|---------|------|------|
+| `*` | 임의 문자열 | `news.*` → `news.sports` |
+| `?` | 단일 문자 | `user.?` → `user.1` |
+| `[abc]` | 문자 집합 | `[abc]def` → `adef` |
+| `[a-z]` | 문자 범위 | `id.[0-9]` → `id.5` |
 
 ### XPUB/XSUB (Extended Pub/Sub)
 
 ```c
-// XPUB - Receive subscription messages
+// XPUB - 구독 메시지 확인
 slk_socket_t *xpub = slk_socket(ctx, SLK_XPUB);
 int verbose = 1;
 slk_setsockopt(xpub, SLK_XPUB_VERBOSE, &verbose, sizeof(verbose));
 slk_bind(xpub, "tcp://*:5557");
 
-// Receive subscription notification
+// 구독 알림 Receive
 char sub_msg[256];
 slk_recv(xpub, sub_msg, sizeof(sub_msg), 0);
 // sub_msg[0] = 1 (subscribe) or 0 (unsubscribe)
 // sub_msg[1:] = topic
 
-// XSUB - Manual subscription management
+// XSUB - 수동 구독 관리
 slk_socket_t *xsub = slk_socket(ctx, SLK_XSUB);
 slk_connect(xsub, "tcp://localhost:5557");
 char subscribe[] = "\x01news.";  // 0x01 + topic
@@ -237,7 +237,7 @@ slk_send(xsub, subscribe, sizeof(subscribe) - 1, 0);
 
 ## Poller API
 
-Event-driven I/O:
+Event 기반 I/O:
 
 ```c
 void *poller = slk_poller_new();
@@ -248,7 +248,7 @@ slk_poller_add(poller, socket2, user_data2, SLK_POLLIN | SLK_POLLOUT);
 slk_poller_event_t event;
 while (slk_poller_wait(poller, &event, 1000) == 0) {
     if (event.events & SLK_POLLIN) {
-        // Ready to read
+        // 읽기 준비 완료
     }
 }
 
@@ -260,28 +260,28 @@ slk_poller_destroy(&poller);
 ## Socket Options Reference
 
 ### Buffer Options
-| Option | Type | Description |
-|--------|------|-------------|
-| `SLK_SNDHWM` | int | Send high water mark (message count) |
-| `SLK_RCVHWM` | int | Receive high water mark (message count) |
-| `SLK_SNDBUF` | int | Send buffer size (bytes) |
-| `SLK_RCVBUF` | int | Receive buffer size (bytes) |
+| Option | Type | 설명 |
+|--------|------|------|
+| `SLK_SNDHWM` | int | Send High Water Mark (메시지 수) |
+| `SLK_RCVHWM` | int | Receive High Water Mark (메시지 수) |
+| `SLK_SNDBUF` | int | Send Buffer Size (bytes) |
+| `SLK_RCVBUF` | int | Receive Buffer Size (bytes) |
 
 ### Connection Options
-| Option | Type | Description |
-|--------|------|-------------|
-| `SLK_LINGER` | int | Linger time on close (ms) |
-| `SLK_RECONNECT_IVL` | int | Reconnection interval (ms) |
-| `SLK_RECONNECT_IVL_MAX` | int | Maximum reconnection interval (ms) |
-| `SLK_BACKLOG` | int | Listen backlog size |
+| Option | Type | 설명 |
+|--------|------|------|
+| `SLK_LINGER` | int | 종료 시 대기 시간 (ms) |
+| `SLK_RECONNECT_IVL` | int | 재연결 간격 (ms) |
+| `SLK_RECONNECT_IVL_MAX` | int | 최대 재연결 간격 (ms) |
+| `SLK_BACKLOG` | int | listen Backlog 크기 |
 
 ### TCP Options
-| Option | Type | Description |
-|--------|------|-------------|
-| `SLK_TCP_KEEPALIVE` | int | Enable TCP keepalive |
-| `SLK_TCP_KEEPALIVE_IDLE` | int | Keepalive idle time (seconds) |
-| `SLK_TCP_KEEPALIVE_INTVL` | int | Keepalive interval (seconds) |
-| `SLK_TCP_KEEPALIVE_CNT` | int | Keepalive probe count |
+| Option | Type | 설명 |
+|--------|------|------|
+| `SLK_TCP_KEEPALIVE` | int | TCP Keepalive 활성화 |
+| `SLK_TCP_KEEPALIVE_IDLE` | int | Keepalive 유휴 시간 (초) |
+| `SLK_TCP_KEEPALIVE_INTVL` | int | Keepalive 간격 (초) |
+| `SLK_TCP_KEEPALIVE_CNT` | int | Keepalive Probe 횟수 |
 
 ---
 
@@ -299,9 +299,9 @@ slk_poller_destroy(&poller);
 ## Test Results
 
 ```
-78 tests passed
+78개 테스트 전체 통과
 
-Core (47):
+Core (47개):
 ├── ROUTER: 8
 ├── PUB/SUB: 12
 ├── Transport: 4
@@ -311,7 +311,7 @@ Core (47):
 ├── Poller/Proxy/Monitor: 4
 └── Windows: 1
 
-SPOT (31):
+SPOT (31개):
 ├── Basic: 11
 ├── Local: 6
 ├── Remote: 5
@@ -323,36 +323,36 @@ SPOT (31):
 
 ## Build Options
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `BUILD_SHARED_LIBS` | ON | Build shared library |
-| `BUILD_TESTS` | ON | Build test suite |
-| `BUILD_EXAMPLES` | ON | Build example programs |
-| `CMAKE_BUILD_TYPE` | Debug | Build type (Debug/Release) |
+| Option | Default | 설명 |
+|--------|---------|------|
+| `BUILD_SHARED_LIBS` | ON | Shared Library Build |
+| `BUILD_TESTS` | ON | Test Suite Build |
+| `BUILD_EXAMPLES` | ON | Example Program Build |
+| `CMAKE_BUILD_TYPE` | Debug | Build Type (Debug/Release) |
 
 ## Requirements
 
 - CMake 3.14+
-- C++20 compiler (GCC 10+, Clang 10+, MSVC 2019+)
-- POSIX threads (Linux/macOS) or Win32 threads (Windows)
+- C++20 Compiler (GCC 10+, Clang 10+, MSVC 2019+)
+- POSIX Threads (Linux/macOS) 또는 Win32 Threads (Windows)
 
 ---
 
 ## Documentation
 
 - **SPOT PUB/SUB**: [docs/spot/](docs/spot/)
-  - [API Reference](docs/spot/API.md)
-  - [Architecture](docs/spot/ARCHITECTURE.md)
-  - [Quick Start](docs/spot/QUICK_START.md)
-  - [Clustering Guide](docs/spot/CLUSTERING.md)
+  - [API Reference](docs/spot/API.ko.md)
+  - [Architecture](docs/spot/ARCHITECTURE.ko.md)
+  - [Quick Start](docs/spot/QUICK_START.ko.md)
+  - [Clustering Guide](docs/spot/CLUSTERING.ko.md)
 
 ---
 
 ## License
 
-Mozilla Public License 2.0 (MPL-2.0). See [LICENSE](LICENSE).
+Mozilla Public License 2.0 (MPL-2.0). [LICENSE](LICENSE) 참조.
 
 ## Acknowledgments
 
-- [ZeroMQ](https://zeromq.org/) - Socket pattern inspiration
-- [Redis](https://redis.io/) - Pub/Sub feature inspiration
+- [ZeroMQ](https://zeromq.org/) - Socket Pattern 영감
+- [Redis](https://redis.io/) - Pub/Sub 기능 영감
