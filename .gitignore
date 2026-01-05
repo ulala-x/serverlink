@@ -31,3 +31,22 @@ compile_commands.json
 # Test outputs
 Testing/
 *.log
+
+# Other build directories
+build-*/
+build-asio/
+build-iocp/
+build-test/
+build-x64/
+build-asio-verify/
+
+# Visual Studio files
+*.sln
+*.vcxproj
+*.vcxproj.filters
+
+# Build/test outputs
+*output.txt
+*error.txt
+*results.txt
+nul

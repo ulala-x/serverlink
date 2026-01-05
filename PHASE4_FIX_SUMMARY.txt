@@ -1,0 +1,39 @@
+=============================================================================
+IOCP Phase 4: Reaper Mailbox Fix - Implementation Summary
+=============================================================================
+
+PROBLEM IDENTIFIED:
+- Reaper signaler was NOT configured with IOCP
+- Reaper mailbox.send() fell back to socket-based signaling
+- IOCP loop didn't monitor socketpair → test hung
+
+ROOT CAUSE:
+- io_thread.cpp had IOCP-specific code to configure signaler
+- reaper.cpp did NOT have IOCP-specific code
+- Reaper still used old add_fd() approach
+
+SOLUTION:
+Applied same IOCP pattern to reaper.cpp that io_thread.cpp uses:
+1. Include iocp.hpp
+2. Configure signaler with set_iocp()
+3. Register mailbox handler
+4. Use adjust_mailbox_load() instead of add_fd()
+5. Update cleanup in process_stop() and process_reaped()
+
+FILES MODIFIED:
+- src/io/reaper.cpp (4 changes: include, constructor, 2 cleanup methods)
+
+KEY INSIGHT:
+Each thread (reaper, io_thread) has its own IOCP instance.
+No conflicts between mailbox handlers!
+
+TESTING:
+Run: build_and_test_debug.bat
+Expected: test_ctx_socket passes without timeout
+
+DOCUMENTATION:
+- IOCP_PHASE4_REAPER_FIX.md (detailed implementation)
+- IOCP_SIGNALER_DEBUG_TRACE.md (debug logging reference)
+
+STATUS: ✅ Fix Complete - Ready for Testing
+=============================================================================

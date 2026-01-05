@@ -93,7 +93,14 @@ void slk::tcp_connecter_t::out_event ()
         return;
     }
 
+#ifdef SL_USE_ASIO
+    // Phase 2: Asio integration
+    // TODO: Create tcp_stream and pass to modified create_engine
+    // For now, fallback to traditional fd-based approach
     create_engine (fd, get_socket_name<tcp_address_t> (fd, socket_end_local));
+#else
+    create_engine (fd, get_socket_name<tcp_address_t> (fd, socket_end_local));
+#endif
 }
 
 void slk::tcp_connecter_t::timer_event (int id_)

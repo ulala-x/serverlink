@@ -41,6 +41,19 @@ add_serverlink_test(test_error_handling unit/test_error_handling.cpp "unit")
 add_serverlink_test(test_span_api unit/test_span_api.cpp "unit")
 add_serverlink_test(test_format_helpers unit/test_format_helpers.cpp "unit")
 
+# Asio Integration Test (only if SL_USE_ASIO is enabled)
+if(SL_USE_ASIO)
+    message(STATUS "Adding Asio integration test...")
+    add_serverlink_test(test_asio_integration unit/test_asio_integration.cpp "unit;asio")
+    target_compile_definitions(test_asio_integration PRIVATE SL_USE_ASIO)
+    target_include_directories(test_asio_integration PRIVATE ${asio_SOURCE_DIR}/asio/include)
+
+    message(STATUS "Adding TCP stream test...")
+    add_serverlink_test(test_tcp_stream unit/test_tcp_stream.cpp "unit;asio")
+    target_compile_definitions(test_tcp_stream PRIVATE SL_USE_ASIO)
+    target_include_directories(test_tcp_stream PRIVATE ${asio_SOURCE_DIR}/asio/include)
+endif()
+
 # Utility Tests
 message(STATUS "Adding utility tests...")
 add_serverlink_test(test_atomics util/test_atomics.cpp "util")

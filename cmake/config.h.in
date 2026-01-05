@@ -42,6 +42,9 @@
 /* Performance monitoring */
 #cmakedefine SL_ENABLE_MONITORING
 
+/* Asio integration */
+#cmakedefine SL_USE_ASIO
+
 /* Determine the best I/O poller to use */
 /* Priority: wepoll (Windows) > epoll (Linux) > kqueue (BSD/macOS) > select (fallback) */
 #if SL_HAVE_WEPOLL

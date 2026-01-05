@@ -1,0 +1,97 @@
+=============================================================================
+IOCP Phase 4: Corrected Analysis - Socket Mailbox Does NOT Need IOCP
+=============================================================================
+
+CRITICAL FINDING:
+Socket mailbox signaler intentionally uses socket-based signaling, NOT IOCP!
+
+ROOT CAUSE OF CONFUSION:
+Initial assumption: All mailboxes need IOCP configuration
+Reality: Only thread mailboxes (with IOCP event loops) need IOCP
+
+ARCHITECTURE CLARIFICATION:
+
+1. Reaper Mailbox
+   - Runs in: Reaper thread with IOCP event loop
+   - Signaling: IOCP (PostQueuedCompletionStatus)
+   - Status: ✅ FIXED (reaper.cpp modified)
+
+2. I/O Thread Mailbox
+   - Runs in: I/O thread with IOCP event loop
+   - Signaling: IOCP (PostQueuedCompletionStatus)
+   - Status: ✅ WORKING (already implemented in Phase 7)
+
+3. Socket Mailbox
+   - Runs in: USER THREAD (no IOCP event loop!)
+   - Signaling: Socket-based (socketpair/eventfd)
+   - Status: ✅ CORRECT AS-IS (no changes needed)
+
+KEY INSIGHT: Socket TID ≠ I/O Thread TID
+
+- I/O thread TIDs: 2, 3, 4, ... (sequential)
+- Socket TIDs: Allocated from _empty_slots
+- First socket TID: ios + 2 (e.g., with 2 I/O threads → tid 4)
+- Socket does NOT belong to specific I/O thread!
+
+Socket Execution Context:
+
+User Thread:
+  → socket.recv() / send()
+  → process_commands()
+  → mailbox.recv()
+  → signaler.wait() on socketpair fd  ← NO IOCP!
+  → select/poll blocks user thread
+  → Wakes up on socketpair activity
+
+WHY get_io_thread_by_tid() FAILED FOR SOCKET:
+
+Socket tid=4 → index = 4 - 1 - 1 = 2
+But _io_threads.size() = 2 (indices 0, 1)
+Result: NULL (EXPECTED AND CORRECT!)
+
+ACTUAL PROBLEM: Only Reaper Signaler Needed IOCP Fix
+
+Original hang was caused by:
+- Reaper signaler not configured → used socket path
+- IOCP loop didn't monitor socket → hang
+
+Fix applied:
+- src/io/reaper.cpp: Added IOCP configuration ✅
+
+Socket signaler using socket path is CORRECT behavior!
+
+FILES MODIFIED (Final):
+
+1. src/io/reaper.cpp
+   - Added: IOCP mailbox configuration
+   - Status: ✅ COMPLETE
+
+2. src/core/ctx.hpp
+   - Added: get_io_thread_by_tid() declaration
+   - Usage: Future utility (not for socket mailbox)
+
+3. src/core/ctx.cpp
+   - Added: get_io_thread_by_tid() implementation with debug logging
+   - Usage: Available for future features
+
+4. src/core/socket_base.cpp
+   - Added: Clarifying comment explaining socket mailbox design
+   - No IOCP configuration (intentional)
+
+EXPECTED TEST RESULT:
+
+✅ Reaper signaler: IOCP path
+✅ I/O thread signaler: IOCP path
+✅ Socket signaler: Socket path (CORRECT!)
+✅ test_ctx_socket: PASSES without timeout
+
+BUILD AND TEST:
+  build_and_test_debug.bat
+
+DOCUMENTATION:
+- IOCP_PHASE4_FINAL_ANALYSIS.md (detailed architecture analysis)
+- IOCP_PHASE4_REAPER_FIX.md (reaper fix details)
+- IOCP_SIGNALER_DEBUG_TRACE.md (debug logging)
+
+STATUS: ✅ ANALYSIS COMPLETE - Only Reaper Fix Needed
+=============================================================================

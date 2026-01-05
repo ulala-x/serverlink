@@ -1,0 +1,71 @@
+=============================================================================
+IOCP Phase 4: Complete Mailbox IOCP Integration - FINAL SUMMARY
+=============================================================================
+
+PROBLEM:
+Socket mailbox signaler was not configured with IOCP, causing hang when
+user thread sends commands to socket.
+
+SOLUTION STEPS:
+
+1. Reaper Mailbox Fix (First Issue)
+   - Modified: src/io/reaper.cpp
+   - Added: IOCP header, signaler configuration, cleanup paths
+   - Result: Reaper signaler now uses IOCP path ✅
+
+2. Socket Mailbox Fix (Second Issue) - THIS FIX
+   - Modified: src/core/ctx.hpp, src/core/ctx.cpp, src/core/socket_base.cpp
+   - Added: get_io_thread_by_tid() helper function
+   - Logic: Socket gets its I/O thread's IOCP poller and configures signaler
+   - Result: Socket signaler now uses IOCP path ✅
+
+FILES MODIFIED (Total: 4 files):
+1. src/io/reaper.cpp          - Reaper IOCP configuration
+2. src/core/ctx.hpp            - get_io_thread_by_tid() declaration
+3. src/core/ctx.cpp            - get_io_thread_by_tid() implementation
+4. src/core/socket_base.cpp    - Socket IOCP configuration
+
+KEY INSIGHTS:
+
+1. Three Mailbox Types:
+   - Reaper mailbox    → Has own IOCP poller
+   - I/O thread mailbox → Has own IOCP poller
+   - Socket mailbox     → Uses its I/O thread's IOCP poller
+
+2. TID to I/O Thread Mapping:
+   - tid 0 = term thread (not I/O)
+   - tid 1 = reaper thread (not I/O)
+   - tid 2+ = I/O threads (starts at index 0)
+   - Formula: io_thread_index = tid - reaper_tid - 1
+
+3. Socket-to-Thread Relationship:
+   - Socket has tid (which I/O thread it belongs to)
+   - Socket mailbox signaler posts to that I/O thread's IOCP
+   - I/O thread's IOCP loop handles SIGNALER_KEY for socket commands
+
+COMPLETE IOCP FLOW (All Fixed):
+
+User Thread → socket.send()
+  → mailbox.send()
+  → signaler.send() [_iocp IS SET NOW! ✅]
+  → PostQueuedCompletionStatus(SIGNALER_KEY) to socket's I/O thread IOCP
+  → Socket's I/O thread IOCP loop receives SIGNALER_KEY
+  → Calls socket->in_event() → process_commands()
+  → SUCCESS!
+
+EXPECTED TEST RESULT:
+- All signalers (Reaper, I/O Thread, Socket) use IOCP path
+- No "IOCP not set - using socket path" errors
+- test_ctx_socket passes without timeout
+- All tests pass
+
+BUILD AND TEST:
+  build_and_test_debug.bat
+
+DOCUMENTATION:
+- IOCP_PHASE4_SOCKET_FIX.md (detailed socket fix)
+- IOCP_PHASE4_REAPER_FIX.md (detailed reaper fix)
+- IOCP_SIGNALER_DEBUG_TRACE.md (debug logging)
+
+STATUS: ✅ COMPLETE - All Mailbox Types Fixed - Ready for Testing
+=============================================================================

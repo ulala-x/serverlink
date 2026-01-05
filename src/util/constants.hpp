@@ -75,6 +75,7 @@ constexpr int SL_INVERT_MATCHING = 60;
 constexpr int SL_PAIR = 0;
 constexpr int SL_PUB = 1;
 constexpr int SL_SUB = 2;
+constexpr int SL_DEALER = 5;
 constexpr int SL_ROUTER = 6;
 constexpr int SL_XPUB = 9;
 constexpr int SL_XSUB = 10;

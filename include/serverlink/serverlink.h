@@ -31,6 +31,7 @@ SL_EXPORT void SL_CALL slk_version(int *major, int *minor, int *patch);
 #define SLK_PAIR   0  /* Exclusive pair socket (1:1 connection) */
 #define SLK_PUB    1  /* Publisher socket */
 #define SLK_SUB    2  /* Subscriber socket */
+#define SLK_DEALER 5  /* Client-side routing socket */
 #define SLK_ROUTER 6  /* Server-side routing socket */
 #define SLK_XPUB   9  /* Publisher socket with subscription visibility */
 #define SLK_XSUB   10 /* Subscriber socket with manual subscription management */

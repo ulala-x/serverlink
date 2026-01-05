@@ -65,8 +65,15 @@ void slk::tcp_listener_t::in_event ()
         return;
     }
 
+#ifdef SL_USE_ASIO
+    // Phase 2: Asio integration
+    // TODO: Create tcp_stream and pass to modified create_engine
+    // For now, fallback to traditional fd-based approach
+    create_engine (fd);
+#else
     //  Create the engine object for this connection.
     create_engine (fd);
+#endif
 }
 
 std::string

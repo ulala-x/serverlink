@@ -11,6 +11,7 @@ option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 option(BUILD_TESTS "Build test suite" ON)
 option(BUILD_EXAMPLES "Build examples" ON)
 option(SL_ENABLE_MONITORING "Enable performance monitoring features" OFF)
+option(SL_USE_ASIO "Use Boost.Asio for I/O" ON)
 
 # C++ standard - C++20 for modern features (concepts, ranges, span, etc.)
 set(CMAKE_CXX_STANDARD 20)
@@ -27,6 +28,17 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Platform detection and configuration
 include(cmake/platform.cmake)
+
+# Boost.Asio integration
+if(SL_USE_ASIO)
+    include(FetchContent)
+    FetchContent_Declare(
+        asio
+        GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
+        GIT_TAG asio-1-28-0
+    )
+    FetchContent_MakeAvailable(asio)
+endif()
 
 # Generate configuration header
 configure_file(
@@ -152,6 +164,14 @@ if(SL_HAVE_IPC)
     )
 endif()
 
+# Asio integration sources (header-only)
+if(SL_USE_ASIO)
+    list(APPEND SERVERLINK_SOURCES
+        src/io/asio/asio_context.hpp
+        src/io/asio/tcp_stream.hpp
+    )
+endif()
+
 # For now, create an interface library since we have no source files yet
 # This will be changed to add_library once we add actual source files
 if(SERVERLINK_SOURCES)
@@ -170,6 +190,25 @@ if(SERVERLINK_SOURCES)
         PRIVATE
             ${PLATFORM_LIBS}
     )
+
+    # Boost.Asio configuration
+    if(SL_USE_ASIO)
+        target_compile_definitions(serverlink PRIVATE
+            SL_USE_ASIO
+            ASIO_STANDALONE
+            ASIO_HEADER_ONLY
+            ASIO_SEPARATE_COMPILATION  # 컴파일 시간 최적화
+        )
+
+        target_include_directories(serverlink PRIVATE ${asio_SOURCE_DIR}/asio/include)
+
+        # Precompiled Headers 설정
+        target_precompile_headers(serverlink PRIVATE
+            <asio.hpp>
+            <asio/ts/buffer.hpp>
+            <asio/ts/io_context.hpp>
+        )
+    endif()
 
     # Export symbols for shared library
     if(BUILD_SHARED_LIBS)
@@ -273,6 +312,7 @@ message(STATUS "  Shared libs:     ${BUILD_SHARED_LIBS}")
 message(STATUS "  Build tests:     ${BUILD_TESTS}")
 message(STATUS "  Build examples:  ${BUILD_EXAMPLES}")
 message(STATUS "  Monitoring:      ${SL_ENABLE_MONITORING}")
+message(STATUS "  Use Asio:        ${SL_USE_ASIO}")
 message(STATUS "  C++ standard:    C++${CMAKE_CXX_STANDARD}")
 message(STATUS "  I/O poller:      ${SL_POLLER_NAME}")
 message(STATUS "  Install prefix:  ${CMAKE_INSTALL_PREFIX}")

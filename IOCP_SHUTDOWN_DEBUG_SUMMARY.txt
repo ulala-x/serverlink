@@ -1,0 +1,88 @@
+=============================================================================
+IOCP Shutdown Debug Logging - Summary
+=============================================================================
+
+PROBLEM:
+Context destruction hangs - IOCP loop continues running indefinitely
+
+SYMPTOM:
+[TEST] test_ctx_socket: destroying context
+[IOCP] Waiting for completions, timeout=0
+(hang - no progress)
+
+DEBUG LOGGING ADDED:
+
+1. IOCP Loop Control Flow (iocp.cpp)
+   - Loop entry: load, _stopping state
+   - Each iteration: _stopping, load values
+   - Load checks: exit conditions
+   - Loop exit: final state
+   - Completion packet processing: key values
+   - SHUTDOWN_KEY: detection and handling
+
+2. I/O Thread Stop (io_thread.cpp)
+   - process_stop() entry/exit
+   - Load adjustment tracking
+   - stop() call confirmation
+
+3. Reaper Stop (reaper.cpp)
+   - process_stop() entry/exit  
+   - Socket count tracking
+   - Load adjustment tracking
+   - stop() call confirmation
+
+EXPECTED SHUTDOWN SEQUENCE:
+
+1. Context termination initiated
+2. Reaper/I/O threads receive stop command
+3. process_stop() called
+4. Load adjusted to 0
+5. _poller->stop() called
+6. PostQueuedCompletionStatus(SHUTDOWN_KEY)
+7. IOCP loop receives SHUTDOWN_KEY
+8. _stopping set to true
+9. Loop breaks
+10. Thread exits
+
+DIAGNOSTIC CHECKLIST:
+
+✓ Is process_stop() called?
+✓ Is stop() called?
+✓ Is SHUTDOWN_KEY posted? (rc=1?)
+✓ Is SHUTDOWN_KEY received?
+✓ Is load count 0?
+✓ Is _stopping set to true?
+
+POTENTIAL ISSUES:
+
+Issue 1: process_stop() not called
+  → Command not delivered to thread
+
+Issue 2: SHUTDOWN_KEY post failed (rc=0)
+  → IOCP handle invalid
+
+Issue 3: SHUTDOWN_KEY not received
+  → GetQueuedCompletionStatusEx issue
+
+Issue 4: Load count not 0
+  → Load count mismatch
+
+Issue 5: _stopping not set
+  → Flag corruption
+
+FILES MODIFIED:
+- src/io/iocp.cpp (loop control, packet processing, shutdown)
+- src/io/io_thread.cpp (process_stop logging)
+- src/io/reaper.cpp (process_stop logging)
+
+NEXT STEP:
+Run test and analyze logs to identify exact failure point
+
+BUILD AND TEST:
+  build_and_test_debug.bat
+
+DOCUMENTATION:
+  IOCP_SHUTDOWN_DEBUG_LOGGING.md (detailed analysis guide)
+
+STATUS: ✅ Debug Logging Complete - Ready for Testing
+=============================================================================
