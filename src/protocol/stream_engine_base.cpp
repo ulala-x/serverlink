@@ -7,11 +7,6 @@
 #include <limits.h>
 #include <string.h>
 
-#ifndef _WIN32
-#include <unistd.h>
-#include <fcntl.h>
-#endif
-
 #include <new>
 #include <sstream>
 
@@ -22,38 +17,23 @@
 #include "../util/err.hpp"
 #include "../util/likely.hpp"
 #include "../protocol/wire.hpp"
+#include <asio.hpp>
 
-// Helper to get peer address (simplified)
-static std::string get_peer_address (slk::fd_t s_)
+// TODO: Peer address retrieval needs to be adapted for Asio
+static std::string get_peer_address (const slk::options_t &options_) 
 {
     std::string peer_address;
-    // In a full implementation, would call get_peer_ip_address
-    // For now, return empty string
-    (void)s_;
+    // In a full implementation, would call get_peer_ip_address from Asio socket
     return peer_address;
 }
 
-// Helper to unblock socket
-static void unblock_socket (slk::fd_t s_)
-{
-#ifdef _WIN32
-    u_long nonblock = 1;
-    int rc = ioctlsocket (s_, FIONBIO, &nonblock);
-    wsa_assert (rc != SOCKET_ERROR);
-#else
-    int flags = fcntl (s_, F_GETFL, 0);
-    if (flags == -1)
-        flags = 0;
-    int rc = fcntl (s_, F_SETFL, flags | O_NONBLOCK);
-    errno_assert (rc != -1);
-#endif
-}
 
 slk::stream_engine_base_t::stream_engine_base_t (
-  fd_t fd_,
+  std::unique_ptr<i_async_stream> stream_,
   const options_t &options_,
   const endpoint_uri_pair_t &endpoint_uri_pair_,
-  bool has_handshake_stage_) :
+  bool has_handshake_stage_) : 
+    _stream (std::move (stream_)),
     _options (options_),
     _inpos (NULL),
     _insize (0),
@@ -66,15 +46,13 @@ slk::stream_engine_base_t::stream_engine_base_t (
     _process_msg (NULL),
     _metadata (NULL),
     _input_stopped (false),
-    _output_stopped (false),
+    _output_stopped (true), // Output is stopped until a message is sent
     _endpoint_uri_pair (endpoint_uri_pair_),
     _has_handshake_timer (false),
     _has_ttl_timer (false),
     _has_timeout_timer (false),
     _has_heartbeat_timer (false),
-    _peer_address (get_peer_address (fd_)),
-    _s (fd_),
-    _handle (static_cast<handle_t> (NULL)),
+    _peer_address (get_peer_address (options_)),
     _plugged (false),
     _handshaking (true),
     _io_error (false),
@@ -84,30 +62,14 @@ slk::stream_engine_base_t::stream_engine_base_t (
 {
     const int rc = _tx_msg.init ();
     errno_assert (rc == 0);
-
-    //  Put the socket into non-blocking mode.
-    unblock_socket (_s);
 }
 
-slk::stream_engine_base_t::~stream_engine_base_t ()
+slk::stream_engine_base_t::~stream_engine_base_t () 
 {
     slk_assert (!_plugged);
 
-    if (_s != retired_fd) {
-#ifdef _WIN32
-        const int rc = closesocket (_s);
-        wsa_assert (rc != SOCKET_ERROR);
-#else
-        int rc = close (_s);
-#if defined(__FreeBSD_kernel__) || defined(__FreeBSD__)
-        // FreeBSD may return ECONNRESET on close() under load but this is not an error.
-        if (rc == -1 && errno == ECONNRESET)
-            rc = 0;
-#endif
-        errno_assert (rc == 0);
-#endif
-        _s = retired_fd;
-    }
+    // Stream is closed automatically by unique_ptr destructor
+    // which will cancel pending async operations.
 
     const int rc = _tx_msg.close ();
     errno_assert (rc == 0);
@@ -136,46 +98,23 @@ void slk::stream_engine_base_t::plug (io_thread_t *io_thread_,
     _session = session_;
     _socket = _session->get_socket ();
 
-    //  Connect to I/O threads poller object.
-    io_object_t::plug (io_thread_);
-    _handle = add_fd (_s);
-
     //  Internal plugging.
     plug_internal ();
+
+    // Kick off the initial read operation.
+    start_read();
 }
 
 void slk::stream_engine_base_t::unplug ()
 {
     slk_assert (_plugged);
     _plugged = false;
+    
+    // Cancel timers if any (TODO: move to Asio timers)
 
-    //  Cancel all timers.
-    if (_has_handshake_timer) {
-        cancel_timer (handshake_timer_id);
-        _has_handshake_timer = false;
-    }
-
-    if (_has_ttl_timer) {
-        cancel_timer (heartbeat_ttl_timer_id);
-        _has_ttl_timer = false;
-    }
-
-    if (_has_timeout_timer) {
-        cancel_timer (heartbeat_timeout_timer_id);
-        _has_timeout_timer = false;
-    }
-
-    if (_has_heartbeat_timer) {
-        cancel_timer (heartbeat_ivl_timer_id);
-        _has_heartbeat_timer = false;
-    }
-
-    //  Cancel all fd subscriptions.
-    if (!_io_error)
-        rm_fd (_handle);
-
-    //  Disconnect from I/O threads poller object.
-    io_object_t::unplug ();
+    // Close the stream, which will cancel any pending async operations.
+    if (_stream)
+        _stream->close();
 
     _session = NULL;
 }
@@ -186,171 +125,174 @@ void slk::stream_engine_base_t::terminate ()
     delete this;
 }
 
-void slk::stream_engine_base_t::in_event ()
+void slk::stream_engine_base_t::start_read()
 {
-    //  If still handshaking, receive and process the greeting message.
-    if (unlikely (_handshaking)) {
-        SL_DEBUG_LOG("DEBUG: in_event: calling handshake()\n");
-        if (!handshake ())
-            return;
-
-        //  Handshaking was successful.
-        //  Switch into the normal message flow.
-        SL_DEBUG_LOG("DEBUG: in_event: handshake succeeded, setting _handshaking=false\n");
-        _handshaking = false;
-
-        if (_mechanism == NULL && _has_handshake_timer) {
-            cancel_timer (handshake_timer_id);
-            _has_handshake_timer = false;
-        }
+    // If input is stopped (e.g. pending processing), don't start a new read.
+    if (_input_stopped || _io_error) {
+        return;
     }
+    
+    // Retrieve the buffer for the next read operation.
+    _decoder->get_buffer(&_inpos, &_insize);
 
-    slk_assert (_decoder);
+    // Initiate an asynchronous read.
+    _stream->async_read(_inpos, _insize,
+        [this](size_t bytes_transferred, int error_code) {
+            handle_read(bytes_transferred, error_code);
+        });
+}
 
-    //  If there has been an I/O error, stop polling.
-    if (_input_stopped) {
-        rm_fd (_handle);
-        _io_error = true;
+void slk::stream_engine_base_t::handle_read(size_t bytes_transferred, int error_code)
+{
+    if (error_code != 0) {
+        if (error_code == asio::error::operation_aborted) {
+            return;
+        }
+        error(connection_error);
         return;
     }
 
-    //  If there's no data to process in the buffer...
-    if (!_insize) {
-        //  Retrieve the buffer and read as much data as possible.
-        _decoder->get_buffer (&_inpos, &_insize);
-        SL_DEBUG_LOG("DEBUG: get_buffer returned _insize=%zu\n", _insize);
-        const int rc = read (_inpos, _insize);
-        SL_DEBUG_LOG("DEBUG: read returned rc=%d\n", rc);
+    if (bytes_transferred == 0) {
+        // This indicates a clean shutdown by the peer.
+        error(connection_error);
+        return;
+    }
 
-        if (rc == 0) {
-            error (connection_error);
+    _insize = bytes_transferred;
+    
+    //  If still handshaking, process the greeting message.
+    if (unlikely (_handshaking)) {
+        // The derived class processes the raw buffer.
+        process_handshake_data(_inpos, _insize);
+        
+        // If handshake is still not complete, we need more data.
+        if (_handshaking) {
+            start_read();
             return;
         }
-        if (rc == -1) {
-            if (errno != EAGAIN)
-                error (connection_error);
-            _insize = 0;  // Reset so next in_event reads fresh data
-            return;
-        }
+        
+        // Handshake is complete. The derived class should have consumed
+        // some bytes and updated _insize. We proceed to message processing
+        // with the remaining data.
+    }
 
-        //  Adjust input size
-        _insize = static_cast<size_t> (rc);
-        _decoder->resize_buffer (_insize);
-        SL_DEBUG_LOG("DEBUG: adjusted _insize=%zu\n", _insize);
+    if (!_decoder) {
+        // This can happen if handshake completes but there's no more data
+        // in the initial buffer.
+        start_read();
+        return;
     }
 
     int rc = 0;
     size_t processed = 0;
-    SL_DEBUG_LOG("DEBUG: in_event processing, _insize=%zu\n", _insize);
-
     while (_insize > 0) {
-        rc = _decoder->decode (_inpos, _insize, processed);
-        SL_DEBUG_LOG("DEBUG: decode returned rc=%d, processed=%zu\n", rc, processed);
+        rc = _decoder->decode(_inpos, _insize, processed);
         slk_assert (processed <= _insize);
         _inpos += processed;
         _insize -= processed;
 
-        if (rc == 0 || rc == -1)
+        if (rc == 0 || rc == -1) // 0 = need more data, -1 = error
             break;
-        SL_DEBUG_LOG("DEBUG: calling _process_msg with msg size=%zu\n", _decoder->msg()->size());
-        rc = (this->*_process_msg) (_decoder->msg ());
-        SL_DEBUG_LOG("DEBUG: _process_msg returned %d\n", rc);
+
+        rc = (this->*_process_msg) (_decoder->msg());
         if (rc == -1)
             break;
     }
 
-    //  Tear down the connection if we have failed to decode input data
-    //  or the session has rejected the message.
     if (rc == -1) {
         if (errno != EAGAIN) {
-            error (protocol_error);
+            error(protocol_error);
             return;
         }
         _input_stopped = true;
-        reset_pollin (_handle);
     }
 
-    SL_DEBUG_LOG("DEBUG: in_event: calling session->flush()\n");
-    _session->flush ();
-    SL_DEBUG_LOG("DEBUG: in_event: session->flush() returned\n");
+    if (_session)
+        _session->flush();
+
+    // If input hasn't been stopped, start the next read immediately.
+    if (!_input_stopped) {
+        start_read();
+    }
 }
 
-void slk::stream_engine_base_t::out_event ()
+void slk::stream_engine_base_t::start_write()
 {
-    //  If write buffer is empty, try to read new data from the encoder.
-    if (!_outsize) {
-        //  Even when we stop polling as soon as there is no
-        //  data to send, the poller may invoke out_event one
-        //  more time due to 'speculative write' optimisation.
-        if (unlikely (_encoder == NULL)) {
-            slk_assert (_handshaking);
-            return;
-        }
-
-        _outpos = NULL;
-        _outsize = _encoder->encode (&_outpos, 0);
-
-        while (_outsize < static_cast<size_t> (_options.out_batch_size)) {
-            if ((this->*_next_msg) (&_tx_msg) == -1)
-                break;
-            _encoder->load_msg (&_tx_msg);
-            unsigned char *bufptr = _outpos + _outsize;
-            const size_t n =
-              _encoder->encode (&bufptr, _options.out_batch_size - _outsize);
-            slk_assert (n > 0);
-            if (_outpos == NULL)
-                _outpos = bufptr;
-            _outsize += n;
-        }
-
-        //  If there is no data to send, stop polling for output.
-        if (_outsize == 0) {
-            _output_stopped = true;
-            reset_pollout ();
-            return;
-        }
+    if (unlikely(_io_error) || !_outsize) {
+        _output_stopped = true;
+        return;
     }
+    
+    _output_stopped = false;
 
-    //  If there are any data to write in write buffer, write as much as
-    //  possible to the socket. Note that amount of data to write can be
-    //  arbitrarily large. However, we assume that underlying TCP layer has
-    //  limited transmission buffer and thus the actual number of bytes
-    //  written should be reasonably modest.
-    const int nbytes = write (_outpos, _outsize);
+    _stream->async_write(_outpos, _outsize,
+        [this](size_t bytes_transferred, int error_code) {
+            handle_write(bytes_transferred, error_code);
+        });
+}
 
-    //  IO error has occurred. We stop waiting for output events.
-    //  The engine is not terminated until we detect input error;
-    //  this is necessary to prevent losing incoming messages.
-    if (nbytes == -1) {
-        reset_pollout ();
+void slk::stream_engine_base_t::handle_write(size_t bytes_transferred, int error_code)
+{
+    if (error_code != 0) {
+        if (error_code == asio::error::operation_aborted) {
+            return;
+        }
+        // I/O error has occurred. We stop waiting for output events.
+        // The engine is not terminated until we detect input error;
+        // this is necessary to prevent losing incoming messages.
+        _io_error = true;
+        _output_stopped = true;
         return;
     }
 
-    _outpos += nbytes;
-    _outsize -= nbytes;
+    _outpos += bytes_transferred;
+    _outsize -= bytes_transferred;
 
-    //  If we are still handshaking and there are no data
-    //  to send, stop polling for output.
-    if (unlikely (_handshaking))
-        if (_outsize == 0)
-            reset_pollout ();
+    // If there is more data in the buffer, continue writing.
+    if (_outsize > 0) {
+        start_write();
+        return;
+    }
+
+    // All buffered data sent. Try to get more from the encoder.
+    if ((this->*_next_msg) (&_tx_msg) != -1) {
+        _encoder->load_msg (&_tx_msg);
+        _outsize = _encoder->encode(&_outpos, _options.out_batch_size);
+        if (_outsize > 0) {
+            start_write();
+            return;
+        }
+    }
+    
+    // No more data to send, output is now stopped.
+    _output_stopped = true;
 }
+
 
 void slk::stream_engine_base_t::restart_output ()
 {
     if (unlikely (_io_error))
         return;
 
+    // If output was stopped, try to start it again.
     if (likely (_output_stopped)) {
-        set_pollout ();
-        _output_stopped = false;
-    }
+        //  If write buffer is empty, try to read new data from the encoder.
+        if (!_outsize) {
+            if (unlikely (_encoder == NULL)) {
+                slk_assert (_handshaking);
+                return;
+            }
 
-    //  Speculative write: The assumption is that at the moment new message
-    //  was sent by the user the socket is probably available for writing.
-    //  Thus we try to write the data to socket avoiding polling for POLLOUT.
-    //  Consequently, the latency should be better in request/reply scenarios.
-    out_event ();
+            if ((this->*_next_msg) (&_tx_msg) != -1) {
+                _encoder->load_msg (&_tx_msg);
+                _outsize = _encoder->encode(&_outpos, _options.out_batch_size);
+            }
+        }
+
+        if (_outsize > 0) {
+            start_write();
+        }
+    }
 }
 
 bool slk::stream_engine_base_t::restart_input ()
@@ -386,13 +328,11 @@ bool slk::stream_engine_base_t::restart_input ()
         }
     }
 
-    set_pollin ();
     _input_stopped = false;
-
     _session->flush ();
 
-    // Try to get more messages from the decoder
-    in_event ();
+    // Start reading again
+    start_read();
 
     return true;
 }
@@ -402,60 +342,28 @@ void slk::stream_engine_base_t::zap_msg_available ()
     // ZAP not supported in ServerLink
 }
 
-void slk::stream_engine_base_t::timer_event (int id_)
-{
-    if (id_ == handshake_timer_id) {
-        _has_handshake_timer = false;
-        //  Handshake timer expired before handshake completed.
-        error (timeout_error);
-    } else if (id_ == heartbeat_ivl_timer_id) {
-        _has_heartbeat_timer = false;
-        // Send PING
-        if (_has_heartbeat_timer) {
-            cancel_timer (heartbeat_ivl_timer_id);
-            _has_heartbeat_timer = false;
-        }
-    } else if (id_ == heartbeat_timeout_timer_id) {
-        _has_timeout_timer = false;
-        error (timeout_error);
-    } else if (id_ == heartbeat_ttl_timer_id) {
-        _has_ttl_timer = false;
-        error (timeout_error);
-    } else
-        slk_assert (false);
-}
-
-int slk::stream_engine_base_t::read (void *data_, size_t size_)
-{
-    return tcp_read (_s, data_, size_);
-}
-
-int slk::stream_engine_base_t::write (const void *data_, size_t size_)
-{
-    return tcp_write (_s, data_, size_);
-}
-
 void slk::stream_engine_base_t::error (error_reason_t reason_)
 {
+    if (_io_error) return; // Avoid re-entry
+    _io_error = true;
+
     if (_options.heartbeat_interval > 0 && reason_ == connection_error)
         reason_ = timeout_error;
 
-    slk_assert (_session);
+    if (_session)
+    {
+        //  Send disconnect notification if ROUTER_NOTIFY is enabled
+        //  Only send if handshake was completed (not in handshaking state)
+        if ((_options.router_notify & SL_NOTIFY_DISCONNECT) && !_handshaking) {
+            _session->rollback ();
+            msg_t disconnect_notification;
+            disconnect_notification.init ();
+            _session->push_msg (&disconnect_notification);
+        }
 
-    //  Send disconnect notification if ROUTER_NOTIFY is enabled
-    //  Only send if handshake was completed (not in handshaking state)
-    if ((_options.router_notify & SL_NOTIFY_DISCONNECT) && !_handshaking) {
-        //  Rollback any incomplete messages in the pipe
-        _session->rollback ();
-
-        //  Send disconnect notification (empty message)
-        msg_t disconnect_notification;
-        disconnect_notification.init ();
-        _session->push_msg (&disconnect_notification);
+        _session->engine_error (_handshaking == false, reason_);
     }
-
-    // Event notification removed - not needed for simplified ServerLink
-    _session->engine_error (_handshaking == false, reason_);
+    
     unplug ();
     delete this;
 }
@@ -463,11 +371,11 @@ void slk::stream_engine_base_t::error (error_reason_t reason_)
 void slk::stream_engine_base_t::set_handshake_timer ()
 {
     slk_assert (!_has_handshake_timer);
-
-    if (_options.handshake_ivl > 0) {
-        add_timer (_options.handshake_ivl, handshake_timer_id);
-        _has_handshake_timer = true;
-    }
+    // TODO: Port to Asio timers
+    // if (_options.handshake_ivl > 0) {
+    //     add_timer (_options.handshake_ivl, handshake_timer_id);
+    //     _has_handshake_timer = true;
+    // }
 }
 
 int slk::stream_engine_base_t::next_handshake_command (msg_t *msg_)
@@ -594,10 +502,11 @@ int slk::stream_engine_base_t::write_credential (msg_t *msg_)
 void slk::stream_engine_base_t::mechanism_ready ()
 {
     SL_DEBUG_LOG("DEBUG: mechanism_ready() called\n");
-    if (_options.heartbeat_interval > 0 && !_has_heartbeat_timer) {
-        add_timer (_options.heartbeat_interval, heartbeat_ivl_timer_id);
-        _has_heartbeat_timer = true;
-    }
+    // TODO: Port timers
+    // if (_options.heartbeat_interval > 0 && !_has_heartbeat_timer) {
+    //     add_timer (_options.heartbeat_interval, heartbeat_ivl_timer_id);
+    //     _has_heartbeat_timer = true;
+    // }
 
     //  Notify session that engine is ready - creates the pipe
     //  MUST be called before push_msg

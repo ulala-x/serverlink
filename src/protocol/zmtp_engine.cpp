@@ -6,6 +6,7 @@
 
 #include <limits.h>
 #include <string.h>
+#include <algorithm>
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -27,10 +28,10 @@
 #include "../protocol/wire.hpp"
 
 slk::zmtp_engine_t::zmtp_engine_t (
-  fd_t fd_,
+  std::unique_ptr<i_async_stream> stream_,
   const options_t &options_,
   const endpoint_uri_pair_t &endpoint_uri_pair_) :
-    stream_engine_base_t (fd_, options_, endpoint_uri_pair_, true),
+    stream_engine_base_t (std::move(stream_), options_, endpoint_uri_pair_, true),
     _greeting_size (v2_greeting_size),
     _greeting_bytes_read (0),
     _subscription_required (false),
@@ -73,104 +74,73 @@ void slk::zmtp_engine_t::plug_internal ()
     _outsize += 8;
     _outpos[_outsize++] = 0x7f;
 
-    set_pollin ();
-    set_pollout ();
-    //  Flush all the data that may have been already received downstream.
-    in_event ();
+    // The read loop is now started automatically in the base class plug().
+    // The write loop will be started when there's data to send.
+    if (_outsize > 0)
+        restart_output();
+}
+
+void slk::zmtp_engine_t::process_handshake_data(unsigned char* buffer, size_t size)
+{
+    // Save the number of bytes read so far to calculate how many new bytes are consumed.
+    size_t bytes_read_before = _greeting_bytes_read;
+
+    // Append the newly received data to our internal greeting buffer.
+    // Ensure we don't overflow the buffer.
+    const size_t bytes_to_copy = std::min(size, v3_greeting_size - _greeting_bytes_read);
+    memcpy(_greeting_recv + _greeting_bytes_read, buffer, bytes_to_copy);
+    _greeting_bytes_read += bytes_to_copy;
+
+    // Try to process the greeting with the data we have so far.
+    if (process_greeting()) {
+        // Handshake is complete.
+        // Calculate how many bytes from the current 'buffer' were actually used to complete the handshake.
+        // The total used is _greeting_bytes_read. The amount we already had is bytes_read_before.
+        // So the amount taken from 'buffer' is (_greeting_bytes_read - bytes_read_before).
+        
+        const size_t consumed_from_buffer = _greeting_bytes_read - bytes_read_before;
+        
+        // Update the base class pointers to point to the remaining data (start of the first message).
+        _inpos = buffer + consumed_from_buffer;
+        _insize = size - consumed_from_buffer;
+
+        set_handshake_complete();
+    }
 }
 
 //  Position of the revision and minor fields in the greeting.
 const size_t revision_pos = 10;
 const size_t minor_pos = 11;
 
-bool slk::zmtp_engine_t::handshake ()
+bool slk::zmtp_engine_t::process_greeting()
 {
-    slk_assert (_greeting_bytes_read < _greeting_size);
-    //  Receive the greeting.
-    const int rc = receive_greeting ();
-    if (rc == -1)
-        return false;
-    const bool unversioned = rc != 0;
-
-    if (!(this
-            ->*select_handshake_fun (unversioned, _greeting_recv[revision_pos],
-                                     _greeting_recv[minor_pos])) ())
+    // If we don't have the first byte, we can't do anything.
+    if (_greeting_bytes_read == 0)
         return false;
 
-    // Start polling for output if necessary.
-    if (_outsize == 0)
-        set_pollout ();
-
-    return true;
-}
-
-int slk::zmtp_engine_t::receive_greeting ()
-{
-    bool unversioned = false;
-    while (_greeting_bytes_read < _greeting_size) {
-        const int n = read (_greeting_recv + _greeting_bytes_read,
-                            _greeting_size - _greeting_bytes_read);
-        if (n == -1) {
-            if (errno != EAGAIN)
-                error (connection_error);
-            return -1;
-        }
-
-        _greeting_bytes_read += n;
-
-        //  We have received at least one byte from the peer.
-        //  If the first byte is not 0xff, we know that the
-        //  peer is using unversioned protocol.
-        if (_greeting_recv[0] != 0xff) {
-            unversioned = true;
-            break;
-        }
-
-        if (_greeting_bytes_read < signature_size)
-            continue;
-
-        //  Inspect the right-most bit of the 10th byte (which coincides
-        //  with the 'flags' field if a regular message was sent).
-        //  Zero indicates this is a header of a routing id message
-        //  (i.e. the peer is using the unversioned protocol).
-        if (!(_greeting_recv[9] & 0x01)) {
-            unversioned = true;
-            break;
-        }
-
-        //  The peer is using versioned protocol.
-        receive_greeting_versioned ();
-    }
-    return unversioned ? 1 : 0;
-}
-
-void slk::zmtp_engine_t::receive_greeting_versioned ()
-{
-    //  Send the major version number.
-    if (_outpos + _outsize == _greeting_send + signature_size) {
-        if (_outsize == 0)
-            set_pollout ();
-        _outpos[_outsize++] = 3; //  Major version number (ZMTP 3.x)
+    // Check for unversioned protocol (first byte not 0xff)
+    bool unversioned = (_greeting_recv[0] != 0xff);
+    
+    if (unversioned) {
+        // We have enough to decide.
+        return (this->*select_handshake_fun (true, 0, 0)) ();
     }
 
-    if (_greeting_bytes_read > signature_size) {
-        if (_outpos + _outsize == _greeting_send + signature_size + 1) {
-            if (_outsize == 0)
-                set_pollout ();
-
-            // ServerLink only supports ZMTP 3.x
-            _outpos[_outsize++] = 1; //  Minor version number
-            memset (_outpos + _outsize, 0, 20);
-
-            // ServerLink only supports NULL mechanism
-            memcpy (_outpos + _outsize, "NULL", 4);
-            _outsize += 20;
-            memset (_outpos + _outsize, 0, 32);
-            _outsize += 32;
-            _greeting_size = v3_greeting_size;
-        }
+    // Versioned protocol. We need at least 10 bytes to be sure.
+    if (_greeting_bytes_read >= signature_size && !(_greeting_recv[9] & 0x01)) {
+        unversioned = true;
+        return (this->*select_handshake_fun (true, 0, 0)) ();
     }
+    
+    // We need more data to determine the version.
+    if (_greeting_bytes_read < _greeting_size) {
+        return false;
+    }
+    
+    // We have the full greeting.
+    return (this->*select_handshake_fun(false, _greeting_recv[revision_pos], _greeting_recv[minor_pos]))();
 }
+
 
 slk::zmtp_engine_t::handshake_fun_t slk::zmtp_engine_t::select_handshake_fun (
   bool unversioned_, unsigned char revision_, unsigned char minor_)

@@ -2,259 +2,126 @@
 
 #include "precompiled.hpp"
 #include <new>
-
-#include <string>
-#include <stdio.h>
+#include <memory>
 
 #include "tcp_listener.hpp"
+#include "../io/asio/tcp_stream.hpp"
 #include "../io/io_thread.hpp"
-#include "../util/config.hpp"
 #include "../util/err.hpp"
-#include "../io/ip.hpp"
 #include "tcp.hpp"
 #include "../core/socket_base.hpp"
-#include "address.hpp"
 
-#ifndef SL_HAVE_WINDOWS
-#include <unistd.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/tcp.h>
+// Ensure we have access to sockaddr_in/sockaddr_in6
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <netinet/in.h>
-#include <netdb.h>
-#include <fcntl.h>
-#ifdef SL_HAVE_VXWORKS
-#include <sockLib.h>
-#endif
-#endif
-
-#ifdef SL_HAVE_OPENVMS
-#include <ioctl.h>
 #endif
 
 slk::tcp_listener_t::tcp_listener_t (io_thread_t *io_thread_,
                                      socket_base_t *socket_,
                                      const options_t &options_) :
-    stream_listener_base_t (io_thread_, socket_, options_)
+    stream_listener_base_t (io_thread_, socket_, options_),
+    _acceptor(io_thread_->get_io_context())
 {
 }
 
-void slk::tcp_listener_t::in_event ()
+void slk::tcp_listener_t::close()
 {
-    const fd_t fd = accept ();
-
-    //  If connection was reset by the peer in the meantime, just ignore it.
-    //  TODO: Handle specific errors like ENFILE/EMFILE etc.
-    if (fd == retired_fd) {
-        // TODO: event system
-        // _socket->event_accept_failed (
-        //   make_unconnected_bind_endpoint_pair (_endpoint), slk_errno ());
-        return;
-    }
-
-    int rc = tune_tcp_socket (fd);
-    rc = rc
-         | tune_tcp_keepalives (
-           fd, options.tcp_keepalive, options.tcp_keepalive_cnt,
-           options.tcp_keepalive_idle, options.tcp_keepalive_intvl);
-    rc = rc | tune_tcp_maxrt (fd, options.tcp_maxrt);
-    if (rc != 0) {
-        // TODO: event system
-        // _socket->event_accept_failed (
-        //   make_unconnected_bind_endpoint_pair (_endpoint), slk_errno ());
-        return;
-    }
-
-#ifdef SL_USE_ASIO
-    // Phase 2: Asio integration
-    // TODO: Create tcp_stream and pass to modified create_engine
-    // For now, fallback to traditional fd-based approach
-    create_engine (fd);
-#else
-    //  Create the engine object for this connection.
-    create_engine (fd);
-#endif
-}
-
-std::string
-slk::tcp_listener_t::get_socket_name (slk::fd_t fd_,
-                                      socket_end_t socket_end_) const
-{
-    return slk::get_socket_name<tcp_address_t> (fd_, socket_end_);
-}
-
-int slk::tcp_listener_t::create_socket (const char *addr_)
-{
-    _s = tcp_open_socket (addr_, options, true, true, &_address);
-    if (_s == retired_fd) {
-        return -1;
-    }
-
-    //  TODO why is this only done for the listener?
-    make_socket_noninheritable (_s);
-
-    //  Allow reusing of the address.
-    int flag = 1;
-    int rc;
-#ifdef SL_HAVE_WINDOWS
-    //  TODO this was changed for Windows from SO_REUSEADDRE to
-    //  SE_EXCLUSIVEADDRUSE by 0ab65324195ad70205514d465b03d851a6de051c,
-    //  so the comment above is no longer correct; also, now the settings are
-    //  different between listener and connecter with a src address.
-    //  is this intentional?
-    rc = setsockopt (_s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE,
-                     reinterpret_cast<const char *> (&flag), sizeof (int));
-    wsa_assert (rc != SOCKET_ERROR);
-#elif defined SL_HAVE_VXWORKS
-    rc =
-      setsockopt (_s, SOL_SOCKET, SO_REUSEADDR, (char *) &flag, sizeof (int));
-    errno_assert (rc == 0);
-#else
-    rc = setsockopt (_s, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof (int));
-    errno_assert (rc == 0);
-#endif
-
-    //  Bind the socket to the network interface and port.
-#if defined SL_HAVE_VXWORKS
-    rc = bind (_s, (sockaddr *) _address.addr (), _address.addrlen ());
-#else
-    rc = bind (_s, _address.addr (), _address.addrlen ());
-#endif
-#ifdef SL_HAVE_WINDOWS
-    if (rc == SOCKET_ERROR) {
-        errno = wsa_error_to_errno (WSAGetLastError ());
-        goto error;
-    }
-#else
-    if (rc != 0)
-        goto error;
-#endif
-
-    //  Listen for incoming connections.
-    rc = listen (_s, options.backlog);
-#ifdef SL_HAVE_WINDOWS
-    if (rc == SOCKET_ERROR) {
-        errno = wsa_error_to_errno (WSAGetLastError ());
-        goto error;
-    }
-#else
-    if (rc != 0)
-        goto error;
-#endif
-
-    return 0;
-
-error:
-    const int err = errno;
-    close ();
-    errno = err;
-    return -1;
+    if (_acceptor.is_open())
+        _acceptor.close();
 }
 
 int slk::tcp_listener_t::set_local_address (const char *addr_)
 {
-    if (options.use_fd != -1) {
-        //  in this case, the addr_ passed is not used and ignored, since the
-        //  socket was already created by the application
-        _s = options.use_fd;
-    } else {
-        if (create_socket (addr_) == -1)
-            return -1;
+    fprintf(stderr, "DEBUG: tcp_listener_t::set_local_address for %s\n", addr_);
+    fflush(stderr);
+    const int rc = _address.resolve(addr_, true, _options.ipv6);
+    if (rc != 0) {
+        fprintf(stderr, "DEBUG: address.resolve failed for %s\n", addr_);
+        fflush(stderr);
+        errno = EADDRNOTAVAIL;
+        return -1;
     }
 
-    _endpoint = get_socket_name (_s, socket_end_local);
+    unsigned short port = 0;
+    if (_address.family() == AF_INET) {
+        const sockaddr_in* sin = reinterpret_cast<const sockaddr_in*>(_address.addr());
+        port = ntohs(sin->sin_port);
+    } else {
+        const sockaddr_in6* sin6 = reinterpret_cast<const sockaddr_in6*>(_address.addr());
+        port = ntohs(sin6->sin6_port);
+    }
 
-    // TODO: event system
-    // _socket->event_listening (make_unconnected_bind_endpoint_pair (_endpoint),
-    //                           _s);
+    asio::ip::tcp::endpoint endpoint(_address.family() == AF_INET ? asio::ip::tcp::v4() : asio::ip::tcp::v6(), port);
+    
+    // Handle wildcard bindings
+    if (strcmp(addr_, "*") == 0 || strstr(addr_, "0.0.0.0") || strstr(addr_, "[::]")) {
+        if (_address.family() == AF_INET)
+            endpoint.address(asio::ip::address_v4::any());
+        else
+            endpoint.address(asio::ip::address_v6::any());
+    }
+
+    try {
+        fprintf(stderr, "DEBUG: opening acceptor for port %d\n", port);
+        fflush(stderr);
+        _acceptor.open(endpoint.protocol());
+        _acceptor.set_option(asio::ip::tcp::acceptor::reuse_address(true));
+        _acceptor.bind(endpoint);
+        _acceptor.listen(_options.backlog);
+        fprintf(stderr, "DEBUG: acceptor is now listening\n");
+        fflush(stderr);
+    } catch (const asio::system_error& e) {
+        fprintf(stderr, "DEBUG: acceptor bind/listen failed: %s\n", e.what());
+        fflush(stderr);
+        errno = EADDRINUSE;
+        return -1;
+    }
+    
+    _endpoint = _acceptor.local_endpoint().address().to_string() + ":" + std::to_string(_acceptor.local_endpoint().port());
+
+    fprintf(stderr, "DEBUG: starting async accept\n");
+    fflush(stderr);
+    start_accept();
+
     return 0;
 }
 
-slk::fd_t slk::tcp_listener_t::accept ()
+void slk::tcp_listener_t::start_accept()
 {
-    //  The situation where connection cannot be accepted due to insufficient
-    //  resources is considered valid and treated by ignoring the connection.
-    //  Accept one connection and deal with different failure modes.
-    slk_assert (_s != retired_fd);
+    _acceptor.async_accept(
+        [this](const asio::error_code& ec, asio::ip::tcp::socket socket) {
+            handle_accept(ec, std::move(socket));
+        });
+}
 
-    struct sockaddr_storage ss;
-    memset (&ss, 0, sizeof (ss));
-#if defined SL_HAVE_HPUX || defined SL_HAVE_VXWORKS
-    int ss_len = sizeof (ss);
-#else
-    socklen_t ss_len = sizeof (ss);
-#endif
-#if defined SL_HAVE_SOCK_CLOEXEC && defined HAVE_ACCEPT4
-    fd_t sock = ::accept4 (_s, reinterpret_cast<struct sockaddr *> (&ss),
-                           &ss_len, SOCK_CLOEXEC);
-#else
-    const fd_t sock =
-      ::accept (_s, reinterpret_cast<struct sockaddr *> (&ss), &ss_len);
-#endif
-
-    if (sock == retired_fd) {
-#if defined SL_HAVE_WINDOWS
-        const int last_error = WSAGetLastError ();
-        wsa_assert (last_error == WSAEWOULDBLOCK || last_error == WSAECONNRESET
-                    || last_error == WSAEMFILE || last_error == WSAENOBUFS);
-#elif defined SL_HAVE_ANDROID
-        errno_assert (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR
-                      || errno == ECONNABORTED || errno == EPROTO
-                      || errno == ENOBUFS || errno == ENOMEM || errno == EMFILE
-                      || errno == ENFILE || errno == EINVAL);
-#else
-        errno_assert (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR
-                      || errno == ECONNABORTED || errno == EPROTO
-                      || errno == ENOBUFS || errno == ENOMEM || errno == EMFILE
-                      || errno == ENFILE);
-#endif
-        return retired_fd;
-    }
-
-    make_socket_noninheritable (sock);
-
-    if (!options.tcp_accept_filters.empty ()) {
-        bool matched = false;
-        for (options_t::tcp_accept_filters_t::size_type
-               i = 0,
-               size = options.tcp_accept_filters.size ();
-             i != size; ++i) {
-            if (options.tcp_accept_filters[i].match_address (
-                  reinterpret_cast<struct sockaddr *> (&ss), ss_len)) {
-                matched = true;
-                break;
-            }
+void slk::tcp_listener_t::handle_accept(const asio::error_code& ec, asio::ip::tcp::socket socket)
+{
+    if (ec) {
+        // Operation aborted means the acceptor was closed, which is normal.
+        if (ec == asio::error::operation_aborted) {
+            return;
         }
-        if (!matched) {
-#ifdef SL_HAVE_WINDOWS
-            const int rc = closesocket (sock);
-            wsa_assert (rc != SOCKET_ERROR);
-#else
-            int rc = ::close (sock);
-            errno_assert (rc == 0);
-#endif
-            return retired_fd;
-        }
+        // TODO: Handle other errors like ENFILE, EMFILE
+        return;
     }
 
-    if (slk::set_nosigpipe (sock)) {
-#ifdef SL_HAVE_WINDOWS
-        const int rc = closesocket (sock);
-        wsa_assert (rc != SOCKET_ERROR);
-#else
-        int rc = ::close (sock);
-        errno_assert (rc == 0);
-#endif
-        return retired_fd;
+    // Apply socket options to the newly accepted socket
+    try {
+        socket.set_option(asio::ip::tcp::no_delay(true));
+        // TODO: Port other options like keep-alive from tune_tcp_socket
+    } catch (const asio::system_error&) {
+        // Ignore errors, proceed with default options
     }
 
-    // Set the IP Type-Of-Service priority for this client socket
-    if (options.tos != 0)
-        set_ip_type_of_service (sock, options.tos);
+    // Create the async stream wrapper for the socket
+    auto stream = std::make_unique<tcp_stream_t>(std::move(socket));
+    
+    // Hand off the new stream to the base class to create the engine
+    create_engine(std::move(stream));
 
-    // Set the protocol-defined priority for this client socket
-    if (options.priority != 0)
-        set_socket_priority (sock, options.priority);
-
-    return sock;
+    // Continue the accept loop
+    start_accept();
 }

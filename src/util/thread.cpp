@@ -41,11 +41,8 @@ void slk::thread_t::start(thread_fn *tfn, void *arg, const char *name)
     if (name)
         strncpy(_name, name, sizeof(_name) - 1);
 
-    // Set default stack size to 4MB to avoid std::map stack overflow on x64
+    // Use default stack size
     unsigned int stack = 0;
-#if defined(_WIN64)
-    stack = 0x400000;
-#endif
 
     _descriptor = (void *)_beginthreadex(nullptr, stack, &::thread_routine, this,
                                           0, &_thread_id);

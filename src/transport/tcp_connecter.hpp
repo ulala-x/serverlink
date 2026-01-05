@@ -3,9 +3,13 @@
 #ifndef SERVERLINK_TCP_CONNECTER_HPP_INCLUDED
 #define SERVERLINK_TCP_CONNECTER_HPP_INCLUDED
 
-#include "../io/fd.hpp"
+#include <asio.hpp>
+#include <asio/ip/tcp.hpp>
+#include <asio/ts/buffer.hpp>
+
 #include "../util/constants.hpp"
 #include "stream_connecter_base.hpp"
+#include "../io/asio/asio_context.hpp" // For global io_context
 
 namespace slk
 {
@@ -21,40 +25,24 @@ class tcp_connecter_t final : public stream_connecter_base_t
                      bool delayed_start_);
     ~tcp_connecter_t ();
 
+  protected:
+    // Overrides from stream_connecter_base_t
+    void start_connecting () override;
+    void close () override;
+
   private:
-    //  ID of the timer used to check the connect timeout, must be different from stream_connecter_base_t::reconnect_timer_id.
-    enum
-    {
-        connect_timer_id = 2
-    };
+    // Handlers for async operations
+    void handle_resolve(const asio::error_code& ec, const asio::ip::tcp::resolver::results_type& endpoints);
+    void handle_connect(const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint);
 
-    //  Handlers for incoming commands.
-    void process_term (int linger_);
+    // Asio members
+    asio::ip::tcp::socket _socket;
+    asio::ip::tcp::resolver _resolver;
+    std::string _host;
+    std::string _port;
 
-    //  Handlers for I/O events.
-    void out_event ();
-    void timer_event (int id_);
-
-    //  Internal function to start the actual connection establishment.
-    void start_connecting ();
-
-    //  Internal function to add a connect timer
-    void add_connect_timer ();
-
-    //  Open TCP connecting socket. Returns -1 in case of error,
-    //  0 if connect was successful immediately. Returns -1 with
-    //  EAGAIN errno if async connect was launched.
-    int open ();
-
-    //  Get the file descriptor of newly created connection. Returns
-    //  retired_fd if the connection was unsuccessful.
-    fd_t connect ();
-
-    //  Tunes a connected socket.
-    bool tune_socket (fd_t fd_);
-
-    //  True iff a timer has been started.
-    bool _connect_timer_started;
+    //  True iff a timer has been started. (No longer needed, Asio handles connect timeout)
+    // bool _connect_timer_started; 
 
     SL_NON_COPYABLE_NOR_MOVABLE (tcp_connecter_t)
 };

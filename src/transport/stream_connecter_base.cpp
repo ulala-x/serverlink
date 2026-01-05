@@ -7,12 +7,7 @@
 #include "../util/random.hpp"
 #include "../util/err.hpp"
 #include "../protocol/zmtp_engine.hpp"
-
-#ifndef SL_HAVE_WINDOWS
-#include <unistd.h>
-#else
-#include <winsock2.h>
-#endif
+#include "../io/io_thread.hpp"
 
 #include <limits>
 #include <new>
@@ -24,28 +19,19 @@ slk::stream_connecter_base_t::stream_connecter_base_t (
   slk::address_t *addr_,
   bool delayed_start_) :
     own_t (io_thread_, options_),
-    io_object_t (io_thread_),
     _addr (addr_),
-    _s (retired_fd),
-    _handle (static_cast<handle_t> (NULL)),
     _socket (session_->get_socket ()),
+    _reconnect_timer(io_thread_->get_io_context()),
     _delayed_start (delayed_start_),
-    _reconnect_timer_started (false),
     _current_reconnect_ivl (-1),
     _session (session_)
 {
     slk_assert (_addr);
     _addr->to_string (_endpoint);
-    // TODO the return value is unused! what if it fails? if this is impossible
-    // or does not matter, change such that endpoint in initialized using an
-    // initializer, and make endpoint const
 }
 
 slk::stream_connecter_base_t::~stream_connecter_base_t ()
 {
-    slk_assert (!_reconnect_timer_started);
-    slk_assert (!_handle);
-    slk_assert (_s == retired_fd);
 }
 
 void slk::stream_connecter_base_t::process_plug ()
@@ -58,18 +44,8 @@ void slk::stream_connecter_base_t::process_plug ()
 
 void slk::stream_connecter_base_t::process_term (int linger_)
 {
-    if (_reconnect_timer_started) {
-        cancel_timer (reconnect_timer_id);
-        _reconnect_timer_started = false;
-    }
-
-    if (_handle) {
-        rm_handle ();
-    }
-
-    if (_s != retired_fd)
-        close ();
-
+    _reconnect_timer.cancel();
+    close ();
     own_t::process_term (linger_);
 }
 
@@ -77,12 +53,22 @@ void slk::stream_connecter_base_t::add_reconnect_timer ()
 {
     if (options.reconnect_ivl > 0) {
         const int interval = get_new_reconnect_ivl ();
-        add_timer (interval, reconnect_timer_id);
-        // TODO: event system will be implemented later
-        // _socket->event_connect_retried (
-        //   make_unconnected_connect_endpoint_pair (_endpoint), interval);
-        _reconnect_timer_started = true;
+        
+        _reconnect_timer.expires_after(std::chrono::milliseconds(interval));
+        _reconnect_timer.async_wait(
+            [this](const asio::error_code& ec) {
+                handle_reconnect_timer(ec);
+            });
     }
+}
+
+void slk::stream_connecter_base_t::handle_reconnect_timer(const asio::error_code& ec)
+{
+    if (ec == asio::error::operation_aborted) {
+        return;
+    }
+    
+    start_connecting();
 }
 
 int slk::stream_connecter_base_t::get_new_reconnect_ivl ()
@@ -115,47 +101,15 @@ int slk::stream_connecter_base_t::get_new_reconnect_ivl ()
     }
 }
 
-void slk::stream_connecter_base_t::rm_handle ()
-{
-    rm_fd (_handle);
-    _handle = static_cast<handle_t> (NULL);
-}
-
-void slk::stream_connecter_base_t::close ()
-{
-    // TODO before, this was an assertion for _s != retired_fd, but this does not match usage of close
-    if (_s != retired_fd) {
-#ifdef SL_HAVE_WINDOWS
-        const int rc = closesocket (_s);
-        wsa_assert (rc != SOCKET_ERROR);
-#else
-        const int rc = ::close (_s);
-        errno_assert (rc == 0);
-#endif
-        // TODO: event system will be implemented later
-        // _socket->event_closed (
-        //   make_unconnected_connect_endpoint_pair (_endpoint), _s);
-        _s = retired_fd;
-    }
-}
-
-void slk::stream_connecter_base_t::in_event ()
-{
-    //  We are not polling for incoming data, so we are actually called
-    //  because of error here. However, we can get error on out event as well
-    //  on some platforms, so we'll simply handle both events in the same way.
-    // Note: out_event() is implemented in derived classes
-}
-
 void slk::stream_connecter_base_t::create_engine (
-  fd_t fd_, const std::string &local_address_)
+  std::unique_ptr<i_async_stream> stream, const std::string &local_address_)
 {
     const endpoint_uri_pair_t endpoint_pair (local_address_, _endpoint,
                                               endpoint_type_connect);
 
     //  Create the engine object for this connection.
     i_engine *engine =
-      new (std::nothrow) zmtp_engine_t (fd_, options, endpoint_pair);
+      new (std::nothrow) zmtp_engine_t (std::move(stream), options, endpoint_pair);
     alloc_assert (engine);
 
     //  Attach the engine to the corresponding session object.
@@ -163,11 +117,4 @@ void slk::stream_connecter_base_t::create_engine (
 
     //  Shut the connecter down.
     terminate ();
-}
-
-void slk::stream_connecter_base_t::timer_event (int id_)
-{
-    slk_assert (id_ == reconnect_timer_id);
-    _reconnect_timer_started = false;
-    start_connecting ();
 }

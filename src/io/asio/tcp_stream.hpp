@@ -7,7 +7,6 @@
 
 #ifdef SL_USE_ASIO
 #include "../i_async_stream.hpp"
-#include "asio_context.hpp"
 #include <asio.hpp>
 
 namespace slk
@@ -16,12 +15,6 @@ namespace slk
     class tcp_stream_t : public i_async_stream
     {
     public:
-        // 기존 소켓 파일 디스크립터로 생성
-        inline tcp_stream_t(fd_t fd)
-            : _socket(asio_context_t::instance().get_context(), asio::ip::tcp::v4(), fd)
-        {
-        }
-
         // 소켓 생성자 (Asio 소켓)
         inline tcp_stream_t(asio::ip::tcp::socket socket)
             : _socket(std::move(socket))

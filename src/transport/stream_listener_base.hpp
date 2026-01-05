@@ -4,19 +4,19 @@
 #define SERVERLINK_STREAM_LISTENER_BASE_HPP_INCLUDED
 
 #include <string>
+#include <memory>
 
-#include "../io/fd.hpp"
 #include "../core/own.hpp"
 #include "../util/constants.hpp"
-#include "../io/io_object.hpp"
-#include "address.hpp"
+#include "../io/i_async_stream.hpp"
 
 namespace slk
 {
 class io_thread_t;
 class socket_base_t;
+class stream_engine_base_t;
 
-class stream_listener_base_t : public own_t, public io_object_t
+class stream_listener_base_t : public own_t
 {
   public:
     stream_listener_base_t (slk::io_thread_t *io_thread_,
@@ -28,8 +28,20 @@ class stream_listener_base_t : public own_t, public io_object_t
     int get_local_address (std::string &addr_) const;
 
   protected:
-    virtual std::string get_socket_name (fd_t fd_,
-                                         socket_end_t socket_end_) const = 0;
+    // This method is now responsible for creating the engine with an async stream
+    void create_engine (std::unique_ptr<i_async_stream> stream);
+
+    // Socket the listener belongs to.
+    slk::socket_base_t *_socket;
+    
+    // IO thread context
+    slk::io_thread_t *_io_thread;
+
+    // Common options
+    const options_t _options;
+
+    // String representation of endpoint to bind to
+    std::string _endpoint;
 
   private:
     //  Handlers for incoming commands.
@@ -38,21 +50,8 @@ class stream_listener_base_t : public own_t, public io_object_t
 
   protected:
     //  Close the listening socket.
-    virtual int close ();
+    virtual void close () = 0;
 
-    virtual void create_engine (fd_t fd);
-
-    //  Underlying socket.
-    fd_t _s;
-
-    //  Handle corresponding to the listening socket.
-    handle_t _handle;
-
-    //  Socket the listener belongs to.
-    slk::socket_base_t *_socket;
-
-    // String representation of endpoint to bind to
-    std::string _endpoint;
 
     SL_NON_COPYABLE_NOR_MOVABLE (stream_listener_base_t)
 };

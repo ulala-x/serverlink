@@ -3,6 +3,7 @@
 #include "precompiled.hpp"
 #include <new>
 #include <string>
+#include <memory>
 
 #include "../util/macros.hpp"
 #include "tcp_connecter.hpp"
@@ -13,27 +14,7 @@
 #include "address.hpp"
 #include "tcp_address.hpp"
 #include "../core/session_base.hpp"
-
-#if !defined SL_HAVE_WINDOWS
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/tcp.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <fcntl.h>
-#ifdef SL_HAVE_VXWORKS
-#include <sockLib.h>
-#endif
-#ifdef SL_HAVE_OPENVMS
-#include <ioctl.h>
-#endif
-#endif
-
-#ifdef __APPLE__
-#include <TargetConditionals.h>
-#endif
+#include "../io/asio/tcp_stream.hpp"
 
 slk::tcp_connecter_t::tcp_connecter_t (class io_thread_t *io_thread_,
                                        class session_base_t *session_,
@@ -42,254 +23,87 @@ slk::tcp_connecter_t::tcp_connecter_t (class io_thread_t *io_thread_,
                                        bool delayed_start_) :
     stream_connecter_base_t (
       io_thread_, session_, options_, addr_, delayed_start_),
-    _connect_timer_started (false)
+    _socket(io_thread_->get_io_context()),
+    _resolver(io_thread_->get_io_context())
 {
     slk_assert (_addr->protocol == protocol_name::tcp);
+    
+    // Parse address string "tcp://host:port" -> "host", "port"
+    // TODO: This parsing logic is duplicated and brittle. Should use address_t more effectively.
+    std::string address = _addr->address;
+    size_t colon_pos = address.rfind(':');
+    if (colon_pos != std::string::npos) {
+        _host = address.substr(0, colon_pos);
+        _port = address.substr(colon_pos + 1);
+        
+        // Handle IPv6 brackets
+        if (!_host.empty() && _host.front() == '[' && _host.back() == ']') {
+            _host = _host.substr(1, _host.length() - 2);
+        }
+    }
 }
 
 slk::tcp_connecter_t::~tcp_connecter_t ()
 {
-    slk_assert (!_connect_timer_started);
 }
 
-void slk::tcp_connecter_t::process_term (int linger_)
+void slk::tcp_connecter_t::close()
 {
-    if (_connect_timer_started) {
-        cancel_timer (connect_timer_id);
-        _connect_timer_started = false;
+    _resolver.cancel();
+    if (_socket.is_open()) {
+        _socket.close();
     }
-
-    stream_connecter_base_t::process_term (linger_);
-}
-
-void slk::tcp_connecter_t::out_event ()
-{
-    if (_connect_timer_started) {
-        cancel_timer (connect_timer_id);
-        _connect_timer_started = false;
-    }
-
-    //  TODO this is still very similar to (t)ipc_connecter_t, maybe the
-    //  differences can be factored out
-
-    rm_handle ();
-
-    const fd_t fd = connect ();
-
-    if (fd == retired_fd
-        && ((options.reconnect_stop & SL_RECONNECT_STOP_CONN_REFUSED)
-            && errno == ECONNREFUSED)) {
-        // TODO: implement send_conn_failed when sessions are complete
-        // send_conn_failed (_session);
-        close ();
-        terminate ();
-        return;
-    }
-
-    //  Handle the error condition by attempt to reconnect.
-    if (fd == retired_fd || !tune_socket (fd)) {
-        close ();
-        add_reconnect_timer ();
-        return;
-    }
-
-#ifdef SL_USE_ASIO
-    // Phase 2: Asio integration
-    // TODO: Create tcp_stream and pass to modified create_engine
-    // For now, fallback to traditional fd-based approach
-    create_engine (fd, get_socket_name<tcp_address_t> (fd, socket_end_local));
-#else
-    create_engine (fd, get_socket_name<tcp_address_t> (fd, socket_end_local));
-#endif
-}
-
-void slk::tcp_connecter_t::timer_event (int id_)
-{
-    if (id_ == connect_timer_id) {
-        _connect_timer_started = false;
-        rm_handle ();
-        close ();
-        add_reconnect_timer ();
-    } else
-        stream_connecter_base_t::timer_event (id_);
 }
 
 void slk::tcp_connecter_t::start_connecting ()
 {
-    //  Open the connecting socket.
-    const int rc = open ();
-
-    //  Connect may succeed in synchronous manner.
-    if (rc == 0) {
-        _handle = add_fd (_s);
-        out_event ();
-    }
-
-    //  Connection establishment may be delayed. Poll for its completion.
-    else if (rc == -1 && errno == EINPROGRESS) {
-        _handle = add_fd (_s);
-        set_pollout (_handle);
-        // TODO: event system
-        // _socket->event_connect_delayed (
-        //   make_unconnected_connect_endpoint_pair (_endpoint), slk_errno ());
-
-        //  add userspace connect timeout
-        add_connect_timer ();
-    }
-
-    //  Handle any other error condition by eventual reconnect.
-    else {
-        if (_s != retired_fd)
-            close ();
-        add_reconnect_timer ();
-    }
+    // Start async resolution
+    _resolver.async_resolve(
+        _host, _port,
+        [this](const asio::error_code& ec, const asio::ip::tcp::resolver::results_type& endpoints) {
+            handle_resolve(ec, endpoints);
+        });
 }
 
-void slk::tcp_connecter_t::add_connect_timer ()
+void slk::tcp_connecter_t::handle_resolve(const asio::error_code& ec, const asio::ip::tcp::resolver::results_type& endpoints)
 {
-    if (options.connect_timeout > 0) {
-        add_timer (options.connect_timeout, connect_timer_id);
-        _connect_timer_started = true;
-    }
-}
-
-int slk::tcp_connecter_t::open ()
-{
-    slk_assert (_s == retired_fd);
-
-    //  Resolve the address
-    if (_addr->resolved.tcp_addr != NULL) {
-        SL_DELETE (_addr->resolved.tcp_addr);
-    }
-
-    _addr->resolved.tcp_addr = new (std::nothrow) tcp_address_t ();
-    alloc_assert (_addr->resolved.tcp_addr);
-    _s = tcp_open_socket (_addr->address.c_str (), options, false, true,
-                          _addr->resolved.tcp_addr);
-    if (_s == retired_fd) {
-        //  TODO we should emit some event in this case!
-
-        SL_DELETE (_addr->resolved.tcp_addr);
-        return -1;
-    }
-    slk_assert (_addr->resolved.tcp_addr != NULL);
-
-    // Set the socket to non-blocking mode so that we get async connect().
-    unblock_socket (_s);
-
-    const tcp_address_t *const tcp_addr = _addr->resolved.tcp_addr;
-
-    int rc;
-
-    // Set a source address for conversations
-    if (tcp_addr->has_src_addr ()) {
-        //  Allow reusing of the address, to connect to different servers
-        //  using the same source port on the client.
-        int flag = 1;
-#ifdef SL_HAVE_WINDOWS
-        rc = setsockopt (_s, SOL_SOCKET, SO_REUSEADDR,
-                         reinterpret_cast<const char *> (&flag), sizeof (int));
-        wsa_assert (rc != SOCKET_ERROR);
-#elif defined SL_HAVE_VXWORKS
-        rc = setsockopt (_s, SOL_SOCKET, SO_REUSEADDR, (char *) &flag,
-                         sizeof (int));
-        errno_assert (rc == 0);
-#else
-        rc = setsockopt (_s, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof (int));
-        errno_assert (rc == 0);
-#endif
-
-#if defined SL_HAVE_VXWORKS
-        rc = ::bind (_s, (sockaddr *) tcp_addr->src_addr (),
-                     tcp_addr->src_addrlen ());
-#else
-        rc = ::bind (_s, tcp_addr->src_addr (), tcp_addr->src_addrlen ());
-#endif
-        if (rc == -1)
-            return -1;
-    }
-
-    //  Connect to the remote peer.
-#if defined SL_HAVE_VXWORKS
-    rc = ::connect (_s, (sockaddr *) tcp_addr->addr (), tcp_addr->addrlen ());
-#else
-    rc = ::connect (_s, tcp_addr->addr (), tcp_addr->addrlen ());
-#endif
-    //  Connect was successful immediately.
-    if (rc == 0) {
-        return 0;
-    }
-
-    //  Translate error codes indicating asynchronous connect has been
-    //  launched to a uniform EINPROGRESS.
-#ifdef SL_HAVE_WINDOWS
-    const int last_error = WSAGetLastError ();
-    if (last_error == WSAEINPROGRESS || last_error == WSAEWOULDBLOCK)
-        errno = EINPROGRESS;
-    else
-        errno = wsa_error_to_errno (last_error);
-#else
-    if (errno == EINTR)
-        errno = EINPROGRESS;
-#endif
-    return -1;
-}
-
-slk::fd_t slk::tcp_connecter_t::connect ()
-{
-    //  Async connect has finished. Check whether an error occurred
-    int err = 0;
-#if defined SL_HAVE_HPUX || defined SL_HAVE_VXWORKS
-    int len = sizeof err;
-#else
-    socklen_t len = sizeof err;
-#endif
-
-    const int rc = getsockopt (_s, SOL_SOCKET, SO_ERROR,
-                               reinterpret_cast<char *> (&err), &len);
-
-    //  Assert if the error was caused by SL bug.
-    //  Networking problems are OK. No need to assert.
-#ifdef SL_HAVE_WINDOWS
-    slk_assert (rc == 0);
-    if (err != 0) {
-        if (err == WSAEBADF || err == WSAENOPROTOOPT || err == WSAENOTSOCK
-            || err == WSAENOBUFS) {
-            wsa_assert_no (err);
+    if (ec) {
+        if (ec != asio::error::operation_aborted) {
+            close();
+            add_reconnect_timer();
         }
-        errno = wsa_error_to_errno (err);
-        return retired_fd;
+        return;
     }
-#else
-    //  Following code should handle both Berkeley-derived socket
-    //  implementations and Solaris.
-    if (rc == -1)
-        err = errno;
-    if (err != 0) {
-        errno = err;
-#if !defined(TARGET_OS_IPHONE) || !TARGET_OS_IPHONE
-        errno_assert (errno != EBADF && errno != ENOPROTOOPT
-                      && errno != ENOTSOCK && errno != ENOBUFS);
-#else
-        errno_assert (errno != ENOPROTOOPT && errno != ENOTSOCK
-                      && errno != ENOBUFS);
-#endif
-        return retired_fd;
-    }
-#endif
 
-    //  Return the newly connected socket.
-    const fd_t result = _s;
-    _s = retired_fd;
-    return result;
+    // Start async connect
+    asio::async_connect(
+        _socket, endpoints,
+        [this](const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint) {
+            handle_connect(ec, endpoint);
+        });
 }
 
-bool slk::tcp_connecter_t::tune_socket (const fd_t fd_)
+void slk::tcp_connecter_t::handle_connect(const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint)
 {
-    const int rc = tune_tcp_socket (fd_)
-                   | tune_tcp_keepalives (
-                     fd_, options.tcp_keepalive, options.tcp_keepalive_cnt,
-                     options.tcp_keepalive_idle, options.tcp_keepalive_intvl)
-                   | tune_tcp_maxrt (fd_, options.tcp_maxrt);
-    return rc == 0;
+    if (ec) {
+        if (ec != asio::error::operation_aborted) {
+            close();
+            add_reconnect_timer();
+        }
+        return;
+    }
+
+    // Apply socket options
+    try {
+        _socket.set_option(asio::ip::tcp::no_delay(true));
+        // TODO: Apply other options like keep-alive
+    } catch (const asio::system_error&) {
+        // Ignore errors
+    }
+
+    // Create stream and engine
+    auto stream = std::make_unique<tcp_stream_t>(std::move(_socket));
+    std::string local_addr = endpoint.address().to_string() + ":" + std::to_string(endpoint.port()); // Actually remote addr, but used for endpoint pair
+    
+    create_engine(std::move(stream), local_addr);
 }

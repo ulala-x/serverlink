@@ -5,17 +5,11 @@
 #define SL_ZMTP_ENGINE_HPP_INCLUDED
 
 #include <stddef.h>
+#include <memory>
 
-#include "../io/fd.hpp"
-#include "../core/i_engine.hpp"
-#include "../io/io_object.hpp"
-#include "i_encoder.hpp"
-#include "i_decoder.hpp"
-#include "../core/options.hpp"
-#include "../core/socket_base.hpp"
-#include "../msg/metadata.hpp"
-#include "../msg/msg.hpp"
 #include "stream_engine_base.hpp"
+#include "../io/i_async_stream.hpp"
+
 
 namespace slk
 {
@@ -34,16 +28,16 @@ class mechanism_t;
 class zmtp_engine_t final : public stream_engine_base_t
 {
   public:
-    zmtp_engine_t (fd_t fd_,
+    zmtp_engine_t (std::unique_ptr<i_async_stream> stream_,
                    const options_t &options_,
                    const endpoint_uri_pair_t &endpoint_uri_pair_);
     ~zmtp_engine_t ();
 
   protected:
-    //  Detects the protocol used by the peer.
-    bool handshake ();
-
     void plug_internal ();
+    
+    // Processes raw greeting data from the peer.
+    void process_handshake_data(unsigned char* buffer, size_t size) override;
 
     int process_command_message (msg_t *msg_);
     int produce_ping_message (msg_t *msg_);
@@ -51,9 +45,8 @@ class zmtp_engine_t final : public stream_engine_base_t
     int produce_pong_message (msg_t *msg_);
 
   private:
-    //  Receive the greeting from the peer.
-    int receive_greeting ();
-    void receive_greeting_versioned ();
+    //  New non-blocking handshake state machine
+    bool process_greeting ();
 
     typedef bool (zmtp_engine_t::*handshake_fun_t) ();
     static handshake_fun_t select_handshake_fun (bool unversioned,
@@ -92,7 +85,7 @@ class zmtp_engine_t final : public stream_engine_base_t
     unsigned char _greeting_send[v3_greeting_size];
 
     //  Size of greeting received so far
-    unsigned int _greeting_bytes_read;
+    size_t _greeting_bytes_read;
 
     //  Indicates whether the engine is to inject a phantom
     //  subscription message into the incoming stream.

@@ -7,12 +7,6 @@
 #include "../protocol/zmtp_engine.hpp"
 #include "../io/io_thread.hpp"
 
-#ifndef SL_HAVE_WINDOWS
-#include <unistd.h>
-#else
-#include <winsock2.h>
-#endif
-
 #include <new>
 
 slk::stream_listener_base_t::stream_listener_base_t (
@@ -20,78 +14,54 @@ slk::stream_listener_base_t::stream_listener_base_t (
   slk::socket_base_t *socket_,
   const slk::options_t &options_) :
     own_t (io_thread_, options_),
-    io_object_t (io_thread_),
-    _s (retired_fd),
-    _handle (static_cast<handle_t> (NULL)),
-    _socket (socket_)
+    _socket (socket_),
+    _io_thread(io_thread_),
+    _options(options_)
 {
 }
 
 slk::stream_listener_base_t::~stream_listener_base_t ()
 {
-    slk_assert (_s == retired_fd);
-    slk_assert (!_handle);
 }
 
 int slk::stream_listener_base_t::get_local_address (std::string &addr_) const
 {
-    addr_ = get_socket_name (_s, socket_end_local);
+    // TODO: This should be updated to get the address from the Asio acceptor
+    addr_ = _endpoint;
     return addr_.empty () ? -1 : 0;
 }
 
 void slk::stream_listener_base_t::process_plug ()
 {
-    //  Start polling for incoming connections.
-    _handle = add_fd (_s);
-    set_pollin (_handle);
+    // The derived class (e.g., tcp_listener_t) is now responsible
+    // for starting the accept loop in its set_local_address method.
 }
 
 void slk::stream_listener_base_t::process_term (int linger_)
 {
-    rm_fd (_handle);
-    _handle = static_cast<handle_t> (NULL);
-    close ();
+    close();
     own_t::process_term (linger_);
 }
 
-int slk::stream_listener_base_t::close ()
+void slk::stream_listener_base_t::create_engine (std::unique_ptr<i_async_stream> stream)
 {
-    // TODO this is identical to stream_connector_base_t::close
-
-    slk_assert (_s != retired_fd);
-#ifdef SL_HAVE_WINDOWS
-    const int rc = closesocket (_s);
-    wsa_assert (rc != SOCKET_ERROR);
-#else
-    const int rc = ::close (_s);
-    errno_assert (rc == 0);
-#endif
-    // TODO: event system will be implemented later
-    // _socket->event_closed (make_unconnected_bind_endpoint_pair (_endpoint), _s);
-    _s = retired_fd;
-
-    return 0;
-}
-
-void slk::stream_listener_base_t::create_engine (fd_t fd_)
-{
-    const endpoint_uri_pair_t endpoint_pair (
-      get_socket_name (fd_, socket_end_local),
-      get_socket_name (fd_, socket_end_remote), endpoint_type_bind);
+    // TODO: The endpoint retrieval needs to be done within the Asio-specific
+    // listener and passed along. For now, using the stored endpoint.
+    const endpoint_uri_pair_t endpoint_pair (_endpoint, "pending_remote", endpoint_type_bind);
 
     //  Create the engine object for this connection.
     i_engine *engine =
-      new (std::nothrow) zmtp_engine_t (fd_, options, endpoint_pair);
+      new (std::nothrow) zmtp_engine_t (std::move(stream), _options, endpoint_pair);
     alloc_assert (engine);
 
     //  Choose I/O thread to run session in. Given that we are already
     //  running in an I/O thread, there must be at least one available.
-    io_thread_t *io_thread = choose_io_thread (options.affinity);
+    io_thread_t *io_thread = choose_io_thread (_options.affinity);
     slk_assert (io_thread);
 
     //  Create and launch a session object.
     session_base_t *session =
-      session_base_t::create (io_thread, false, _socket, options, NULL);
+      session_base_t::create (io_thread, false, _socket, _options, NULL);
     errno_assert (session);
     session->inc_seqnum ();
     launch_child (session);

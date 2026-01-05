@@ -10,6 +10,8 @@
 #include "i_poll_events.hpp"
 #include "mailbox.hpp"
 
+namespace asio { class io_context; }
+
 namespace slk
 {
 class ctx_t;
@@ -41,6 +43,9 @@ class io_thread_t : public object_t, public i_poll_events
 
     // Used by io_objects to retrieve the associated poller object
     poller_t *get_poller () const;
+
+    // Retrieve the Asio io_context (only available when SL_USE_ASIO is defined)
+    asio::io_context& get_io_context();
 
     // Command handlers
     void process_stop ();

@@ -5,10 +5,9 @@
 #define SL_STREAM_ENGINE_BASE_HPP_INCLUDED
 
 #include <stddef.h>
+#include <memory>
 
-#include "../io/fd.hpp"
 #include "../core/i_engine.hpp"
-#include "../io/io_object.hpp"
 #include "i_encoder.hpp"
 #include "i_decoder.hpp"
 #include "../core/options.hpp"
@@ -16,6 +15,7 @@
 #include "../msg/metadata.hpp"
 #include "../msg/msg.hpp"
 #include "../transport/tcp.hpp"
+#include "../io/i_async_stream.hpp" // New stream interface
 
 namespace slk
 {
@@ -26,10 +26,10 @@ class mechanism_t;
 //  This engine handles any socket with SOCK_STREAM semantics,
 //  e.g. TCP socket or an UNIX domain socket.
 
-class stream_engine_base_t : public io_object_t, public i_engine
+class stream_engine_base_t : public i_engine
 {
   public:
-    stream_engine_base_t (fd_t fd_,
+    stream_engine_base_t (std::unique_ptr<i_async_stream> stream,
                           const options_t &options_,
                           const endpoint_uri_pair_t &endpoint_uri_pair_,
                           bool has_handshake_stage_);
@@ -45,12 +45,22 @@ class stream_engine_base_t : public io_object_t, public i_engine
     void zap_msg_available () final;
     const endpoint_uri_pair_t &get_endpoint () const final;
 
-    //  i_poll_events interface implementation.
-    void in_event () final;
-    void out_event () override;
-    void timer_event (int id_) final;
-
   protected:
+    // Asynchronous operation handlers
+    void start_read();
+    void handle_read(size_t bytes_transferred, int error);
+    void start_write();
+    void handle_write(size_t bytes_transferred, int error);
+
+    // Called from handle_read during handshake phase.
+    // Must be implemented by derived classes to process greeting data.
+    // Should call set_handshake_complete() when done.
+    virtual void process_handshake_data(unsigned char* buffer, size_t size) = 0;
+
+    //  Allows derived classes to signal that the handshake is finished.
+    void set_handshake_complete() { _handshaking = false; }
+
+
     typedef metadata_t::dict_t properties_t;
     bool init_properties (properties_t &properties_);
 
@@ -69,7 +79,6 @@ class stream_engine_base_t : public io_object_t, public i_engine
 
     void set_handshake_timer ();
 
-    virtual bool handshake () { return true; };
     virtual void plug_internal (){};
 
     virtual int process_command_message (msg_t *msg_)
@@ -93,16 +102,15 @@ class stream_engine_base_t : public io_object_t, public i_engine
         return -1;
     };
 
-    virtual int read (void *data, size_t size_);
-    virtual int write (const void *data_, size_t size_);
-
-    void reset_pollout () { io_object_t::reset_pollout (_handle); }
-    void set_pollout () { io_object_t::set_pollout (_handle); }
-    void set_pollin () { io_object_t::set_pollin (_handle); }
     session_base_t *session () { return _session; }
     socket_base_t *socket () { return _socket; }
 
     const options_t _options;
+
+    // When true, we are still trying to determine whether
+    // the peer is using versioned protocol, and if so, which
+    // version. When false, normal message flow has started.
+    bool _handshaking;
 
     unsigned char *_inpos;
     size_t _insize;
@@ -153,8 +161,6 @@ class stream_engine_base_t : public io_object_t, public i_engine
     const std::string _peer_address;
 
   private:
-    bool in_event_internal ();
-
     //  Unplug the engine from the session.
     void unplug ();
 
@@ -164,17 +170,10 @@ class stream_engine_base_t : public io_object_t, public i_engine
     void mechanism_ready ();
 
   private:
-    //  Underlying socket.
-    fd_t _s;
-
-    handle_t _handle;
+    //  The underlying asynchronous stream.
+    std::unique_ptr<i_async_stream> _stream;
 
     bool _plugged;
-
-    //  When true, we are still trying to determine whether
-    //  the peer is using versioned protocol, and if so, which
-    //  version.  When false, normal message flow has started.
-    bool _handshaking;
 
     msg_t _tx_msg;
 

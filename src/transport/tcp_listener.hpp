@@ -3,7 +3,9 @@
 #ifndef SERVERLINK_TCP_LISTENER_HPP_INCLUDED
 #define SERVERLINK_TCP_LISTENER_HPP_INCLUDED
 
-#include "../io/fd.hpp"
+#include <asio.hpp>
+#include <asio/ip/tcp.hpp>
+
 #include "tcp_address.hpp"
 #include "stream_listener_base.hpp"
 
@@ -19,20 +21,18 @@ class tcp_listener_t final : public stream_listener_base_t
     //  Set address to listen on.
     int set_local_address (const char *addr_);
 
-  protected:
-    std::string get_socket_name (fd_t fd_, socket_end_t socket_end_) const;
-
   private:
-    //  Handlers for I/O events.
-    void in_event ();
+    //  Start the accept loop.
+    void start_accept();
 
-    //  Accept the new connection. Returns the file descriptor of the
-    //  newly created connection. The function may return retired_fd
-    //  if the connection was dropped while waiting in the listen backlog
-    //  or was denied because of accept filters.
-    fd_t accept ();
+    //  Handler for a new connection.
+    void handle_accept(const asio::error_code& ec, asio::ip::tcp::socket socket);
 
-    int create_socket (const char *addr_);
+    //  Close the listening socket.
+    void close () override;
+
+    //  Asio acceptor for incoming connections.
+    asio::ip::tcp::acceptor _acceptor;
 
     //  Address to listen on.
     tcp_address_t _address;
