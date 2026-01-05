@@ -21,16 +21,34 @@ slk::io_thread_t::io_thread_t (ctx_t *ctx_, uint32_t tid_) :
 #ifdef SL_USE_IOCP
     // For IOCP, configure mailbox signaler to use PostQueuedCompletionStatus
     // for wakeup instead of socket-based signaling
+    fprintf(stderr, "[io_thread] IOCP mode: configuring mailbox signaler\n");
     iocp_t *iocp_poller = static_cast<iocp_t *> (_poller);
+    fprintf(stderr, "[io_thread] iocp_poller=%p, this=%p\n", iocp_poller, this);
 
-    if (_mailbox.get_signaler ()) {
-        _mailbox.get_signaler ()->set_iocp (iocp_poller);
+    // Enable IOCP mode in mailbox
+    fprintf(stderr, "[io_thread] Calling _mailbox.set_iocp_mode(true)\n");
+    _mailbox.set_iocp_mode (true);
+
+    signaler_t *signaler = _mailbox.get_signaler ();
+    fprintf(stderr, "[io_thread] _mailbox.get_signaler() returned %p\n", signaler);
+    if (signaler) {
+        fprintf(stderr, "[io_thread] Calling signaler->set_iocp()\n");
+        signaler->set_iocp (iocp_poller);
+        fprintf(stderr, "[io_thread] signaler->set_iocp() completed\n");
+    } else {
+        fprintf(stderr, "[io_thread] WARNING: get_signaler() returned NULL!\n");
     }
 
     // Register this io_thread as the mailbox handler for SIGNALER_KEY events
+    fprintf(stderr, "[io_thread] Calling iocp_poller->set_mailbox_handler(this)\n");
     iocp_poller->set_mailbox_handler (this);
 
     // Don't register mailbox fd with IOCP - we use PostQueuedCompletionStatus instead
+    // However, we still need to increment load count for the mailbox
+    // This matches the behavior of select/epoll/kqueue which increment load in add_fd()
+    fprintf(stderr, "[io_thread] Calling adjust_mailbox_load(1)\n");
+    iocp_poller->adjust_mailbox_load (1);
+    fprintf(stderr, "[io_thread] IOCP mailbox configuration complete\n");
 #else
     // For non-IOCP pollers (epoll, kqueue, select), register mailbox fd
     if (_mailbox.get_fd () != retired_fd) {
@@ -106,11 +124,21 @@ slk::poller_t *slk::io_thread_t::get_poller () const
 
 void slk::io_thread_t::process_stop ()
 {
+    fprintf(stderr, "[io_thread::process_stop] ENTER: this=%p\n", this);
+
 #ifdef SL_USE_IOCP
     // For IOCP, we don't register mailbox fd, so nothing to remove
+    // However, we need to decrement load count to match the increment in constructor
+    fprintf(stderr, "[io_thread::process_stop] IOCP mode: adjusting mailbox load -1\n");
+    iocp_t *iocp_poller = static_cast<iocp_t *> (_poller);
+    iocp_poller->adjust_mailbox_load (-1);
+    fprintf(stderr, "[io_thread::process_stop] Load after adjustment: %d\n", _poller->get_load());
 #else
     slk_assert (_mailbox_handle);
     _poller->rm_fd (_mailbox_handle);
 #endif
+
+    fprintf(stderr, "[io_thread::process_stop] Calling _poller->stop()\n");
     _poller->stop ();
+    fprintf(stderr, "[io_thread::process_stop] EXIT\n");
 }

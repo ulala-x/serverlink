@@ -71,18 +71,30 @@ static int close_wait_ms (int fd_, unsigned int max_ms_ = 2000)
 
 signaler_t::signaler_t ()
 {
+    fprintf(stderr, "[signaler_t] Constructor starting: this=%p\n", this);
+
 #ifdef SL_USE_IOCP
     _iocp = nullptr;
+    fprintf(stderr, "[signaler_t] IOCP mode: _iocp=NULL\n");
 #endif
 
+    fprintf(stderr, "[signaler_t] Creating socketpair\n");
     // Create the socketpair for signaling
     if (make_fdpair (&_r, &_w) == 0) {
+        fprintf(stderr, "[signaler_t] Socketpair created: r=%llu, w=%llu\n",
+                (uint64_t)_r, (uint64_t)_w);
+        fprintf(stderr, "[signaler_t] Unblocking sockets\n");
         unblock_socket (_w);
         unblock_socket (_r);
+        fprintf(stderr, "[signaler_t] Sockets unblocked\n");
+    } else {
+        fprintf(stderr, "[signaler_t] make_fdpair FAILED\n");
     }
 #ifdef HAVE_FORK
     pid = getpid ();
 #endif
+
+    fprintf(stderr, "[signaler_t] Constructor completed: this=%p\n", this);
 }
 
 signaler_t::~signaler_t ()
@@ -136,10 +148,14 @@ void signaler_t::send ()
 
 #ifdef SL_USE_IOCP
     // If IOCP is set, use PostQueuedCompletionStatus instead of socket signaling
+    fprintf(stderr, "[signaler_t::send] this=%p, _iocp=%p\n", this, _iocp);
     if (_iocp) {
+        fprintf(stderr, "[signaler_t::send] Using IOCP path - calling send_signal()\n");
         _iocp->send_signal ();
+        fprintf(stderr, "[signaler_t::send] send_signal() returned\n");
         return;
     }
+    fprintf(stderr, "[signaler_t::send] IOCP not set - using socket path\n");
     // Fall through to socket-based signaling if IOCP not available
 #endif
 
@@ -342,7 +358,9 @@ void signaler_t::forked ()
 #ifdef SL_USE_IOCP
 void signaler_t::set_iocp (iocp_t *iocp_)
 {
+    fprintf(stderr, "[signaler_t::set_iocp] ENTER: this=%p, iocp=%p\n", this, iocp_);
     _iocp = iocp_;
+    fprintf(stderr, "[signaler_t::set_iocp] EXIT: _iocp=%p\n", _iocp);
 }
 #endif
 

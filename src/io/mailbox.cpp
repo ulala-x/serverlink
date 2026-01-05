@@ -6,13 +6,22 @@
 namespace slk
 {
 mailbox_t::mailbox_t ()
+#ifdef SL_USE_IOCP
+    : _iocp_mode (false)
+#endif
 {
+    fprintf(stderr, "[mailbox_t] Constructor starting: this=%p\n", this);
+
+    fprintf(stderr, "[mailbox_t] Initializing signaler\n");
     // Get the pipe into passive state. That way, if the user starts by
     // polling on the associated file descriptor it will get woken up when
     // new command is posted.
     const bool ok = _cpipe.check_read ();
     slk_assert (!ok);
     _active = false;
+
+    fprintf(stderr, "[mailbox_t] Constructor completed: this=%p, fd=%d\n",
+            this, (int)_signaler.get_fd());
 }
 
 mailbox_t::~mailbox_t ()
@@ -36,12 +45,34 @@ void mailbox_t::send (const command_t &cmd_)
     _cpipe.write (cmd_, false);
     const bool ok = _cpipe.flush ();
     _sync.unlock ();
-    if (!ok)
+    if (!ok) {
+        fprintf(stderr, "[mailbox_t::send] Pipe flush returned false - calling signaler.send()\n");
         _signaler.send ();
+        fprintf(stderr, "[mailbox_t::send] signaler.send() completed\n");
+    } else {
+        fprintf(stderr, "[mailbox_t::send] Pipe flush returned true - NOT calling signaler.send()\n");
+    }
 }
 
 int mailbox_t::recv (command_t *cmd_, int timeout_)
 {
+#ifdef SL_USE_IOCP
+    // IOCP mode with timeout=0: in_event() call itself represents signal reception
+    // Skip signaler wait/recv and directly read from command pipe
+    if (_iocp_mode && timeout_ == 0) {
+        fprintf(stderr, "[mailbox_t::recv] IOCP mode: skipping signaler, directly reading cpipe\n");
+        _active = true;
+        if (_cpipe.read (cmd_)) {
+            fprintf(stderr, "[mailbox_t::recv] IOCP mode: command read successfully\n");
+            return 0;
+        }
+        _active = false;
+        fprintf(stderr, "[mailbox_t::recv] IOCP mode: no commands available (EAGAIN)\n");
+        errno = EAGAIN;
+        return -1;
+    }
+#endif
+
     // Try to get the command straight away
     if (_active) {
         if (_cpipe.read (cmd_))

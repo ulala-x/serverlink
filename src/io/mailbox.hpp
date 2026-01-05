@@ -53,6 +53,18 @@ class mailbox_t final : public i_mailbox
     // True if the underlying pipe is active (we are allowed to read commands)
     bool _active;
 
+#ifdef SL_USE_IOCP
+    // IOCP mode: in_event() call itself represents signal reception
+    bool _iocp_mode;
+#endif
+
+  public:
+#ifdef SL_USE_IOCP
+    // Configure IOCP mode behavior
+    void set_iocp_mode (bool enabled) { _iocp_mode = enabled; }
+#endif
+
+  private:
     SL_NON_COPYABLE_NOR_MOVABLE (mailbox_t)
 };
 }

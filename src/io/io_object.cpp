@@ -74,16 +74,37 @@ void slk::io_object_t::cancel_timer (int id_)
 }
 
 #ifdef SL_USE_IOCP
+slk::io_object_t::handle_t slk::io_object_t::add_fd_select (fd_t fd_)
+{
+    return _poller->add_fd_select (fd_, this);
+}
+
+void slk::io_object_t::rm_fd_select (handle_t handle_)
+{
+    _poller->rm_fd_select (handle_);
+}
+
+void slk::io_object_t::set_pollout_select (handle_t handle_)
+{
+    _poller->set_pollout_select (handle_);
+}
+
 void slk::io_object_t::enable_accept (handle_t handle_)
 {
-    _poller->enable_accept (handle_);
+    // Simplified IOCP: AcceptEx removed
+    // BSD socket accept() is used instead - this is a no-op
+    (void) handle_;
 }
 
 void slk::io_object_t::enable_connect (handle_t handle_,
                                        const struct sockaddr *addr_,
                                        int addrlen_)
 {
-    _poller->enable_connect (handle_, addr_, addrlen_);
+    // Simplified IOCP: ConnectEx removed
+    // BSD socket connect() is used instead - this is a no-op
+    (void) handle_;
+    (void) addr_;
+    (void) addrlen_;
 }
 #endif
 

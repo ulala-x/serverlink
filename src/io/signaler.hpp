@@ -3,6 +3,8 @@
 #ifndef SERVERLINK_SIGNALER_HPP_INCLUDED
 #define SERVERLINK_SIGNALER_HPP_INCLUDED
 
+#include "../util/config.hpp"
+
 #ifdef HAVE_FORK
 #include <unistd.h>
 #endif

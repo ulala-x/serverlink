@@ -63,32 +63,11 @@ struct i_poll_events
         }
     }
 
-    // Called when AcceptEx operation completes with new connection
-    // Parameters:
-    //   accept_fd_: accepted socket descriptor (already has SO_UPDATE_ACCEPT_CONTEXT)
-    //   error_: Windows error code (0 = success)
-    // Default implementation: forwards to in_event() for backward compatibility
-    virtual void accept_completed (fd_t accept_fd_, int error_)
-    {
-        // Default: fallback to traditional accept() via in_event()
-        // Listener classes should override to use accept_fd_ directly
-        if (error_ == 0) {
-            in_event ();
-        }
-    }
-
-    // Called when ConnectEx operation completes
-    // Parameters:
-    //   error_: Windows error code (0 = success)
-    // Default implementation: forwards to out_event() for backward compatibility
-    virtual void connect_completed (int error_)
-    {
-        // Default: forward to out_event() on success
-        // Connecter classes should override for direct handling
-        if (error_ == 0) {
-            out_event ();
-        }
-    }
+    //  Note: accept_completed() and connect_completed() removed
+    //  Simplified IOCP: Listener/Connecter use in_event()/out_event()
+    //  - AcceptEx removed (use traditional accept() via in_event())
+    //  - ConnectEx removed (use select() polling via out_event())
+    //  This matches libzmq 4.3.5 Windows behavior for simplified compatibility
 #endif
 };
 }

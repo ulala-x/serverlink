@@ -41,6 +41,11 @@ class io_object_t : public i_poll_events
     void cancel_timer (int id_);
 
 #ifdef SL_USE_IOCP
+    // IOCP-specific: Select-only polling (connector sockets)
+    handle_t add_fd_select (fd_t fd_);
+    void rm_fd_select (handle_t handle_);
+    void set_pollout_select (handle_t handle_);
+
     // IOCP-specific: Enable AcceptEx pre-posting pool for listener sockets
     void enable_accept (handle_t handle_);
 

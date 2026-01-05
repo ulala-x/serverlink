@@ -48,6 +48,9 @@ class stream_listener_base_t : public own_t, public io_object_t
     //  Handle corresponding to the listening socket.
     handle_t _handle;
 
+    //  I/O thread this listener is running on (needed for IOCP AcceptEx)
+    io_thread_t *_io_thread;
+
     //  Socket the listener belongs to.
     slk::socket_base_t *_socket;
 

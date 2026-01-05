@@ -109,20 +109,25 @@ int slk::ctx_t::terminate ()
 
         // First attempt to terminate the context
         if (!restarted) {
+            fprintf(stderr, "[ctx_t::terminate] Stopping sockets (count=%zu)\n", _sockets.size());
             // First send stop command to sockets so that any blocking calls
             // can be interrupted
             for (sockets_t::size_type i = 0, size = _sockets.size (); i != size;
                  i++) {
                 _sockets[i]->stop ();
             }
+            fprintf(stderr, "[ctx_t::terminate] Calling _reaper->stop()\n");
             // Stop the reaper to trigger cleanup
             _reaper->stop ();
+            fprintf(stderr, "[ctx_t::terminate] _reaper->stop() returned\n");
         }
         _slot_sync.unlock ();
 
         // Wait till reaper thread closes all the sockets
+        fprintf(stderr, "[ctx_t::terminate] Waiting for reaper 'done' command...\n");
         command_t cmd;
         const int rc = _term_mailbox.recv (&cmd, -1);
+        fprintf(stderr, "[ctx_t::terminate] Received command from reaper, rc=%d\n", rc);
         if (rc == -1 && errno == EINTR)
             return -1;
         errno_assert (rc == 0);
@@ -318,6 +323,8 @@ int slk::ctx_t::get (int option_)
 
 bool slk::ctx_t::start ()
 {
+    fprintf(stderr, "[ctx_t] start() ENTRY: this=%p\n", this);
+
     // Initialise the array of mailboxes. Additional two slots are for
     // slk_ctx_term thread and reaper thread
     _opt_sync.lock ();
@@ -326,6 +333,9 @@ bool slk::ctx_t::start ()
     const int ios = _io_thread_count;
     _opt_sync.unlock ();
     const int slot_count = mazsocks + ios + term_and_reaper_threads_count;
+
+    fprintf(stderr, "[ctx_t] start(): slot_count=%d, io_threads=%d\n", slot_count, ios);
+
     try {
         _slots.reserve (slot_count);
         _empty_slots.reserve (slot_count - term_and_reaper_threads_count);
@@ -339,6 +349,8 @@ bool slk::ctx_t::start ()
     // Initialise the infrastructure for slk_ctx_term thread
     _slots[term_tid] = &_term_mailbox;
 
+    fprintf(stderr, "[ctx_t] start(): creating reaper thread\n");
+
     // Create the reaper thread
     _reaper = new (std::nothrow) reaper_t (this, reaper_tid);
     if (!_reaper) {
@@ -348,13 +360,20 @@ bool slk::ctx_t::start ()
     if (!_reaper->get_mailbox ()->valid ())
         goto fail_cleanup_reaper;
     _slots[reaper_tid] = _reaper->get_mailbox ();
+
+    fprintf(stderr, "[ctx_t] start(): starting reaper thread\n");
     _reaper->start ();
+    fprintf(stderr, "[ctx_t] start(): reaper thread started\n");
 
     // Create I/O thread objects and launch them
     _slots.resize (slot_count, NULL);
 
+    fprintf(stderr, "[ctx_t] start(): creating %d I/O threads\n", ios);
+
     for (int i = term_and_reaper_threads_count;
          i != ios + term_and_reaper_threads_count; i++) {
+        fprintf(stderr, "[ctx_t] start(): creating I/O thread with tid=%d (index in _io_threads will be %zu)\n",
+                i, _io_threads.size());
         io_thread_t *io_thread = new (std::nothrow) io_thread_t (this, i);
         if (!io_thread) {
             errno = ENOMEM;
@@ -366,7 +385,11 @@ bool slk::ctx_t::start ()
         }
         _io_threads.push_back (io_thread);
         _slots[i] = io_thread->get_mailbox ();
+        fprintf(stderr, "[ctx_t] start(): I/O thread tid=%d added to _io_threads[%zu], total size now=%zu\n",
+                i, _io_threads.size() - 1, _io_threads.size());
+        fprintf(stderr, "[ctx_t] start(): starting I/O thread %d\n", i);
         io_thread->start ();
+        fprintf(stderr, "[ctx_t] start(): I/O thread %d started\n", i);
     }
 
     // In the unused part of the slot array, create a list of empty slots
@@ -376,21 +399,29 @@ bool slk::ctx_t::start ()
     }
 
     _starting = false;
+
+    fprintf(stderr, "[ctx_t] start() EXIT: success\n");
     return true;
 
 fail_cleanup_reaper:
+    fprintf(stderr, "[ctx_t] start(): FAILED - cleaning up reaper\n");
     _reaper->stop ();
     delete _reaper;
     _reaper = NULL;
 
 fail_cleanup_slots:
+    fprintf(stderr, "[ctx_t] start(): FAILED - cleaning up slots\n");
     _slots.clear ();
     return false;
 }
 
 slk::socket_base_t *slk::ctx_t::create_socket (int type_)
 {
+    fprintf(stderr, "[ctx_t] create_socket ENTRY: type=%d, this=%p\n", type_, this);
+
     scoped_lock_t locker (_slot_sync);
+
+    fprintf(stderr, "[ctx_t] create_socket: lock acquired, checking terminating=%d\n", _terminating);
 
     // Once slk_ctx_term() or slk_ctx_shutdown() was called, we can't create
     // new sockets
@@ -399,9 +430,13 @@ slk::socket_base_t *slk::ctx_t::create_socket (int type_)
         return NULL;
     }
 
+    fprintf(stderr, "[ctx_t] create_socket: checking starting=%d\n", _starting);
+
     if (unlikely (_starting)) {
+        fprintf(stderr, "[ctx_t] create_socket: calling start()\n");
         if (!start ())
             return NULL;
+        fprintf(stderr, "[ctx_t] create_socket: start() returned successfully\n");
     }
 
     // If max_sockets limit was reached, return error
@@ -417,6 +452,9 @@ slk::socket_base_t *slk::ctx_t::create_socket (int type_)
     // Generate new unique socket ID
     const int sid = (static_cast<int> (max_socket_id.add (1))) + 1;
 
+    fprintf(stderr, "[ctx_t] create_socket: calling socket_base_t::create (slot=%u, sid=%d)\n",
+            slot, sid);
+
     // Create the socket and register its mailbox
     socket_base_t *s = socket_base_t::create (type_, this, slot, sid);
     if (!s) {
@@ -426,6 +464,7 @@ slk::socket_base_t *slk::ctx_t::create_socket (int type_)
     _sockets.push_back (s);
     _slots[slot] = s->get_mailbox ();
 
+    fprintf(stderr, "[ctx_t] create_socket EXIT: socket=%p\n", s);
     return s;
 }
 
@@ -571,7 +610,10 @@ int slk::thread_ctx_t::get (int option_,
 
 void slk::ctx_t::send_command (uint32_t tid_, const command_t &command_)
 {
+    fprintf(stderr, "[ctx_t::send_command] Sending command type=%d to tid=%u, slot=%p\n",
+            (int)command_.type, tid_, _slots[tid_]);
     _slots[tid_]->send (command_);
+    fprintf(stderr, "[ctx_t::send_command] Command sent\n");
 }
 
 slk::io_thread_t *slk::ctx_t::choose_io_thread (uint64_t affinity_)
@@ -593,6 +635,37 @@ slk::io_thread_t *slk::ctx_t::choose_io_thread (uint64_t affinity_)
         }
     }
     return selected_io_thread;
+}
+
+slk::io_thread_t *slk::ctx_t::get_io_thread_by_tid (uint32_t tid_) const
+{
+    fprintf(stderr, "[ctx_t::get_io_thread_by_tid] ENTER: tid=%u\n", tid_);
+    fprintf(stderr, "[ctx_t::get_io_thread_by_tid] reaper_tid=%u, _io_threads.size()=%zu\n",
+            reaper_tid, _io_threads.size());
+
+    // I/O threads start at tid = reaper_tid + 1 (which is 2)
+    // _io_threads[0] corresponds to tid = 2
+    // _io_threads[1] corresponds to tid = 3
+    if (tid_ <= reaper_tid) {
+        fprintf(stderr, "[ctx_t::get_io_thread_by_tid] tid=%u <= reaper_tid=%u, returning NULL\n",
+                tid_, reaper_tid);
+        return NULL;
+    }
+
+    const uint32_t io_thread_index = tid_ - reaper_tid - 1;
+    fprintf(stderr, "[ctx_t::get_io_thread_by_tid] io_thread_index=%u (tid %u - reaper_tid %u - 1)\n",
+            io_thread_index, tid_, reaper_tid);
+
+    if (io_thread_index >= _io_threads.size ()) {
+        fprintf(stderr, "[ctx_t::get_io_thread_by_tid] io_thread_index=%u >= size=%zu, returning NULL\n",
+                io_thread_index, _io_threads.size());
+        return NULL;
+    }
+
+    io_thread_t *result = _io_threads[io_thread_index];
+    fprintf(stderr, "[ctx_t::get_io_thread_by_tid] EXIT: returning io_thread=%p at index %u\n",
+            result, io_thread_index);
+    return result;
 }
 
 int slk::ctx_t::register_endpoint (const char *addr_,

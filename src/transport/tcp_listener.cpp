@@ -41,11 +41,7 @@ slk::tcp_listener_t::tcp_listener_t (io_thread_t *io_thread_,
 
 void slk::tcp_listener_t::in_event ()
 {
-#ifdef SL_USE_IOCP
-    // IOCP 모드에서는 accept_completed()가 호출되어야 함
-    // in_event()는 fallback이거나 에러 상황
-    return;
-#else
+    // Simplified IOCP: 모든 플랫폼에서 통합된 BSD accept() 사용
     const fd_t fd = accept ();
 
     //  If connection was reset by the peer in the meantime, just ignore it.
@@ -72,37 +68,7 @@ void slk::tcp_listener_t::in_event ()
 
     //  Create the engine object for this connection.
     create_engine (fd);
-#endif
 }
-
-#ifdef SL_USE_IOCP
-void slk::tcp_listener_t::accept_completed (fd_t accept_socket_, int error_)
-{
-    // 에러 체크
-    if (error_ != 0 || accept_socket_ == retired_fd) {
-        if (accept_socket_ != retired_fd) {
-            closesocket (accept_socket_);
-        }
-        return;
-    }
-
-    // TCP 옵션 설정
-    int rc = tune_tcp_socket (accept_socket_);
-    rc = rc
-         | tune_tcp_keepalives (
-           accept_socket_, options.tcp_keepalive, options.tcp_keepalive_cnt,
-           options.tcp_keepalive_idle, options.tcp_keepalive_intvl);
-    rc = rc | tune_tcp_maxrt (accept_socket_, options.tcp_maxrt);
-    if (rc != 0) {
-        // TCP 옵션 설정 실패 - 소켓 닫기
-        closesocket (accept_socket_);
-        return;
-    }
-
-    // 새 연결에 대한 엔진 생성
-    create_engine (accept_socket_);
-}
-#endif
 
 std::string
 slk::tcp_listener_t::get_socket_name (slk::fd_t fd_,
@@ -238,6 +204,25 @@ slk::fd_t slk::tcp_listener_t::accept ()
 #endif
         return retired_fd;
     }
+
+#if defined SL_HAVE_WINDOWS && defined SL_USE_IOCP
+    //  Simplified IOCP: Clear IOCP inheritance from listening socket
+    //
+    //  On Windows, accept() creates a socket that inherits the listening
+    //  socket's IOCP association. This prevents the accepted socket from
+    //  being registered with a different IOCP (ERROR 87).
+    //
+    //  Solution: Use SO_UPDATE_ACCEPT_CONTEXT to detach the accepted socket
+    //  from the listening socket's context, allowing it to be registered
+    //  with a different io_thread's IOCP for load balancing.
+    //
+    //  Note: This is REQUIRED for choose_io_thread() load balancing to work.
+    //  Without this, accepted sockets MUST stay in the same io_thread as
+    //  the listening socket, defeating load balancing.
+    const int update_rc = setsockopt (sock, SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT,
+                               reinterpret_cast<const char *> (&_s), sizeof (_s));
+    wsa_assert (update_rc != SOCKET_ERROR);
+#endif
 
     make_socket_noninheritable (sock);
 

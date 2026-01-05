@@ -35,16 +35,21 @@ slk::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _event_dispatcher (NULL)
 #endif
 {
+    fprintf(stderr, "[router_t] Constructor starting: this=%p, sid=%d\n", this, sid_);
+
+    fprintf(stderr, "[router_t] Setting socket options\n");
     options.type = SL_ROUTER;
     options.recv_routing_id = true;
     options.raw_socket = false;
     options.can_send_hello_msg = true;
     options.can_recv_disconnect_msg = true;
 
+    fprintf(stderr, "[router_t] Initializing prefetch messages\n");
     _prefetched_id.init ();
     _prefetched_msg.init ();
 
 #ifdef SL_ENABLE_MONITORING
+    fprintf(stderr, "[router_t] Initializing monitoring components\n");
     // Initialize monitoring components
     _conn_manager = new (std::nothrow) connection_manager_t ();
     slk_assert (_conn_manager);
@@ -52,6 +57,8 @@ slk::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _event_dispatcher = new (std::nothrow) event_dispatcher_t ();
     slk_assert (_event_dispatcher);
 #endif
+
+    fprintf(stderr, "[router_t] Constructor completed: this=%p\n", this);
 }
 
 slk::router_t::~router_t ()

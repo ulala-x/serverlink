@@ -30,10 +30,6 @@ overlapped_ex_t::overlapped_ex_t ()
 
     pending.store (false, std::memory_order_relaxed);
     cancelled.store (false, std::memory_order_relaxed);
-
-    // AcceptEx 필드 초기화
-    accept_socket = retired_fd;
-    memset (accept_buffer, 0, sizeof (accept_buffer));
 }
 
 //=============================================================================
@@ -46,13 +42,13 @@ iocp_error_action classify_error (DWORD error_)
         // Success cases
         case ERROR_SUCCESS:
         case WSA_IO_PENDING:
-            return iocp_error_action::IGNORE;
+            return iocp_error_action::IOCP_IGNORE;
 
         // Retry cases - temporary errors
         case WSAEWOULDBLOCK:
         case WSAEINTR:
         case WSAEINPROGRESS:
-            return iocp_error_action::RETRY;
+            return iocp_error_action::IOCP_RETRY;
 
         // Close cases - connection errors
         case WSAECONNRESET:
@@ -65,7 +61,7 @@ iocp_error_action classify_error (DWORD error_)
         case WSAENETUNREACH:
         case ERROR_NETNAME_DELETED:
         case ERROR_CONNECTION_ABORTED:
-            return iocp_error_action::CLOSE;
+            return iocp_error_action::IOCP_CLOSE;
 
         // Fatal cases - programming errors or system failures
         case WSAENOTSOCK:
@@ -75,15 +71,15 @@ iocp_error_action classify_error (DWORD error_)
         case ERROR_INVALID_HANDLE:
         case ERROR_NOT_ENOUGH_MEMORY:
         case ERROR_OUTOFMEMORY:
-            return iocp_error_action::FATAL;
+            return iocp_error_action::IOCP_FATAL;
 
         // Operation aborted (usually from CancelIoEx)
         case ERROR_OPERATION_ABORTED:
-            return iocp_error_action::CLOSE;
+            return iocp_error_action::IOCP_CLOSE;
 
         // Default: treat unknown errors as close-worthy
         default:
-            return iocp_error_action::CLOSE;
+            return iocp_error_action::IOCP_CLOSE;
     }
 }
 
@@ -97,10 +93,10 @@ iocp_entry_t::iocp_entry_t (fd_t fd_, i_poll_events *events_)
     // Initialize SRW lock
     InitializeSRWLock (&lock);
 
-    // Create OVERLAPPED structures for read, write, and connect operations
+    // Create OVERLAPPED structures for read and write operations
+    // Simplified IOCP: BSD socket connect, IOCP I/O only
     read_ovl = std::make_unique<overlapped_ex_t> ();
     write_ovl = std::make_unique<overlapped_ex_t> ();
-    connect_ovl = std::make_unique<overlapped_ex_t> ();
 
     read_ovl->type = overlapped_ex_t::OP_READ;
     read_ovl->socket = fd_;
@@ -110,17 +106,10 @@ iocp_entry_t::iocp_entry_t (fd_t fd_, i_poll_events *events_)
     write_ovl->socket = fd_;
     write_ovl->entry = this;
 
-    connect_ovl->type = overlapped_ex_t::OP_CONNECT;
-    connect_ovl->socket = fd_;
-    connect_ovl->entry = this;
-
     want_pollin.store (false, std::memory_order_relaxed);
     want_pollout.store (false, std::memory_order_relaxed);
     pending_count.store (0, std::memory_order_relaxed);
     retired.store (false, std::memory_order_relaxed);
-    is_listener.store (false, std::memory_order_relaxed);
-
-    // AcceptEx 풀은 enable_accept() 호출 시 초기화
 }
 
 iocp_entry_t::~iocp_entry_t ()
@@ -135,10 +124,12 @@ iocp_entry_t::~iocp_entry_t ()
 iocp_t::iocp_t (ctx_t *ctx_)
     : worker_poller_base_t (ctx_),
       _iocp (NULL),
-      _acceptex_fn (nullptr),
-      _connectex_fn (nullptr),
-      _mailbox_handler (nullptr)
+      _mailbox_handler (nullptr),
+      _select_entries ()
 {
+    // Simplified IOCP: BSD socket connect, IOCP I/O only
+    // AcceptEx/ConnectEx support removed for simplicity
+
     // Create I/O Completion Port
     // Parameters:
     //   INVALID_HANDLE_VALUE: create new IOCP (not associating with existing handle)
@@ -169,6 +160,14 @@ iocp_t::~iocp_t ()
     }
     _retired.clear ();
 
+    // Clean up select entries
+    for (select_entry_t *entry : _select_entries) {
+        if (entry) {
+            delete entry;
+        }
+    }
+    _select_entries.clear ();
+
     // Close IOCP handle
     if (_iocp) {
         BOOL rc = CloseHandle (_iocp);
@@ -178,11 +177,28 @@ iocp_t::~iocp_t ()
 
 iocp_t::handle_t iocp_t::add_fd (fd_t fd_, i_poll_events *events_)
 {
+    fprintf(stderr, "[IOCP] add_fd ENTRY: fd=%llu, events=%p\n", (uint64_t)fd_, events_);
+
     check_thread ();
+
+    // Check if this fd is already registered
+    // This would be a programming error - each socket should only be registered once
+    for (iocp_entry_t *existing : _entries) {
+        if (existing && existing->fd == fd_) {
+            fprintf(stderr, "[IOCP] add_fd ERROR: fd=%llu already registered with entry=%p\n",
+                    (uint64_t)fd_, existing);
+            slk_assert (false && "Attempting to register same socket with IOCP twice");
+            return nullptr;
+        }
+    }
+
+    fprintf(stderr, "[IOCP] add_fd: creating entry\n");
 
     // Create new entry
     iocp_entry_t *entry = new (std::nothrow) iocp_entry_t (fd_, events_);
     alloc_assert (entry);
+
+    fprintf(stderr, "[IOCP] add_fd: entry created=%p, calling CreateIoCompletionPort\n", entry);
 
     // Associate socket with IOCP
     // Parameters:
@@ -193,13 +209,19 @@ iocp_t::handle_t iocp_t::add_fd (fd_t fd_, i_poll_events *events_)
     HANDLE ret =
       CreateIoCompletionPort (reinterpret_cast<HANDLE> (fd_), _iocp,
                               reinterpret_cast<ULONG_PTR> (entry), 0);
+
+    fprintf(stderr, "[IOCP] CreateIoCompletionPort: rc=%p, error=%lu\n",
+            ret, GetLastError());
+
     win_assert (ret == _iocp);
 
+    fprintf(stderr, "[IOCP] add_fd: adding to entries list\n");
     _entries.push_back (entry);
 
     // Increase the load metric
     adjust_load (1);
 
+    fprintf(stderr, "[IOCP] add_fd EXIT: returning entry=%p\n", entry);
     return entry;
 }
 
@@ -238,6 +260,8 @@ void iocp_t::set_pollin (handle_t handle_)
     iocp_entry_t *entry = handle_;
     slk_assert (entry);
 
+    fprintf(stderr, "[IOCP] set_pollin: entry=%p\n", handle_);
+
     bool expected = false;
     if (entry->want_pollin.compare_exchange_strong (expected, true,
                                                      std::memory_order_acq_rel)) {
@@ -263,6 +287,8 @@ void iocp_t::set_pollout (handle_t handle_)
     iocp_entry_t *entry = handle_;
     slk_assert (entry);
 
+    fprintf(stderr, "[IOCP] set_pollout: entry=%p\n", handle_);
+
     bool expected = false;
     if (entry->want_pollout.compare_exchange_strong (
           expected, true, std::memory_order_acq_rel)) {
@@ -286,22 +312,42 @@ void iocp_t::stop ()
     check_thread ();
     _stopping = true;
 
+    fprintf(stderr, "[IOCP] stop() called, posting SHUTDOWN_KEY\n");
+
     // Post a special completion packet to wake up the worker thread
     BOOL rc = PostQueuedCompletionStatus (_iocp, 0, SHUTDOWN_KEY, NULL);
+
+    fprintf(stderr, "[IOCP] SHUTDOWN_KEY posted: rc=%d\n", rc);
+
     win_assert (rc != 0);
 }
 
 void iocp_t::send_signal ()
 {
+    fprintf(stderr, "[iocp_t::send_signal] ENTER: this=%p, _iocp=%p\n", this, _iocp);
+
     // Post a signaler completion packet to wake up the I/O thread
     // This is thread-safe and can be called from any thread
     BOOL rc = PostQueuedCompletionStatus (_iocp, 0, SIGNALER_KEY, NULL);
+
+    fprintf(stderr, "[iocp_t::send_signal] PostQueuedCompletionStatus result: rc=%d, error=%lu\n",
+            rc, GetLastError());
+
     win_assert (rc != 0);
+
+    fprintf(stderr, "[iocp_t::send_signal] EXIT\n");
 }
 
 void iocp_t::set_mailbox_handler (i_poll_events *handler_)
 {
+    fprintf(stderr, "[iocp_t::set_mailbox_handler] this=%p, handler=%p\n", this, handler_);
     _mailbox_handler = handler_;
+    fprintf(stderr, "[iocp_t::set_mailbox_handler] _mailbox_handler set to %p\n", _mailbox_handler);
+}
+
+void iocp_t::adjust_mailbox_load (int amount_)
+{
+    adjust_load (amount_);
 }
 
 int iocp_t::max_fds ()
@@ -311,25 +357,128 @@ int iocp_t::max_fds ()
     return 65536;
 }
 
+iocp_t::handle_t iocp_t::add_fd_select (fd_t fd_, i_poll_events *events_)
+{
+    fprintf(stderr, "[IOCP] add_fd_select: fd=%llu, events=%p (select-only, no IOCP registration)\n",
+            (uint64_t)fd_, events_);
+
+    check_thread ();
+
+    // Create select entry (not registered with IOCP)
+    select_entry_t *entry = new (std::nothrow) select_entry_t;
+    alloc_assert (entry);
+
+    entry->fd = fd_;
+    entry->events = events_;
+    entry->want_pollout = false;
+
+    _select_entries.push_back (entry);
+
+    // Increase the load metric
+    adjust_load (1);
+
+    // Return entry pointer cast to handle_t (compatible with iocp_entry_t*)
+    return reinterpret_cast<handle_t> (entry);
+}
+
+void iocp_t::rm_fd_select (handle_t handle_)
+{
+    fprintf(stderr, "[IOCP] rm_fd_select: handle=%p\n", handle_);
+
+    check_thread ();
+
+    select_entry_t *entry = reinterpret_cast<select_entry_t *> (handle_);
+    slk_assert (entry);
+
+    // Remove from select entries
+    auto it = std::find (_select_entries.begin (), _select_entries.end (), entry);
+    if (it != _select_entries.end ()) {
+        _select_entries.erase (it);
+    }
+
+    // Decrease the load metric
+    adjust_load (-1);
+
+    // Delete entry
+    delete entry;
+}
+
+void iocp_t::set_pollout_select (handle_t handle_)
+{
+    fprintf(stderr, "[IOCP] set_pollout_select: handle=%p\n", handle_);
+
+    check_thread ();
+
+    select_entry_t *entry = reinterpret_cast<select_entry_t *> (handle_);
+    slk_assert (entry);
+
+    entry->want_pollout = true;
+}
+
 void iocp_t::loop ()
 {
+    fprintf(stderr, "[IOCP] loop() ENTER: load=%d, _stopping=%d\n", get_load(), _stopping);
+
     OVERLAPPED_ENTRY entries[MAX_COMPLETIONS];
 
     while (!_stopping) {
+        fprintf(stderr, "[IOCP] loop iteration: _stopping=%d, load=%d\n", _stopping, get_load());
+
         // Execute any due timers
         const uint64_t timeout = execute_timers ();
 
         if (get_load () == 0) {
-            if (timeout == 0)
+            fprintf(stderr, "[IOCP] load=0, timeout=%llu - checking exit condition\n", timeout);
+            if (timeout == 0) {
+                fprintf(stderr, "[IOCP] load=0 and timeout=0 - breaking loop\n");
                 break;
+            }
+            fprintf(stderr, "[IOCP] load=0 but timeout=%llu - continuing\n", timeout);
             continue;
         }
+
+        // Check select entries first (connector sockets)
+        if (!_select_entries.empty ()) {
+            fd_set write_fds;
+            FD_ZERO (&write_fds);
+            fd_t max_fd = 0;
+
+            for (select_entry_t *entry : _select_entries) {
+                if (entry->want_pollout) {
+                    FD_SET (entry->fd, &write_fds);
+                    if (entry->fd > max_fd)
+                        max_fd = entry->fd;
+                }
+            }
+
+            if (max_fd > 0) {
+                // Use minimal timeout for select (0 = non-blocking poll)
+                struct timeval tv = {0, 0};
+                int rc = select (static_cast<int> (max_fd + 1), NULL, &write_fds, NULL, &tv);
+
+                if (rc > 0) {
+                    // Some sockets are ready
+                    for (select_entry_t *entry : _select_entries) {
+                        if (entry->want_pollout && FD_ISSET (entry->fd, &write_fds)) {
+                            fprintf(stderr, "[IOCP] select: fd=%llu ready for write\n", (uint64_t)entry->fd);
+                            entry->want_pollout = false;
+                            entry->events->out_event ();
+                        }
+                    }
+                }
+            }
+        }
+
+        fprintf(stderr, "[IOCP] Waiting for completions, timeout=%llu\n", timeout);
 
         // Wait for I/O completion events
         ULONG count = 0;
         BOOL ok = GetQueuedCompletionStatusEx (
           _iocp, entries, MAX_COMPLETIONS, &count,
           timeout > 0 ? static_cast<DWORD> (timeout) : INFINITE, FALSE);
+
+        fprintf(stderr, "[IOCP] Received %lu completions (ok=%d, error=%lu)\n",
+                count, ok, GetLastError());
 
         if (!ok) {
             // GetQueuedCompletionStatusEx failed
@@ -347,18 +496,27 @@ void iocp_t::loop ()
         for (ULONG i = 0; i < count; ++i) {
             OVERLAPPED_ENTRY &entry = entries[i];
 
+            fprintf(stderr, "[IOCP] Processing completion packet %lu/%lu: key=%p\n",
+                    i + 1, count, (void*)entry.lpCompletionKey);
+
             // Check for shutdown signal
             if (entry.lpCompletionKey == SHUTDOWN_KEY) {
+                fprintf(stderr, "[IOCP] SHUTDOWN_KEY received! Setting _stopping=true and breaking\n");
                 _stopping = true;
                 break;
             }
 
             // Check for signaler (mailbox wakeup)
             if (entry.lpCompletionKey == SIGNALER_KEY) {
+                fprintf(stderr, "[IOCP] SIGNALER_KEY received! _mailbox_handler=%p\n", _mailbox_handler);
                 // Mailbox has commands to process
                 // Call the registered mailbox handler's in_event()
                 if (_mailbox_handler) {
+                    fprintf(stderr, "[IOCP] Calling _mailbox_handler->in_event()\n");
                     _mailbox_handler->in_event ();
+                    fprintf(stderr, "[IOCP] _mailbox_handler->in_event() returned\n");
+                } else {
+                    fprintf(stderr, "[IOCP] WARNING: SIGNALER_KEY received but _mailbox_handler is NULL!\n");
                 }
                 continue;
             }
@@ -394,14 +552,11 @@ void iocp_t::loop ()
             }
 
             // Process based on operation type
+            // Simplified IOCP: Only READ/WRITE operations supported
             if (ovl->type == overlapped_ex_t::OP_READ) {
                 handle_read_completion (iocp_entry, bytes, error);
             } else if (ovl->type == overlapped_ex_t::OP_WRITE) {
                 handle_write_completion (iocp_entry, bytes, error);
-            } else if (ovl->type == overlapped_ex_t::OP_ACCEPT) {
-                handle_accept_completion (iocp_entry, ovl, error);
-            } else if (ovl->type == overlapped_ex_t::OP_CONNECT) {
-                handle_connect_completion (iocp_entry, error);
             }
         }
 
@@ -409,14 +564,21 @@ void iocp_t::loop ()
         cleanup_retired ();
     }
 
+    fprintf(stderr, "[IOCP] loop() EXIT: _stopping=%d, load=%d\n", _stopping, get_load());
+
     // Final cleanup
     cleanup_retired ();
+
+    fprintf(stderr, "[IOCP] loop() COMPLETE\n");
 }
 
 void iocp_t::start_async_recv (iocp_entry_t *entry_)
 {
     overlapped_ex_t *ovl = entry_->read_ovl.get ();
     slk_assert (ovl);
+
+    fprintf(stderr, "[IOCP] WSARecv: entry=%p, fd=%llu\n",
+            entry_, (uint64_t)entry_->fd);
 
     // Check if already pending
     bool expected = false;
@@ -446,6 +608,9 @@ void iocp_t::start_async_recv (iocp_entry_t *entry_)
     int rc = WSARecv (entry_->fd, &ovl->wsabuf, 1, &bytes_received, &flags,
                       static_cast<LPWSAOVERLAPPED> (ovl), NULL);
 
+    fprintf(stderr, "[IOCP] WSARecv result: rc=%d, error=%lu, pending=%d\n",
+            rc, WSAGetLastError(), ovl->pending.load());
+
     if (rc == SOCKET_ERROR) {
         DWORD error = WSAGetLastError ();
         if (error != WSA_IO_PENDING) {
@@ -454,11 +619,11 @@ void iocp_t::start_async_recv (iocp_entry_t *entry_)
 
             // Classify error and handle
             iocp_error_action action = classify_error (error);
-            if (action == iocp_error_action::RETRY) {
+            if (action == iocp_error_action::IOCP_RETRY) {
                 // Retry on next iteration
                 return;
-            } else if (action == iocp_error_action::CLOSE ||
-                       action == iocp_error_action::FATAL) {
+            } else if (action == iocp_error_action::IOCP_CLOSE ||
+                       action == iocp_error_action::IOCP_FATAL) {
                 // Notify error through in_event
                 entry_->events->in_event ();
             }
@@ -475,6 +640,9 @@ void iocp_t::start_async_send (iocp_entry_t *entry_)
 {
     overlapped_ex_t *ovl = entry_->write_ovl.get ();
     slk_assert (ovl);
+
+    fprintf(stderr, "[IOCP] WSASend: entry=%p, fd=%llu\n",
+            entry_, (uint64_t)entry_->fd);
 
     // Check if already pending
     bool expected = false;
@@ -504,6 +672,9 @@ void iocp_t::start_async_send (iocp_entry_t *entry_)
     int rc = WSASend (entry_->fd, &ovl->wsabuf, 1, &bytes_sent, 0,
                       static_cast<LPWSAOVERLAPPED> (ovl), NULL);
 
+    fprintf(stderr, "[IOCP] WSASend result: rc=%d, error=%lu, pending=%d\n",
+            rc, WSAGetLastError(), ovl->pending.load());
+
     if (rc == SOCKET_ERROR) {
         DWORD error = WSAGetLastError ();
         if (error != WSA_IO_PENDING) {
@@ -512,11 +683,11 @@ void iocp_t::start_async_send (iocp_entry_t *entry_)
 
             // Classify error and handle
             iocp_error_action action = classify_error (error);
-            if (action == iocp_error_action::RETRY) {
+            if (action == iocp_error_action::IOCP_RETRY) {
                 // Retry on next iteration
                 return;
-            } else if (action == iocp_error_action::CLOSE ||
-                       action == iocp_error_action::FATAL) {
+            } else if (action == iocp_error_action::IOCP_CLOSE ||
+                       action == iocp_error_action::IOCP_FATAL) {
                 // Notify error through out_event
                 entry_->events->out_event ();
             }
@@ -532,6 +703,9 @@ void iocp_t::start_async_send (iocp_entry_t *entry_)
 void iocp_t::handle_read_completion (iocp_entry_t *entry_, DWORD bytes_,
                                      DWORD error_)
 {
+    fprintf(stderr, "[IOCP] Read completion: entry=%p, bytes=%lu, error=%lu\n",
+            entry_, bytes_, error_);
+
     overlapped_ex_t *ovl = entry_->read_ovl.get ();
     slk_assert (ovl);
 
@@ -551,7 +725,7 @@ void iocp_t::handle_read_completion (iocp_entry_t *entry_, DWORD bytes_,
     // Classify error
     iocp_error_action action = classify_error (error_);
 
-    if (action == iocp_error_action::IGNORE) {
+    if (action == iocp_error_action::IOCP_IGNORE) {
         // Success - notify the event handler with completion data
         // This enables Direct Engine pattern: data is passed directly
         // to the handler without additional recv() system call
@@ -563,14 +737,14 @@ void iocp_t::handle_read_completion (iocp_entry_t *entry_, DWORD bytes_,
             !entry_->retired.load (std::memory_order_acquire)) {
             start_async_recv (entry_);
         }
-    } else if (action == iocp_error_action::RETRY) {
+    } else if (action == iocp_error_action::IOCP_RETRY) {
         // Temporary error - retry if still interested
         if (entry_->want_pollin.load (std::memory_order_acquire) &&
             !entry_->retired.load (std::memory_order_acquire)) {
             start_async_recv (entry_);
         }
-    } else if (action == iocp_error_action::CLOSE ||
-               action == iocp_error_action::FATAL) {
+    } else if (action == iocp_error_action::IOCP_CLOSE ||
+               action == iocp_error_action::IOCP_FATAL) {
         // Connection error or fatal error - notify handler with error code
         // The handler will typically close the socket
         entry_->events->in_completed (nullptr, 0,
@@ -581,6 +755,9 @@ void iocp_t::handle_read_completion (iocp_entry_t *entry_, DWORD bytes_,
 void iocp_t::handle_write_completion (iocp_entry_t *entry_, DWORD bytes_,
                                       DWORD error_)
 {
+    fprintf(stderr, "[IOCP] Write completion: entry=%p, bytes=%lu, error=%lu\n",
+            entry_, bytes_, error_);
+
     overlapped_ex_t *ovl = entry_->write_ovl.get ();
     slk_assert (ovl);
 
@@ -600,7 +777,7 @@ void iocp_t::handle_write_completion (iocp_entry_t *entry_, DWORD bytes_,
     // Classify error
     iocp_error_action action = classify_error (error_);
 
-    if (action == iocp_error_action::IGNORE) {
+    if (action == iocp_error_action::IOCP_IGNORE) {
         // Success - notify the event handler with bytes sent
         // This enables Direct Engine pattern: actual bytes sent is provided
         // to the handler for precise flow control
@@ -611,14 +788,14 @@ void iocp_t::handle_write_completion (iocp_entry_t *entry_, DWORD bytes_,
             !entry_->retired.load (std::memory_order_acquire)) {
             start_async_send (entry_);
         }
-    } else if (action == iocp_error_action::RETRY) {
+    } else if (action == iocp_error_action::IOCP_RETRY) {
         // Temporary error - retry if still interested
         if (entry_->want_pollout.load (std::memory_order_acquire) &&
             !entry_->retired.load (std::memory_order_acquire)) {
             start_async_send (entry_);
         }
-    } else if (action == iocp_error_action::CLOSE ||
-               action == iocp_error_action::FATAL) {
+    } else if (action == iocp_error_action::IOCP_CLOSE ||
+               action == iocp_error_action::IOCP_FATAL) {
         // Connection error or fatal error - notify handler with error code
         // The handler will typically close the socket
         entry_->events->out_completed (0, static_cast<int> (error_));
@@ -647,289 +824,19 @@ void iocp_t::cleanup_retired ()
     }
 }
 
-void iocp_t::enable_accept (handle_t handle_)
-{
-    check_thread ();
-
-    iocp_entry_t *entry = handle_;
-    slk_assert (entry);
-
-    // AcceptEx 함수 포인터 로드 (최초 1회)
-    if (!_acceptex_fn) {
-        GUID guid = WSAID_ACCEPTEX;
-        DWORD bytes = 0;
-        int rc = WSAIoctl (entry->fd, SIO_GET_EXTENSION_FUNCTION_POINTER, &guid,
-                           sizeof (guid), &_acceptex_fn, sizeof (_acceptex_fn),
-                           &bytes, NULL, NULL);
-        if (rc == SOCKET_ERROR) {
-            // AcceptEx를 사용할 수 없으면 select 모드로 fallback
-            // 여기서는 단순히 경고만 하고 계속 진행 (set_pollin으로 fallback)
-            return;
-        }
-    }
-
-    // Listener로 표시
-    entry->is_listener.store (true, std::memory_order_release);
-
-    // AcceptEx 풀 초기화 및 프리-포스팅
-    for (size_t i = 0; i < iocp_entry_t::ACCEPT_POOL_SIZE; ++i) {
-        entry->accept_pool[i] = std::make_unique<overlapped_ex_t> ();
-        overlapped_ex_t *ovl = entry->accept_pool[i].get ();
-
-        ovl->type = overlapped_ex_t::OP_ACCEPT;
-        ovl->socket = entry->fd;
-        ovl->entry = entry;
-
-        // AcceptEx 등록
-        post_accept (entry, ovl);
-    }
-}
-
-void iocp_t::post_accept (iocp_entry_t *entry_, overlapped_ex_t *ovl_)
-{
-    slk_assert (_acceptex_fn);
-    slk_assert (ovl_->type == overlapped_ex_t::OP_ACCEPT);
-
-    // 이미 pending이면 스킵
-    bool expected = false;
-    if (!ovl_->pending.compare_exchange_strong (expected, true,
-                                                std::memory_order_acq_rel)) {
-        return;
-    }
-
-    // Entry가 retired 상태면 중단
-    if (entry_->retired.load (std::memory_order_acquire)) {
-        ovl_->pending.store (false, std::memory_order_release);
-        return;
-    }
-
-    // OVERLAPPED 구조체 리셋
-    ovl_->Internal = 0;
-    ovl_->InternalHigh = 0;
-    ovl_->Offset = 0;
-    ovl_->OffsetHigh = 0;
-    ovl_->hEvent = NULL;
-    ovl_->cancelled.store (false, std::memory_order_relaxed);
-
-    // accept 소켓 생성 (IPv6 dual-stack)
-    ovl_->accept_socket =
-      WSASocket (AF_INET6, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
-    if (ovl_->accept_socket == INVALID_SOCKET) {
-        ovl_->pending.store (false, std::memory_order_release);
-        return;
-    }
-
-    // AcceptEx 호출
-    // dwReceiveDataLength=0: 연결 즉시 완료 (데이터 수신 대기 안 함)
-    DWORD bytes = 0;
-    BOOL ok = _acceptex_fn (
-      entry_->fd, ovl_->accept_socket, ovl_->accept_buffer, 0,
-      sizeof (sockaddr_in6) + 16, sizeof (sockaddr_in6) + 16, &bytes,
-      static_cast<LPOVERLAPPED> (ovl_));
-
-    if (!ok) {
-        DWORD error = WSAGetLastError ();
-        if (error != WSA_IO_PENDING) {
-            // 즉시 실패 - accept 소켓 닫기
-            closesocket (ovl_->accept_socket);
-            ovl_->accept_socket = retired_fd;
-            ovl_->pending.store (false, std::memory_order_release);
-            return;
-        }
-    }
-
-    // Pending 카운트 증가
-    entry_->pending_count.fetch_add (1, std::memory_order_release);
-}
-
-void iocp_t::handle_accept_completion (iocp_entry_t *entry_,
-                                        overlapped_ex_t *ovl_, DWORD error_)
-{
-    slk_assert (ovl_);
-    slk_assert (ovl_->type == overlapped_ex_t::OP_ACCEPT);
-
-    // Pending 플래그 해제
-    ovl_->pending.store (false, std::memory_order_release);
-
-    // Pending 카운트 감소
-    entry_->pending_count.fetch_sub (1, std::memory_order_release);
-
-    // Retired 또는 cancelled 상태면 종료
-    if (entry_->retired.load (std::memory_order_acquire) ||
-        ovl_->cancelled.load (std::memory_order_acquire)) {
-        if (ovl_->accept_socket != retired_fd) {
-            closesocket (ovl_->accept_socket);
-            ovl_->accept_socket = retired_fd;
-        }
-        return;
-    }
-
-    // 에러 분류
-    iocp_error_action action = classify_error (error_);
-
-    if (action == iocp_error_action::IGNORE) {
-        // 성공 - SO_UPDATE_ACCEPT_CONTEXT 설정 (필수!)
-        int rc = setsockopt (ovl_->accept_socket, SOL_SOCKET,
-                             SO_UPDATE_ACCEPT_CONTEXT,
-                             reinterpret_cast<char *> (&entry_->fd),
-                             sizeof (entry_->fd));
-        if (rc == SOCKET_ERROR) {
-            // SO_UPDATE_ACCEPT_CONTEXT 실패 - 소켓 닫기
-            closesocket (ovl_->accept_socket);
-            ovl_->accept_socket = retired_fd;
-        } else {
-            // 새 연결을 이벤트 핸들러에 전달
-            fd_t accepted_socket = ovl_->accept_socket;
-            ovl_->accept_socket = retired_fd;  // 소유권 이전
-
-            // accept_completed 호출 (listener가 오버라이드 가능)
-            entry_->events->accept_completed (accepted_socket, 0);
-        }
-
-        // 다음 accept를 위해 재등록
-        if (!entry_->retired.load (std::memory_order_acquire)) {
-            post_accept (entry_, ovl_);
-        }
-    } else {
-        // 에러 발생 - accept 소켓 닫기
-        if (ovl_->accept_socket != retired_fd) {
-            closesocket (ovl_->accept_socket);
-            ovl_->accept_socket = retired_fd;
-        }
-
-        // RETRY 에러면 재등록 시도
-        if (action == iocp_error_action::RETRY &&
-            !entry_->retired.load (std::memory_order_acquire)) {
-            post_accept (entry_, ovl_);
-        }
-    }
-}
-
-void iocp_t::enable_connect (handle_t handle_, const struct sockaddr *addr_,
-                             int addrlen_)
-{
-    check_thread ();
-
-    iocp_entry_t *entry = handle_;
-    slk_assert (entry);
-
-    // ConnectEx 함수 포인터 로드 (최초 1회)
-    if (!_connectex_fn) {
-        GUID guid = WSAID_CONNECTEX;
-        DWORD bytes = 0;
-        int rc = WSAIoctl (entry->fd, SIO_GET_EXTENSION_FUNCTION_POINTER, &guid,
-                           sizeof (guid), &_connectex_fn, sizeof (_connectex_fn),
-                           &bytes, NULL, NULL);
-        if (rc == SOCKET_ERROR) {
-            // ConnectEx를 사용할 수 없으면 select 모드로 fallback
-            // 여기서는 단순히 경고만 하고 계속 진행 (set_pollout으로 fallback)
-            return;
-        }
-    }
-
-    // 원격 주소 저장
-    overlapped_ex_t *ovl = entry->connect_ovl.get ();
-    slk_assert (ovl);
-    slk_assert (addrlen_ <= static_cast<int> (sizeof (ovl->remote_addr)));
-
-    memcpy (&ovl->remote_addr, addr_, addrlen_);
-    ovl->remote_addrlen = addrlen_;
-
-    // ConnectEx 비동기 연결 시작
-    start_async_connect (entry);
-}
-
-void iocp_t::start_async_connect (iocp_entry_t *entry_)
-{
-    overlapped_ex_t *ovl = entry_->connect_ovl.get ();
-    slk_assert (ovl);
-    slk_assert (_connectex_fn);
-
-    // 이미 pending이면 스킵
-    bool expected = false;
-    if (!ovl->pending.compare_exchange_strong (expected, true,
-                                                std::memory_order_acq_rel)) {
-        return;
-    }
-
-    // Entry가 retired 상태면 중단
-    if (entry_->retired.load (std::memory_order_acquire)) {
-        ovl->pending.store (false, std::memory_order_release);
-        return;
-    }
-
-    // OVERLAPPED 구조체 리셋
-    ovl->Internal = 0;
-    ovl->InternalHigh = 0;
-    ovl->Offset = 0;
-    ovl->OffsetHigh = 0;
-    ovl->hEvent = NULL;
-    ovl->cancelled.store (false, std::memory_order_relaxed);
-
-    // ⚠️ ConnectEx는 bind()가 선행되어야 함!
-    // tcp_connecter에서 이미 bind 호출을 해야 함 (has_src_addr 또는 INADDR_ANY)
-    // 여기서는 bind가 이미 되어 있다고 가정
-
-    // ConnectEx 호출
-    DWORD bytes = 0;
-    BOOL ok = _connectex_fn (entry_->fd,
-                             reinterpret_cast<const sockaddr *> (&ovl->remote_addr),
-                             ovl->remote_addrlen, NULL, 0, &bytes,
-                             static_cast<LPOVERLAPPED> (ovl));
-
-    if (!ok) {
-        DWORD error = WSAGetLastError ();
-        if (error != WSA_IO_PENDING) {
-            // 즉시 실패
-            ovl->pending.store (false, std::memory_order_release);
-
-            // 에러를 이벤트 핸들러에 전달
-            entry_->events->connect_completed (static_cast<int> (error));
-            return;
-        }
-    }
-
-    // Pending 카운트 증가
-    entry_->pending_count.fetch_add (1, std::memory_order_release);
-}
-
-void iocp_t::handle_connect_completion (iocp_entry_t *entry_, DWORD error_)
-{
-    overlapped_ex_t *ovl = entry_->connect_ovl.get ();
-    slk_assert (ovl);
-
-    // Pending 플래그 해제
-    ovl->pending.store (false, std::memory_order_release);
-
-    // Pending 카운트 감소
-    entry_->pending_count.fetch_sub (1, std::memory_order_release);
-
-    // Retired 또는 cancelled 상태면 종료
-    if (entry_->retired.load (std::memory_order_acquire) ||
-        ovl->cancelled.load (std::memory_order_acquire)) {
-        return;
-    }
-
-    // 에러 분류
-    iocp_error_action action = classify_error (error_);
-
-    if (action == iocp_error_action::IGNORE) {
-        // 성공 - SO_UPDATE_CONNECT_CONTEXT 설정 (필수!)
-        int rc = setsockopt (entry_->fd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT,
-                             NULL, 0);
-        if (rc == SOCKET_ERROR) {
-            // SO_UPDATE_CONNECT_CONTEXT 실패
-            DWORD update_error = WSAGetLastError ();
-            entry_->events->connect_completed (static_cast<int> (update_error));
-        } else {
-            // 연결 성공 - 이벤트 핸들러에 통지
-            entry_->events->connect_completed (0);
-        }
-    } else {
-        // 연결 실패 - 에러 코드와 함께 이벤트 핸들러에 통지
-        entry_->events->connect_completed (static_cast<int> (error_));
-    }
-}
+// ============================================================================
+// Simplified IOCP Implementation Notes:
+// ============================================================================
+// AcceptEx/ConnectEx functions removed for simplicity.
+// ServerLink uses BSD socket accept() and connect() calls instead.
+// IOCP is only used for high-performance async I/O (WSARecv/WSASend).
+//
+// Rationale:
+// 1. BSD socket API provides better portability across platforms
+// 2. AcceptEx/ConnectEx add significant complexity with minimal benefit
+// 3. IOCP shines for bulk I/O operations, not connection establishment
+// 4. Simpler codebase is easier to maintain and debug
+// ============================================================================
 
 }  // namespace slk
 

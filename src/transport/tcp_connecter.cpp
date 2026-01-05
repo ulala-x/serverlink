@@ -72,7 +72,11 @@ void slk::tcp_connecter_t::out_event ()
     //  TODO this is still very similar to (t)ipc_connecter_t, maybe the
     //  differences can be factored out
 
-    rm_handle ();
+    // Simplified IOCP: Remove handle from select polling (not IOCP)
+    if (_handle != nullptr) {
+        rm_fd_select (_handle);
+        _handle = nullptr;
+    }
 
     const fd_t fd = connect ();
 
@@ -100,7 +104,11 @@ void slk::tcp_connecter_t::timer_event (int id_)
 {
     if (id_ == connect_timer_id) {
         _connect_timer_started = false;
-        rm_handle ();
+        // Simplified IOCP: Remove handle from select polling (not IOCP)
+        if (_handle != nullptr) {
+            rm_fd_select (_handle);
+            _handle = nullptr;
+        }
         close ();
         add_reconnect_timer ();
     } else
@@ -114,43 +122,21 @@ void slk::tcp_connecter_t::start_connecting ()
 
     //  Connect may succeed in synchronous manner.
     if (rc == 0) {
-        _handle = add_fd (_s);
+        // Simplified IOCP: Don't register connector socket with IOCP
+        // Let Engine handle IOCP registration (like tcp_listener pattern)
         out_event ();
     }
 
     //  Connection establishment may be delayed. Poll for its completion.
     else if (rc == -1 && errno == EINPROGRESS) {
-        _handle = add_fd (_s);
+        // Simplified IOCP: Use select-only polling for connector socket
+        // This prevents duplicate IOCP registration when Engine takes over
+        _handle = add_fd_select (_s);
 
-#ifdef SL_USE_IOCP
-        //  IOCP mode: Use ConnectEx for asynchronous connect
-        //  Note: socket must already be bound (done in open() if has_src_addr)
-        const tcp_address_t *const tcp_addr = _addr->resolved.tcp_addr;
-        slk_assert (tcp_addr != NULL);
-
-        //  If source address wasn't set, bind to INADDR_ANY (required by ConnectEx)
-        if (!tcp_addr->has_src_addr ()) {
-            sockaddr_in6 local_addr{};
-            local_addr.sin6_family = AF_INET6;
-            local_addr.sin6_addr = in6addr_any;
-            local_addr.sin6_port = 0;  // any port
-            int bind_rc =
-              ::bind (_s, reinterpret_cast<sockaddr *> (&local_addr),
-                      sizeof (local_addr));
-            if (bind_rc == -1) {
-                //  bind failed, fallback to select mode
-                set_pollout (_handle);
-                add_connect_timer ();
-                return;
-            }
-        }
-
-        //  Start async ConnectEx operation
-        enable_connect (_handle, tcp_addr->addr (), tcp_addr->addrlen ());
-#else
-        //  Non-IOCP: Use select/epoll/kqueue for connect completion
-        set_pollout (_handle);
-#endif
+        //  Simplified IOCP: Unified polling across all platforms
+        //  IOCP will use select() for connect completion (like libzmq 4.3.5)
+        //  This eliminates ConnectEx complexity while maintaining compatibility
+        set_pollout_select (_handle);
 
         // TODO: event system
         // _socket->event_connect_delayed (
@@ -317,57 +303,5 @@ bool slk::tcp_connecter_t::tune_socket (const fd_t fd_)
     return rc == 0;
 }
 
-#ifdef SL_USE_IOCP
-void slk::tcp_connecter_t::connect_completed (int error_)
-{
-    //  Cancel connect timer
-    if (_connect_timer_started) {
-        cancel_timer (connect_timer_id);
-        _connect_timer_started = false;
-    }
-
-    //  Remove from poller
-    rm_handle ();
-
-    //  Check for connection error
-    if (error_ != 0) {
-        //  ConnectEx failed
-#ifdef SL_HAVE_WINDOWS
-        errno = wsa_error_to_errno (error_);
-#endif
-
-        //  Check for stop-on-refuse option
-        if ((options.reconnect_stop & SL_RECONNECT_STOP_CONN_REFUSED) &&
-            errno == ECONNREFUSED) {
-            // TODO: implement send_conn_failed when sessions are complete
-            // send_conn_failed (_session);
-            close ();
-            terminate ();
-            return;
-        }
-
-        //  Handle error by reconnecting
-        close ();
-        add_reconnect_timer ();
-        return;
-    }
-
-    //  Connection succeeded - SO_UPDATE_CONNECT_CONTEXT already called by IOCP
-    const fd_t fd = _s;
-    _s = retired_fd;
-
-    //  Tune the socket
-    if (!tune_socket (fd)) {
-#ifdef SL_HAVE_WINDOWS
-        closesocket (fd);
-#else
-        ::close (fd);
-#endif
-        add_reconnect_timer ();
-        return;
-    }
-
-    //  Create engine and attach to session
-    create_engine (fd, get_socket_name<tcp_address_t> (fd, socket_end_local));
-}
-#endif
+//  Note: connect_completed() removed - Simplified IOCP uses out_event()
+//  for connect completion (unified with other platforms)

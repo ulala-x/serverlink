@@ -105,6 +105,10 @@ class ctx_t : public thread_ctx_t
     // Returns NULL if no I/O thread is available
     slk::io_thread_t *choose_io_thread (uint64_t affinity_);
 
+    // Returns the I/O thread for a given thread ID
+    // Returns NULL if tid does not correspond to an I/O thread
+    slk::io_thread_t *get_io_thread_by_tid (uint32_t tid_) const;
+
     // Returns reaper thread object
     slk::object_t *get_reaper () const;
 

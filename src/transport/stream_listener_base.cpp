@@ -23,6 +23,7 @@ slk::stream_listener_base_t::stream_listener_base_t (
     io_object_t (io_thread_),
     _s (retired_fd),
     _handle (static_cast<handle_t> (NULL)),
+    _io_thread (io_thread_),
     _socket (socket_)
 {
 }
@@ -44,13 +45,9 @@ void slk::stream_listener_base_t::process_plug ()
     //  Start polling for incoming connections.
     _handle = add_fd (_s);
 
-#ifdef SL_USE_IOCP
-    // IOCP: AcceptEx 프리-포스팅 풀 사용
-    enable_accept (_handle);
-#else
-    // select/epoll/kqueue: 전통적인 readiness 기반 accept
+    // Simplified IOCP: 모든 플랫폼에서 통합된 BSD accept() 사용
+    // 리스너 소켓은 POLLIN으로 모니터링
     set_pollin (_handle);
-#endif
 }
 
 void slk::stream_listener_base_t::process_term (int linger_)
@@ -93,6 +90,10 @@ void slk::stream_listener_base_t::create_engine (fd_t fd_)
 
     //  Choose I/O thread to run session in. Given that we are already
     //  running in an I/O thread, there must be at least one available.
+    //
+    //  Simplified IOCP: accept()로 받은 소켓은 아직 IOCP에 연결되지 않음
+    //  따라서 choose_io_thread()로 자유롭게 io_thread를 선택 가능
+    //  이는 로드 밸런싱 복원을 의미함
     io_thread_t *io_thread = choose_io_thread (options.affinity);
     slk_assert (io_thread);
 

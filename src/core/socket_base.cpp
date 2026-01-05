@@ -106,26 +106,43 @@ slk::socket_base_t::socket_base_t (ctx_t *parent_,
     _thread_safe (thread_safe_),
     _disconnected (false)
 {
+    fprintf(stderr, "[socket_base_t] Constructor starting: this=%p, sid=%d\n", this, sid_);
+
     options.socket_id = sid_;
     options.ipv6 = (parent_->get (SL_IPV6) != 0);
     options.linger.store (parent_->get (SL_BLOCKY) ? -1 : 0);
     options.zero_copy = parent_->get (SL_ZERO_COPY_RECV) != 0;
 
+    fprintf(stderr, "[socket_base_t] Initializing mailbox (thread_safe=%d)\n", _thread_safe);
+
     // Only non-thread-safe sockets for now
     if (_thread_safe) {
         // Thread-safe sockets not implemented
         _mailbox = NULL;
+        fprintf(stderr, "[socket_base_t] Thread-safe mode: mailbox=NULL\n");
     } else {
+        fprintf(stderr, "[socket_base_t] Creating mailbox_t\n");
         mailbox_t *m = new (std::nothrow) mailbox_t ();
         slk_assert (m);
 
+        fprintf(stderr, "[socket_base_t] Checking mailbox fd\n");
         if (m->get_fd () != retired_fd)
             _mailbox = m;
         else {
             delete m;
             _mailbox = NULL;
         }
+        fprintf(stderr, "[socket_base_t] Mailbox created: _mailbox=%p\n", _mailbox);
+
+        // NOTE: Socket mailbox signaler intentionally does NOT use IOCP!
+        // Sockets run in user threads (not I/O threads), and process_commands()
+        // is called from user context. The mailbox signaler uses traditional
+        // socket-based signaling (socketpair) which works perfectly for this use case.
+        // Only I/O thread and reaper mailboxes use IOCP signaling.
+        fprintf(stderr, "[socket_base_t] Socket mailbox uses socket-based signaling (not IOCP)\n");
     }
+
+    fprintf(stderr, "[socket_base_t] Constructor completed: this=%p\n", this);
 }
 
 int slk::socket_base_t::get_peer_state (const void *routing_id_,

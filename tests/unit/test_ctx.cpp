@@ -17,13 +17,20 @@ static void test_ctx_create_destroy()
 /* Test: Create socket from context */
 static void test_ctx_socket()
 {
+    fprintf(stderr, "[TEST] test_ctx_socket: creating context\n");
     slk_ctx_t *ctx = test_context_new();
 
+    fprintf(stderr, "[TEST] test_ctx_socket: creating socket\n");
     slk_socket_t *s = slk_socket(ctx, SLK_ROUTER);
     TEST_ASSERT_NOT_NULL(s);
 
+    fprintf(stderr, "[TEST] test_ctx_socket: closing socket\n");
     test_socket_close(s);
+    fprintf(stderr, "[TEST] test_ctx_socket: socket closed\n");
+
+    fprintf(stderr, "[TEST] test_ctx_socket: destroying context\n");
     test_context_destroy(ctx);
+    fprintf(stderr, "[TEST] test_ctx_socket: context destroyed\n");
 }
 
 /* Test: Multiple sockets from same context */
