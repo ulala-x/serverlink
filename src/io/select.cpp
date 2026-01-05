@@ -270,29 +270,30 @@ void select_t::loop ()
         }
 
         // Process events for each registered fd
-        // Note: We iterate through our fd list, not the fd_sets, to ensure
-        // we process events in a controlled order and handle retired fds properly
-        for (fd_entries_t::iterator it = _fds.begin (), end = _fds.end ();
-             it != end; ++it) {
-            if (it->fd == retired_fd)
+        // Note: We use index-based iteration because event handlers may call
+        // add_fd() which can reallocate the vector and invalidate iterators.
+        // We capture the size before iteration to avoid processing newly added fds.
+        const size_t fd_count = _fds.size ();
+        for (size_t i = 0; i < fd_count; ++i) {
+            if (_fds[i].fd == retired_fd)
                 continue;
 
             // Check for error/exception conditions first
             // On many systems, errors are indicated via the exception set
-            if (FD_ISSET (it->fd, &err_set))
-                it->events->in_event ();
-            if (it->fd == retired_fd)
+            if (FD_ISSET (_fds[i].fd, &err_set))
+                _fds[i].events->in_event ();
+            if (_fds[i].fd == retired_fd)
                 continue;
 
             // Check for write readiness
-            if (FD_ISSET (it->fd, &write_set))
-                it->events->out_event ();
-            if (it->fd == retired_fd)
+            if (FD_ISSET (_fds[i].fd, &write_set))
+                _fds[i].events->out_event ();
+            if (_fds[i].fd == retired_fd)
                 continue;
 
             // Check for read readiness
-            if (FD_ISSET (it->fd, &read_set))
-                it->events->in_event ();
+            if (FD_ISSET (_fds[i].fd, &read_set))
+                _fds[i].events->in_event ();
         }
 
         // Clean up retired entries

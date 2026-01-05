@@ -43,7 +43,14 @@ void slk::stream_listener_base_t::process_plug ()
 {
     //  Start polling for incoming connections.
     _handle = add_fd (_s);
+
+#ifdef SL_USE_IOCP
+    // IOCP: AcceptEx 프리-포스팅 풀 사용
+    enable_accept (_handle);
+#else
+    // select/epoll/kqueue: 전통적인 readiness 기반 accept
     set_pollin (_handle);
+#endif
 }
 
 void slk::stream_listener_base_t::process_term (int linger_)

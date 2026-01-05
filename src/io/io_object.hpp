@@ -40,6 +40,15 @@ class io_object_t : public i_poll_events
     void add_timer (int timeout_, int id_);
     void cancel_timer (int id_);
 
+#ifdef SL_USE_IOCP
+    // IOCP-specific: Enable AcceptEx pre-posting pool for listener sockets
+    void enable_accept (handle_t handle_);
+
+    // IOCP-specific: Enable ConnectEx asynchronous connect
+    void enable_connect (handle_t handle_, const struct sockaddr *addr_,
+                         int addrlen_);
+#endif
+
     // i_poll_events interface implementation
     void in_event ();
     void out_event ();

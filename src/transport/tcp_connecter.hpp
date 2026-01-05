@@ -35,6 +35,11 @@ class tcp_connecter_t final : public stream_connecter_base_t
     void out_event ();
     void timer_event (int id_);
 
+#ifdef SL_USE_IOCP
+    //  ConnectEx completion handler (IOCP only)
+    void connect_completed (int error_) override;
+#endif
+
     //  Internal function to start the actual connection establishment.
     void start_connecting ();
 

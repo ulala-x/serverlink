@@ -73,6 +73,20 @@ void slk::io_object_t::cancel_timer (int id_)
     _poller->cancel_timer (this, id_);
 }
 
+#ifdef SL_USE_IOCP
+void slk::io_object_t::enable_accept (handle_t handle_)
+{
+    _poller->enable_accept (handle_);
+}
+
+void slk::io_object_t::enable_connect (handle_t handle_,
+                                       const struct sockaddr *addr_,
+                                       int addrlen_)
+{
+    _poller->enable_connect (handle_, addr_, addrlen_);
+}
+#endif
+
 void slk::io_object_t::in_event ()
 {
     slk_assert (false);

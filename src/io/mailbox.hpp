@@ -28,6 +28,9 @@ class mailbox_t final : public i_mailbox
 
     bool valid () const;
 
+    // Get signaler for IOCP integration
+    signaler_t *get_signaler ();
+
 #ifdef HAVE_FORK
     // Close file descriptors in forked child process
     void forked () final

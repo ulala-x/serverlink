@@ -67,7 +67,6 @@ set(SERVERLINK_SOURCES
     src/spot/spot_pubsub.cpp
     src/spot/topic_registry.cpp
     src/spot/subscription_manager.cpp
-    src/spot/spot_node.cpp
 
     # Core sources
     src/core/options.cpp
@@ -132,8 +131,10 @@ set(SERVERLINK_SOURCES
 )
 
 # Platform-specific I/O sources
-# Priority: wepoll (Windows) > epoll (Linux) > kqueue (BSD/macOS) > select (fallback)
-if(SL_HAVE_WEPOLL)
+# Priority: IOCP (Windows) > wepoll (Windows) > epoll (Linux) > kqueue (BSD/macOS) > select (fallback)
+if(SL_HAVE_IOCP)
+    list(APPEND SERVERLINK_SOURCES src/io/iocp.cpp)
+elseif(SL_HAVE_WEPOLL)
     list(APPEND SERVERLINK_SOURCES src/io/wepoll.cpp)
 elseif(SL_HAVE_EPOLL)
     list(APPEND SERVERLINK_SOURCES src/io/epoll.cpp)

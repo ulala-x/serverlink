@@ -18,6 +18,7 @@
 #endif
 
 #include <serverlink/config.h>
+#include <serverlink/serverlink_export.h>
 
 // C++20 std::format for error messages (non-critical path)
 #if SL_HAVE_STD_FORMAT
@@ -58,14 +59,14 @@ const char *errno_to_string(int errno_);
 
 #if defined __clang__
 #if __has_feature(attribute_analyzer_noreturn)
-void slk_abort(const char *errmsg_) __attribute__((analyzer_noreturn));
+SL_EXPORT void slk_abort(const char *errmsg_) __attribute__((analyzer_noreturn));
 #else
-void slk_abort(const char *errmsg_);
+SL_EXPORT void slk_abort(const char *errmsg_);
 #endif
-#elif defined __MSCVER__
-__declspec(noreturn) void slk_abort(const char *errmsg_);
+#elif defined _MSC_VER
+__declspec(noreturn) SL_EXPORT void slk_abort(const char *errmsg_);
 #else
-void slk_abort(const char *errmsg_);
+SL_EXPORT void slk_abort(const char *errmsg_);
 #endif
 
 void print_backtrace();

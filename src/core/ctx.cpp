@@ -68,7 +68,9 @@ slk::ctx_t::~ctx_t ()
     }
 
     // Deallocate the reaper thread object
-    delete _reaper;    // The mailboxes in _slots themselves were deallocated with their
+    delete _reaper;
+
+    // The mailboxes in _slots themselves were deallocated with their
     // corresponding io_thread/socket objects
 
     // De-initialise crypto library, if needed

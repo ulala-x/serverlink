@@ -8,6 +8,7 @@
 #cmakedefine SL_HAVE_WINDOWS @SL_HAVE_WINDOWS@
 
 /* Platform I/O multiplexing support */
+#cmakedefine SL_HAVE_IOCP @SL_HAVE_IOCP@
 #cmakedefine SL_HAVE_WEPOLL @SL_HAVE_WEPOLL@
 #cmakedefine SL_HAVE_EPOLL @SL_HAVE_EPOLL@
 #cmakedefine SL_HAVE_KQUEUE @SL_HAVE_KQUEUE@
@@ -43,8 +44,11 @@
 #cmakedefine SL_ENABLE_MONITORING
 
 /* Determine the best I/O poller to use */
-/* Priority: wepoll (Windows) > epoll (Linux) > kqueue (BSD/macOS) > select (fallback) */
-#if SL_HAVE_WEPOLL
+/* Priority: IOCP (Windows) > wepoll (Windows) > epoll (Linux) > kqueue (BSD/macOS) > select (fallback) */
+#if SL_HAVE_IOCP
+    #define SL_USE_IOCP 1
+    #define SL_POLLER_NAME "iocp"
+#elif SL_HAVE_WEPOLL
     #define SL_USE_WEPOLL 1
     #define SL_POLLER_NAME "wepoll"
 #elif SL_HAVE_EPOLL

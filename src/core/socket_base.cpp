@@ -6,6 +6,7 @@
 #include <string>
 #include <sstream>
 #include <algorithm>
+#include <cstdio>
 
 #include "../util/macros.hpp"
 #include "socket_base.hpp"
@@ -926,6 +927,8 @@ void slk::socket_base_t::start_reaping (poller_t *poller_)
     // Initialise the termination and check whether it can be deallocated
     // immediately
     terminate ();
+    // Note: check_destroy() may delete 'this' if _destroyed is true,
+    // so no more access to 'this' after this call
     check_destroy ();
 }
 

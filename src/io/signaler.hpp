@@ -12,6 +12,10 @@
 
 namespace slk
 {
+#ifdef SL_USE_IOCP
+class iocp_t;  // Forward declaration
+#endif
+
 // Cross-platform equivalent to signal_fd. As opposed to signal_fd,
 // there can be at most one signal in the signaler at any given moment.
 // Attempt to send a signal before receiving the previous one will
@@ -22,6 +26,11 @@ class signaler_t
   public:
     signaler_t ();
     ~signaler_t ();
+
+#ifdef SL_USE_IOCP
+    // Set IOCP poller for signaling (optional, for IOCP-based wakeup)
+    void set_iocp (iocp_t *iocp_);
+#endif
 
     // Returns the socket/file descriptor
     // May return retired_fd if the signaler could not be initialized
@@ -53,6 +62,11 @@ class signaler_t
     // Will be retired_fd if initialization failed
     fd_t _w;
     fd_t _r;
+
+#ifdef SL_USE_IOCP
+    // IOCP poller for PostQueuedCompletionStatus-based signaling (non-owning)
+    iocp_t *_iocp;
+#endif
 
 #ifdef HAVE_FORK
     // Process that created this signaler (to detect forking)

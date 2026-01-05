@@ -26,6 +26,11 @@ class tcp_listener_t final : public stream_listener_base_t
     //  Handlers for I/O events.
     void in_event ();
 
+#ifdef SL_USE_IOCP
+    //  IOCP: Handle accepted socket from AcceptEx completion
+    void accept_completed (fd_t accept_socket_, int error_) override;
+#endif
+
     //  Accept the new connection. Returns the file descriptor of the
     //  newly created connection. The function may return retired_fd
     //  if the connection was dropped while waiting in the listen backlog

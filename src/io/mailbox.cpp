@@ -79,4 +79,9 @@ bool mailbox_t::valid () const
     return _signaler.valid ();
 }
 
+signaler_t *mailbox_t::get_signaler ()
+{
+    return &_signaler;
+}
+
 } // namespace slk

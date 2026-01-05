@@ -7,6 +7,10 @@
 #include "../util/likely.hpp"
 #include "../util/err.hpp"
 
+#ifdef SL_USE_IOCP
+#include "iocp.hpp"
+#endif
+
 #if defined SL_USE_EPOLL || defined SL_USE_KQUEUE
 #include <poll.h>  // epoll/kqueue systems typically also have poll for signaler
 #elif defined SL_USE_SELECT || defined _WIN32
@@ -67,6 +71,10 @@ static int close_wait_ms (int fd_, unsigned int max_ms_ = 2000)
 
 signaler_t::signaler_t ()
 {
+#ifdef SL_USE_IOCP
+    _iocp = nullptr;
+#endif
+
     // Create the socketpair for signaling
     if (make_fdpair (&_r, &_w) == 0) {
         unblock_socket (_w);
@@ -125,6 +133,16 @@ void signaler_t::send ()
         return; // do not send anything in forked child context
     }
 #endif
+
+#ifdef SL_USE_IOCP
+    // If IOCP is set, use PostQueuedCompletionStatus instead of socket signaling
+    if (_iocp) {
+        _iocp->send_signal ();
+        return;
+    }
+    // Fall through to socket-based signaling if IOCP not available
+#endif
+
 #if defined SL_HAVE_EVENTFD
     const uint64_t inc = 1;
     ssize_t sz = write (_w, &inc, sizeof (inc));
@@ -318,6 +336,13 @@ void signaler_t::forked ()
     close (_r);
     close (_w);
     make_fdpair (&_r, &_w);
+}
+#endif
+
+#ifdef SL_USE_IOCP
+void signaler_t::set_iocp (iocp_t *iocp_)
+{
+    _iocp = iocp_;
 }
 #endif
 

@@ -7,6 +7,10 @@
 #include <new>
 #include <stdio.h>
 
+#ifdef SL_USE_IOCP
+#include "iocp.hpp"
+#endif
+
 slk::io_thread_t::io_thread_t (ctx_t *ctx_, uint32_t tid_) :
     object_t (ctx_, tid_),
     _mailbox_handle (static_cast<poller_t::handle_t> (NULL))
@@ -14,10 +18,26 @@ slk::io_thread_t::io_thread_t (ctx_t *ctx_, uint32_t tid_) :
     _poller = new (std::nothrow) poller_t (ctx_);
     alloc_assert (_poller);
 
+#ifdef SL_USE_IOCP
+    // For IOCP, configure mailbox signaler to use PostQueuedCompletionStatus
+    // for wakeup instead of socket-based signaling
+    iocp_t *iocp_poller = static_cast<iocp_t *> (_poller);
+
+    if (_mailbox.get_signaler ()) {
+        _mailbox.get_signaler ()->set_iocp (iocp_poller);
+    }
+
+    // Register this io_thread as the mailbox handler for SIGNALER_KEY events
+    iocp_poller->set_mailbox_handler (this);
+
+    // Don't register mailbox fd with IOCP - we use PostQueuedCompletionStatus instead
+#else
+    // For non-IOCP pollers (epoll, kqueue, select), register mailbox fd
     if (_mailbox.get_fd () != retired_fd) {
         _mailbox_handle = _poller->add_fd (_mailbox.get_fd (), this);
         _poller->set_pollin (_mailbox_handle);
     }
+#endif
 }
 
 slk::io_thread_t::~io_thread_t ()
@@ -86,7 +106,11 @@ slk::poller_t *slk::io_thread_t::get_poller () const
 
 void slk::io_thread_t::process_stop ()
 {
+#ifdef SL_USE_IOCP
+    // For IOCP, we don't register mailbox fd, so nothing to remove
+#else
     slk_assert (_mailbox_handle);
     _poller->rm_fd (_mailbox_handle);
+#endif
     _poller->stop ();
 }

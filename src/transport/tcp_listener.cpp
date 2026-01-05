@@ -41,6 +41,11 @@ slk::tcp_listener_t::tcp_listener_t (io_thread_t *io_thread_,
 
 void slk::tcp_listener_t::in_event ()
 {
+#ifdef SL_USE_IOCP
+    // IOCP 모드에서는 accept_completed()가 호출되어야 함
+    // in_event()는 fallback이거나 에러 상황
+    return;
+#else
     const fd_t fd = accept ();
 
     //  If connection was reset by the peer in the meantime, just ignore it.
@@ -67,7 +72,37 @@ void slk::tcp_listener_t::in_event ()
 
     //  Create the engine object for this connection.
     create_engine (fd);
+#endif
 }
+
+#ifdef SL_USE_IOCP
+void slk::tcp_listener_t::accept_completed (fd_t accept_socket_, int error_)
+{
+    // 에러 체크
+    if (error_ != 0 || accept_socket_ == retired_fd) {
+        if (accept_socket_ != retired_fd) {
+            closesocket (accept_socket_);
+        }
+        return;
+    }
+
+    // TCP 옵션 설정
+    int rc = tune_tcp_socket (accept_socket_);
+    rc = rc
+         | tune_tcp_keepalives (
+           accept_socket_, options.tcp_keepalive, options.tcp_keepalive_cnt,
+           options.tcp_keepalive_idle, options.tcp_keepalive_intvl);
+    rc = rc | tune_tcp_maxrt (accept_socket_, options.tcp_maxrt);
+    if (rc != 0) {
+        // TCP 옵션 설정 실패 - 소켓 닫기
+        closesocket (accept_socket_);
+        return;
+    }
+
+    // 새 연결에 대한 엔진 생성
+    create_engine (accept_socket_);
+}
+#endif
 
 std::string
 slk::tcp_listener_t::get_socket_name (slk::fd_t fd_,
