@@ -1,41 +1,41 @@
 [![English](https://img.shields.io/badge/lang:en-red.svg)](ARCHITECTURE.md) [![한국어](https://img.shields.io/badge/lang:한국어-blue.svg)](ARCHITECTURE.ko.md)
 
-# SPOT PUB/SUB Architecture
+# SPOT PUB/SUB 아키텍처
 
-Internal architecture and design of ServerLink SPOT (Scalable Partitioned Ordered Topics).
+ServerLink SPOT (Scalable Partitioned Ordered Topics)의 내부 아키텍처 및 설계에 대한 문서입니다.
 
-## Table of Contents
+## 목차
 
-1. [Overview](#overview)
-2. [Architecture Evolution](#architecture-evolution)
-3. [Component Architecture](#component-architecture)
-4. [Class Diagrams](#class-diagrams)
-5. [Data Flow](#data-flow)
-6. [Threading Model](#threading-model)
-7. [Memory Management](#memory-management)
-8. [Performance Characteristics](#performance-characteristics)
-9. [Design Decisions](#design-decisions)
-
----
-
-## Overview
-
-SPOT provides location-transparent pub/sub using a simplified **direct XPUB/XSUB** architecture:
-
-- **One shared XPUB** socket per SPOT instance (publishes all topics)
-- **One shared XSUB** socket per SPOT instance (receives from all connected publishers)
-- **Topic Registry** for topic metadata and routing
-- **Subscription Manager** for subscription tracking
-
-**Key Design Principles:**
-1. **Simplicity** - Direct XPUB/XSUB connections without intermediate routing
-2. **Zero-copy LOCAL topics** using inproc transport
-3. **Transparent remote topics** via TCP connections
-4. **Thread-safe** operations with read/write locking
+1. [개요](#개요)
+2. [아키텍처 발전 과정](#아키텍처-발전-과정)
+3. [컴포넌트 아키텍처](#컴포넌트-아키텍처)
+4. [클래스 다이어그램](#클래스-다이어그램)
+5. [데이터 흐름](#데이터-흐름)
+6. [스레딩 모델](#스레딩-모델)
+7. [메모리 관리](#메모리-관리)
+8. [성능 특성](#성능-특성)
+9. [설계 결정 사항](#설계-결정-사항)
 
 ---
 
-## Component Architecture
+## 개요
+
+SPOT은 단순화된 **직접 XPUB/XSUB** 아키텍처를 사용하여 위치 투명한 pub/sub을 제공합니다:
+
+- SPOT 인스턴스당 **하나의 공유 XPUB** 소켓 (모든 토픽 발행)
+- SPOT 인스턴스당 **하나의 공유 XSUB** 소켓 (연결된 모든 발행자로부터 수신)
+- 토픽 메타데이터 및 라우팅을 위한 **Topic Registry**
+- 구독 추적을 위한 **Subscription Manager**
+
+**핵심 설계 원칙:**
+1. **단순성** - 중간 라우팅 없이 직접 XPUB/XSUB 연결
+2. inproc 전송을 사용한 **Zero-copy LOCAL 토픽**
+3. TCP 연결을 통한 **투명한 원격 토픽**
+4. read/write 락킹을 통한 **스레드 안전** 연산
+
+---
+
+## 컴포넌트 아키텍처
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -82,9 +82,9 @@ SPOT provides location-transparent pub/sub using a simplified **direct XPUB/XSUB
 
 ---
 
-## Class Diagrams
+## 클래스 다이어그램
 
-### Core Classes
+### 핵심 클래스
 
 ```
 ┌───────────────────────────────────────┐
@@ -165,9 +165,9 @@ SPOT provides location-transparent pub/sub using a simplified **direct XPUB/XSUB
 
 ---
 
-## Data Flow
+## 데이터 흐름
 
-### LOCAL Topic Publish/Subscribe (Same SPOT Instance)
+### LOCAL 토픽 Publish/Subscribe (동일 SPOT 인스턴스)
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -196,13 +196,13 @@ SPOT provides location-transparent pub/sub using a simplified **direct XPUB/XSUB
 │                                                                   │
 └──────────────────────────────────────────────────────────────────┘
 
-Performance:
-- Zero-copy via inproc (ypipe)
-- Sub-microsecond latency
-- No serialization overhead
+성능:
+- inproc (ypipe)을 통한 Zero-copy
+- 마이크로초 이하의 지연시간
+- 직렬화 오버헤드 없음
 ```
 
-### REMOTE Topic Publish/Subscribe (Cross-Node)
+### REMOTE 토픽 Publish/Subscribe (노드 간)
 
 ```
 ┌────────────────────────┐              ┌────────────────────────┐
@@ -225,19 +225,19 @@ Performance:
 │                        │              │                        │
 └────────────────────────┘              └────────────────────────┘
 
-Setup:
+설정 방법:
 1. Node A: bind("tcp://*:5555")
 2. Node B: cluster_add("tcp://nodeA:5555")
-3. Node B: subscribe("topic")  → XSUB sends subscription to XPUB
-4. Node A: publish("topic", data) → XPUB forwards to matching XSUBs
+3. Node B: subscribe("topic")  → XSUB가 구독 메시지를 XPUB로 전송
+4. Node A: publish("topic", data) → XPUB가 매칭되는 XSUB로 전달
 
-Performance:
-- TCP network overhead (~10-100 µs)
-- Persistent connections with auto-reconnection
-- ZeroMQ handles subscription filtering
+성능:
+- TCP 네트워크 오버헤드 (~10-100 µs)
+- 자동 재연결이 포함된 영구 연결
+- ZeroMQ가 구독 필터링 처리
 ```
 
-### Multi-Publisher Scenario
+### 다중 발행자 시나리오
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
@@ -258,7 +258,7 @@ Performance:
                    │  from BOTH publishers   │
                    └─────────────────────────┘
 
-Setup:
+설정 방법:
 1. Publisher A: bind("tcp://*:5555")
 2. Publisher B: bind("tcp://*:5556")
 3. Subscriber: cluster_add("tcp://pubA:5555")
@@ -266,7 +266,7 @@ Setup:
 5. Subscriber: subscribe("topic")
 ```
 
-### Pattern Subscription
+### 패턴 구독
 
 ```
 Subscriber                                    Publisher
@@ -293,28 +293,28 @@ Subscriber                                    Publisher
     │           "metrics:cpu" filtered out       │
     │                                            │
 
-Note: XPUB uses prefix matching, not glob patterns.
-"events:*" pattern is converted to "events:" prefix.
+참고: XPUB는 glob 패턴이 아닌 prefix 매칭을 사용합니다.
+"events:*" 패턴은 "events:" prefix로 변환됩니다.
 ```
 
 ---
 
-## Threading Model
+## 스레딩 모델
 
-### Concurrency Control
+### 동시성 제어
 
 ```cpp
-// All public methods use read/write locking
+// 모든 public 메서드는 read/write 락킹을 사용합니다
 class spot_pubsub_t {
     mutable std::shared_mutex _mutex;
 
-    // Read operations (multiple concurrent readers)
+    // 읽기 연산 (다중 동시 리더 허용)
     bool topic_exists(const std::string& topic_id) const {
         std::shared_lock<std::shared_mutex> lock(_mutex);
         return _registry->has_topic(topic_id);
     }
 
-    // Write operations (exclusive access)
+    // 쓰기 연산 (배타적 접근)
     int topic_create(const std::string& topic_id) {
         std::unique_lock<std::shared_mutex> lock(_mutex);
         return _registry->register_local(topic_id, endpoint);
@@ -322,185 +322,185 @@ class spot_pubsub_t {
 };
 ```
 
-### Thread Safety Guarantees
+### 스레드 안전성 보장
 
-| Operation | Thread Safety | Lock Type |
+| 연산 | 스레드 안전성 | 락 유형 |
 |-----------|---------------|-----------|
-| topic_create | Safe | Exclusive |
-| topic_destroy | Safe | Exclusive |
-| subscribe | Safe | Exclusive |
-| unsubscribe | Safe | Exclusive |
-| publish | Safe | Shared |
-| recv | Safe | Shared |
-| list_topics | Safe | Shared |
-| cluster_add | Safe | Exclusive |
-| cluster_remove | Safe | Exclusive |
+| topic_create | 안전 | Exclusive |
+| topic_destroy | 안전 | Exclusive |
+| subscribe | 안전 | Exclusive |
+| unsubscribe | 안전 | Exclusive |
+| publish | 안전 | Shared |
+| recv | 안전 | Shared |
+| list_topics | 안전 | Shared |
+| cluster_add | 안전 | Exclusive |
+| cluster_remove | 안전 | Exclusive |
 
-### Best Practices
+### 모범 사례
 
 ```c
-// Good: Shared SPOT instance with internal locking
+// 권장: 내부 락킹이 있는 공유 SPOT 인스턴스
 slk_spot_t *spot = slk_spot_new(ctx);
 
 // Thread 1: Publisher
 void publisher_thread() {
     while (running) {
-        slk_spot_publish(spot, "topic", data, len);  // Thread-safe
+        slk_spot_publish(spot, "topic", data, len);  // 스레드 안전
     }
 }
 
 // Thread 2: Subscriber
 void subscriber_thread() {
     while (running) {
-        slk_spot_recv(spot, topic, &topic_len, data, &data_len, 0);  // Thread-safe
+        slk_spot_recv(spot, topic, &topic_len, data, &data_len, 0);  // 스레드 안전
     }
 }
 
-// Good: Separate SPOT instances per thread (no contention)
+// 권장: 스레드별 별도 SPOT 인스턴스 (경합 없음)
 void worker_thread() {
     slk_spot_t *local_spot = slk_spot_new(ctx);
-    // Use exclusively in this thread
+    // 이 스레드에서만 독점 사용
 }
 ```
 
 ---
 
-## Memory Management
+## 메모리 관리
 
-### Object Lifetime
+### 객체 수명 주기
 
 ```cpp
-// Constructor: Creates shared XPUB/XSUB sockets
+// 생성자: 공유 XPUB/XSUB 소켓 생성
 spot_pubsub_t::spot_pubsub_t(ctx_t *ctx_)
 {
-    // 1. Generate unique inproc endpoint
+    // 1. 고유한 inproc endpoint 생성
     _inproc_endpoint = "inproc://" + generate_instance_id();
 
-    // 2. Create XPUB (for publishing)
+    // 2. XPUB 생성 (발행용)
     _pub_socket = _ctx->create_socket(SL_XPUB);
     _pub_socket->bind(_inproc_endpoint.c_str());
 
-    // 3. Create XSUB (for receiving)
+    // 3. XSUB 생성 (수신용)
     _recv_socket = _ctx->create_socket(SL_XSUB);
     _recv_socket->connect(_inproc_endpoint.c_str());
 }
 
-// Destructor: Proper cleanup order
+// 소멸자: 올바른 정리 순서
 spot_pubsub_t::~spot_pubsub_t()
 {
-    // 1. Close receive socket first
+    // 1. 수신 소켓을 먼저 닫음
     if (_recv_socket) {
         _recv_socket->close();
         _recv_socket = nullptr;
     }
 
-    // 2. Close publish socket
+    // 2. 발행 소켓 닫음
     if (_pub_socket) {
         _pub_socket->close();
         _pub_socket = nullptr;
     }
 
-    // 3. Registry and subscription manager cleaned up via unique_ptr
+    // 3. Registry와 subscription manager는 unique_ptr을 통해 정리됨
 }
 ```
 
-### Message Format
+### 메시지 형식
 
 ```
-XPUB/XSUB Message Format (multipart):
+XPUB/XSUB 메시지 형식 (multipart):
 ┌──────────────────┐
-│ Frame 1: Topic   │  (variable length string)
+│ Frame 1: Topic   │  (가변 길이 문자열)
 ├──────────────────┤
-│ Frame 2: Data    │  (variable length binary)
+│ Frame 2: Data    │  (가변 길이 바이너리)
 └──────────────────┘
 
-Subscription Message (sent by XSUB to XPUB):
+구독 메시지 (XSUB가 XPUB로 전송):
 ┌──────────────────┐
-│ 0x01 + prefix    │  Subscribe to prefix
+│ 0x01 + prefix    │  prefix 구독
 ├──────────────────┤
-│ 0x00 + prefix    │  Unsubscribe from prefix
+│ 0x00 + prefix    │  prefix 구독 취소
 └──────────────────┘
 ```
 
 ---
 
-## Performance Characteristics
+## 성능 특성
 
-### Latency
+### 지연시간
 
-| Operation | LOCAL (inproc) | REMOTE (LAN) | REMOTE (WAN) |
+| 연산 | LOCAL (inproc) | REMOTE (LAN) | REMOTE (WAN) |
 |-----------|----------------|--------------|--------------|
 | Publish | 0.1-1 µs | 10-100 µs | 1-100 ms |
 | Subscribe | 1-10 µs | 50-200 µs | 50-500 ms |
 | Disconnect | 1-10 µs | 10-50 µs | 10-100 ms |
 
-### Throughput (Messages/Second)
+### 처리량 (메시지/초)
 
-| Message Size | LOCAL (inproc) | REMOTE (1Gbps) |
+| 메시지 크기 | LOCAL (inproc) | REMOTE (1Gbps) |
 |--------------|----------------|----------------|
 | 64B | 10M msg/s | 1M msg/s |
 | 1KB | 5M msg/s | 500K msg/s |
 | 8KB | 2M msg/s | 100K msg/s |
 | 64KB | 200K msg/s | 15K msg/s |
 
-### Memory Usage
+### 메모리 사용량
 
-| Component | Memory |
+| 컴포넌트 | 메모리 |
 |-----------|--------|
-| SPOT instance base | ~8 KB |
-| Per topic (registry) | ~200 bytes |
-| Per subscription | ~200 bytes |
-| Per cluster connection | ~4 KB |
-| Message buffer (default HWM=1000) | ~1 MB |
+| SPOT 인스턴스 기본 | ~8 KB |
+| 토픽당 (registry) | ~200 bytes |
+| 구독당 | ~200 bytes |
+| 클러스터 연결당 | ~4 KB |
+| 메시지 버퍼 (기본 HWM=1000) | ~1 MB |
 
 ---
 
-## Design Decisions
+## 설계 결정 사항
 
-### Shared XPUB/XSUB Per Instance
+### 인스턴스당 공유 XPUB/XSUB
 
-SPOT uses a single shared XPUB/XSUB socket pair per instance:
+SPOT은 인스턴스당 하나의 공유 XPUB/XSUB 소켓 쌍을 사용합니다:
 
-**Advantages:**
-- Constant socket count regardless of topic count
-- Simple resource management
-- Efficient topic filtering using ZeroMQ's trie-based matching
+**장점:**
+- 토픽 수에 관계없이 일정한 소켓 수
+- 간단한 리소스 관리
+- ZeroMQ의 trie 기반 매칭을 사용한 효율적인 토픽 필터링
 
-**Considerations:**
-- All messages pass through the same socket (serialization point)
-- Consider multiple instances for high-throughput scenarios
+**고려사항:**
+- 모든 메시지가 동일한 소켓을 통과 (직렬화 지점)
+- 높은 처리량 시나리오에서는 여러 인스턴스 고려
 
-### Pattern Subscription (Prefix Matching)
+### 패턴 구독 (Prefix 매칭)
 
-XPUB/XSUB uses prefix matching:
+XPUB/XSUB는 prefix 매칭을 사용합니다:
 
 ```
 "events:*" pattern → converted to "events:" prefix
 ```
 
-**Matching Examples:**
-- `events:` prefix matches `events:login`, `events:logout`, `events:user:created`
-- `game:player:` prefix matches `game:player:spawn`, `game:player:death`
+**매칭 예시:**
+- `events:` prefix는 `events:login`, `events:logout`, `events:user:created`와 매칭
+- `game:player:` prefix는 `game:player:spawn`, `game:player:death`와 매칭
 
-### Cluster Connection Management
+### 클러스터 연결 관리
 
-`cluster_add()` connects a new endpoint to the XSUB socket, and `cluster_remove()` terminates the connection via `term_endpoint()`:
+`cluster_add()`는 XSUB 소켓에 새 endpoint를 연결하고, `cluster_remove()`는 `term_endpoint()`를 통해 연결을 종료합니다:
 
 ```cpp
-// cluster_add(): Connect new endpoint to XSUB
+// cluster_add(): XSUB에 새 endpoint 연결
 _recv_socket->connect(endpoint.c_str());
 _connected_endpoints.insert(endpoint);
 
-// cluster_remove(): Disconnect endpoint
+// cluster_remove(): endpoint 연결 해제
 _recv_socket->term_endpoint(endpoint.c_str());
 _connected_endpoints.erase(endpoint);
 ```
 
 ---
 
-## See Also
+## 관련 문서
 
-- [API Reference](API.md) - Complete API documentation
-- [Quick Start](QUICK_START.md) - Getting started guide
-- [Clustering Guide](CLUSTERING.md) - Multi-node setup
-- [Usage Patterns](PATTERNS.md) - Common patterns and best practices
+- [API 레퍼런스](API.ko.md) - 전체 API 문서
+- [빠른 시작](QUICK_START.ko.md) - 시작 가이드
+- [클러스터링 가이드](CLUSTERING.ko.md) - 다중 노드 설정
+- [사용 패턴](PATTERNS.ko.md) - 일반적인 패턴 및 모범 사례

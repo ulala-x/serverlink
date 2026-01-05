@@ -1,114 +1,114 @@
 [![English](https://img.shields.io/badge/lang:en-red.svg)](MIGRATION.md) [![한국어](https://img.shields.io/badge/lang:한국어-blue.svg)](MIGRATION.ko.md)
 
-# Migration from Traditional PUB/SUB to SPOT
+# 전통적인 PUB/SUB에서 SPOT으로 마이그레이션
 
-Guide for migrating from ServerLink's traditional PUB/SUB sockets to SPOT.
+ServerLink의 전통적인 PUB/SUB 소켓에서 SPOT으로 마이그레이션하기 위한 가이드입니다.
 
-## Table of Contents
+## 목차
 
-1. [Overview](#overview)
-2. [API Mapping Table](#api-mapping-table)
-3. [Step-by-Step Migration](#step-by-step-migration)
-4. [Migration Considerations](#migration-considerations)
-5. [Compatibility Notes](#compatibility-notes)
-6. [Example Migrations](#example-migrations)
+1. [개요](#개요)
+2. [API 매핑 테이블](#api-매핑-테이블)
+3. [단계별 마이그레이션](#단계별-마이그레이션)
+4. [마이그레이션 고려사항](#마이그레이션-고려사항)
+5. [호환성 참고사항](#호환성-참고사항)
+6. [마이그레이션 예제](#마이그레이션-예제)
 
 ---
 
-## Overview
+## 개요
 
-**Traditional PUB/SUB:**
-- Direct XPUB/XSUB socket usage
-- Manual endpoint management
-- Explicit bind/connect operations
-- No built-in cluster support
+**전통적인 PUB/SUB:**
+- 직접적인 XPUB/XSUB 소켓 사용
+- 수동 엔드포인트 관리
+- 명시적인 bind/connect 연산
+- 내장 클러스터 지원 없음
 
 **SPOT:**
-- Higher-level abstraction over XPUB/XSUB
-- Automatic topic registry
-- Location-transparent routing
-- Built-in cluster synchronization
+- XPUB/XSUB 위에 구축된 고수준 추상화
+- 자동 토픽 레지스트리
+- 위치 투명 라우팅
+- 내장 클러스터 동기화
 
-**Migration Benefits:**
-- Simpler API surface
-- Automatic topic discovery
-- Better scalability (cluster support)
-- Transparent LOCAL/REMOTE routing
+**마이그레이션 이점:**
+- 더 간단한 API 표면
+- 자동 토픽 발견
+- 더 나은 확장성 (클러스터 지원)
+- 투명한 LOCAL/REMOTE 라우팅
 
-**Migration Challenges:**
-- Different API semantics
-- Pattern subscriptions (LOCAL only)
-- No backward compatibility with raw PUB/SUB
-
----
-
-## API Mapping Table
-
-### Socket Creation
-
-| Traditional PUB/SUB | SPOT Equivalent | Notes |
-|---------------------|-----------------|-------|
-| `slk_socket(ctx, SLK_XPUB)` | `slk_spot_new(ctx)` + `slk_spot_topic_create()` | SPOT creates XPUB internally |
-| `slk_socket(ctx, SLK_XSUB)` | `slk_spot_new(ctx)` | SPOT creates XSUB internally |
-| `slk_bind(xpub, "inproc://topic")` | `slk_spot_topic_create(spot, "topic")` | SPOT generates inproc endpoint |
-| `slk_connect(xsub, "inproc://topic")` | `slk_spot_subscribe(spot, "topic")` | SPOT connects automatically |
-
-### Publishing
-
-| Traditional PUB/SUB | SPOT Equivalent | Notes |
-|---------------------|-----------------|-------|
-| `slk_send(xpub, data, len, 0)` | `slk_spot_publish(spot, topic, data, len)` | SPOT adds topic frame |
-| Multi-frame: `[topic][data]` | Same format used internally | SPOT handles framing |
-
-### Subscribing
-
-| Traditional PUB/SUB | SPOT Equivalent | Notes |
-|---------------------|-----------------|-------|
-| `slk_setsockopt(xsub, SLK_SUBSCRIBE, topic, len)` | `slk_spot_subscribe(spot, topic)` | SPOT manages subscription |
-| `slk_setsockopt(xsub, SLK_UNSUBSCRIBE, topic, len)` | `slk_spot_unsubscribe(spot, topic)` | SPOT removes subscription |
-| `slk_setsockopt(xsub, SLK_PSUBSCRIBE, pattern, len)` | `slk_spot_subscribe_pattern(spot, pattern)` | LOCAL topics only |
-
-### Receiving
-
-| Traditional PUB/SUB | SPOT Equivalent | Notes |
-|---------------------|-----------------|-------|
-| `slk_recv(xsub, buf, len, flags)` (Frame 1) | `slk_spot_recv(spot, topic, ...)` | SPOT separates topic/data |
-| `slk_recv(xsub, buf, len, flags)` (Frame 2) | Same call | Single API for both frames |
-
-### Socket Options
-
-| Traditional PUB/SUB | SPOT Equivalent | Notes |
-|---------------------|-----------------|-------|
-| `slk_setsockopt(socket, SLK_SNDHWM, ...)` | `slk_spot_set_hwm(spot, sndhwm, rcvhwm)` | Sets for all sockets |
-| `slk_setsockopt(socket, SLK_RCVHWM, ...)` | Same | |
-| `slk_getsockopt(socket, SLK_FD, ...)` | `slk_spot_fd(spot, &fd)` | Returns XSUB FD |
-
-### Cleanup
-
-| Traditional PUB/SUB | SPOT Equivalent | Notes |
-|---------------------|-----------------|-------|
-| `slk_close(xpub)` | `slk_spot_topic_destroy(spot, topic)` | Destroys topic's XPUB |
-| `slk_close(xsub)` | `slk_spot_destroy(&spot)` | Destroys all sockets |
+**마이그레이션 과제:**
+- 다른 API 의미론
+- 패턴 구독 (LOCAL만 해당)
+- 원시 PUB/SUB와의 하위 호환성 없음
 
 ---
 
-## Step-by-Step Migration
+## API 매핑 테이블
 
-### Step 1: Identify PUB/SUB Usage
+### 소켓 생성
 
-**Find all PUB/SUB socket creation:**
+| 전통적인 PUB/SUB | SPOT 동등 함수 | 참고 |
+|---------------------|-----------------|-------|
+| `slk_socket(ctx, SLK_XPUB)` | `slk_spot_new(ctx)` + `slk_spot_topic_create()` | SPOT이 내부적으로 XPUB 생성 |
+| `slk_socket(ctx, SLK_XSUB)` | `slk_spot_new(ctx)` | SPOT이 내부적으로 XSUB 생성 |
+| `slk_bind(xpub, "inproc://topic")` | `slk_spot_topic_create(spot, "topic")` | SPOT이 inproc 엔드포인트 생성 |
+| `slk_connect(xsub, "inproc://topic")` | `slk_spot_subscribe(spot, "topic")` | SPOT이 자동으로 연결 |
+
+### 발행
+
+| 전통적인 PUB/SUB | SPOT 동등 함수 | 참고 |
+|---------------------|-----------------|-------|
+| `slk_send(xpub, data, len, 0)` | `slk_spot_publish(spot, topic, data, len)` | SPOT이 토픽 프레임 추가 |
+| 멀티 프레임: `[topic][data]` | 내부적으로 동일한 형식 사용 | SPOT이 프레이밍 처리 |
+
+### 구독
+
+| 전통적인 PUB/SUB | SPOT 동등 함수 | 참고 |
+|---------------------|-----------------|-------|
+| `slk_setsockopt(xsub, SLK_SUBSCRIBE, topic, len)` | `slk_spot_subscribe(spot, topic)` | SPOT이 구독 관리 |
+| `slk_setsockopt(xsub, SLK_UNSUBSCRIBE, topic, len)` | `slk_spot_unsubscribe(spot, topic)` | SPOT이 구독 제거 |
+| `slk_setsockopt(xsub, SLK_PSUBSCRIBE, pattern, len)` | `slk_spot_subscribe_pattern(spot, pattern)` | LOCAL 토픽만 해당 |
+
+### 수신
+
+| 전통적인 PUB/SUB | SPOT 동등 함수 | 참고 |
+|---------------------|-----------------|-------|
+| `slk_recv(xsub, buf, len, flags)` (프레임 1) | `slk_spot_recv(spot, topic, ...)` | SPOT이 토픽/데이터 분리 |
+| `slk_recv(xsub, buf, len, flags)` (프레임 2) | 동일한 호출 | 두 프레임 모두 단일 API |
+
+### 소켓 옵션
+
+| 전통적인 PUB/SUB | SPOT 동등 함수 | 참고 |
+|---------------------|-----------------|-------|
+| `slk_setsockopt(socket, SLK_SNDHWM, ...)` | `slk_spot_set_hwm(spot, sndhwm, rcvhwm)` | 모든 소켓에 설정 |
+| `slk_setsockopt(socket, SLK_RCVHWM, ...)` | 동일 | |
+| `slk_getsockopt(socket, SLK_FD, ...)` | `slk_spot_fd(spot, &fd)` | XSUB FD 반환 |
+
+### 정리
+
+| 전통적인 PUB/SUB | SPOT 동등 함수 | 참고 |
+|---------------------|-----------------|-------|
+| `slk_close(xpub)` | `slk_spot_topic_destroy(spot, topic)` | 토픽의 XPUB 파괴 |
+| `slk_close(xsub)` | `slk_spot_destroy(&spot)` | 모든 소켓 파괴 |
+
+---
+
+## 단계별 마이그레이션
+
+### 단계 1: PUB/SUB 사용 식별
+
+**모든 PUB/SUB 소켓 생성 찾기:**
 ```bash
 grep -r "SLK_XPUB\|SLK_XSUB\|SLK_PUB\|SLK_SUB" src/
 ```
 
-**Catalog topics:**
-- List all topics being published/subscribed
-- Identify topic naming patterns
-- Note multi-frame message usage
+**토픽 목록 작성:**
+- 발행/구독되는 모든 토픽 나열
+- 토픽 명명 패턴 식별
+- 멀티 프레임 메시지 사용 기록
 
-### Step 2: Create Topic Mapping
+### 단계 2: 토픽 매핑 생성
 
-**Before (Traditional):**
+**이전 (전통적인 방식):**
 ```c
 // Publisher
 slk_socket_t *xpub1 = slk_socket(ctx, SLK_XPUB);
@@ -123,7 +123,7 @@ slk_connect(xsub, "inproc://game:player");
 slk_connect(xsub, "inproc://game:score");
 ```
 
-**After (SPOT):**
+**이후 (SPOT):**
 ```c
 // Single SPOT instance
 slk_spot_t *spot = slk_spot_new(ctx);
@@ -137,9 +137,9 @@ slk_spot_subscribe(spot, "game:player");
 slk_spot_subscribe(spot, "game:score");
 ```
 
-### Step 3: Update Publish Code
+### 단계 3: 발행 코드 업데이트
 
-**Before:**
+**이전:**
 ```c
 // Multi-frame publish
 msg_t topic_msg, data_msg;
@@ -153,30 +153,30 @@ msg_close(&topic_msg);
 msg_close(&data_msg);
 ```
 
-**After:**
+**이후:**
 ```c
 // Single call
 slk_spot_publish(spot, "game:player", "Player1", 7);
 ```
 
-### Step 4: Update Subscribe Code
+### 단계 4: 구독 코드 업데이트
 
-**Before:**
+**이전:**
 ```c
 // Set subscription option
 const char *topic = "game:player";
 slk_setsockopt(xsub, SLK_SUBSCRIBE, topic, strlen(topic));
 ```
 
-**After:**
+**이후:**
 ```c
 // Subscribe API
 slk_spot_subscribe(spot, "game:player");
 ```
 
-### Step 5: Update Receive Code
+### 단계 5: 수신 코드 업데이트
 
-**Before:**
+**이전:**
 ```c
 // Receive multi-frame message
 msg_t topic_msg, data_msg;
@@ -198,7 +198,7 @@ msg_close(&topic_msg);
 msg_close(&data_msg);
 ```
 
-**After:**
+**이후:**
 ```c
 // Single call with separated buffers
 char topic[256], data[4096];
@@ -208,23 +208,23 @@ slk_spot_recv(spot, topic, sizeof(topic), &topic_len,
               data, sizeof(data), &data_len, 0);
 ```
 
-### Step 6: Update Cleanup Code
+### 단계 6: 정리 코드 업데이트
 
-**Before:**
+**이전:**
 ```c
 slk_close(xpub1);
 slk_close(xpub2);
 slk_close(xsub);
 ```
 
-**After:**
+**이후:**
 ```c
 slk_spot_destroy(&spot); // Closes all sockets
 ```
 
-### Step 7: Test
+### 단계 7: 테스트
 
-**Unit Tests:**
+**단위 테스트:**
 ```c
 void test_spot_migration()
 {
@@ -255,18 +255,18 @@ void test_spot_migration()
 
 ---
 
-## Migration Considerations
+## 마이그레이션 고려사항
 
-### Pattern Subscriptions
+### 패턴 구독
 
-**Traditional PUB/SUB:**
-- Pattern subscriptions work for both inproc and TCP
+**전통적인 PUB/SUB:**
+- 패턴 구독이 inproc와 TCP 모두에서 동작
 
 **SPOT:**
-- Pattern subscriptions **LOCAL only**
-- REMOTE topics require explicit subscription
+- 패턴 구독은 **LOCAL만 해당**
+- REMOTE 토픽은 명시적 구독 필요
 
-**Migration:**
+**마이그레이션:**
 ```c
 // Before: Pattern subscription over TCP
 slk_setsockopt(xsub, SLK_PSUBSCRIBE, "game:*", 6);
@@ -279,18 +279,18 @@ slk_spot_subscribe(spot, "game:player");
 slk_spot_subscribe(spot, "game:score");
 ```
 
-### Multi-Frame Messages
+### 멀티 프레임 메시지
 
-**Traditional PUB/SUB:**
-- Direct control over frame boundaries
-- Can send arbitrary multi-frame messages
+**전통적인 PUB/SUB:**
+- 프레임 경계에 대한 직접적인 제어
+- 임의의 멀티 프레임 메시지 전송 가능
 
 **SPOT:**
-- Fixed two-frame format: `[topic][data]`
-- No support for additional frames
+- 고정된 두 프레임 형식: `[topic][data]`
+- 추가 프레임 지원 없음
 
-**Migration:**
-If you need additional frames, encode in data:
+**마이그레이션:**
+추가 프레임이 필요한 경우 데이터에 인코딩:
 ```c
 // Before: [topic][metadata][data]
 slk_send(xpub, "topic", 5, SLK_SNDMORE);
@@ -310,15 +310,15 @@ memcpy(msg.data, "data", 4);
 slk_spot_publish(spot, "topic", &msg, sizeof(msg));
 ```
 
-### Socket Options
+### 소켓 옵션
 
-**Traditional PUB/SUB:**
-- Fine-grained control per socket
+**전통적인 PUB/SUB:**
+- 소켓별 세밀한 제어
 
 **SPOT:**
-- Global HWM setting for all topics
+- 모든 토픽에 대한 전역 HWM 설정
 
-**Migration:**
+**마이그레이션:**
 ```c
 // Before: Per-socket HWM
 int hwm = 10000;
@@ -329,11 +329,11 @@ slk_setsockopt(xpub2, SLK_SNDHWM, &hwm, sizeof(hwm));
 slk_spot_set_hwm(spot, 10000, 10000);
 ```
 
-If you need per-topic HWM, use separate SPOT instances.
+토픽별 HWM이 필요한 경우 별도의 SPOT 인스턴스를 사용하세요.
 
-### TCP Transport
+### TCP 전송
 
-**Traditional PUB/SUB:**
+**전통적인 PUB/SUB:**
 ```c
 // Publisher
 slk_socket_t *xpub = slk_socket(ctx, SLK_XPUB);
@@ -357,7 +357,7 @@ slk_spot_topic_route(spot, "topic", "tcp://server:5555");
 slk_spot_subscribe(spot, "topic");
 ```
 
-**Or use cluster sync:**
+**또는 클러스터 동기화 사용:**
 ```c
 // Subscriber (automatic discovery)
 slk_spot_t *spot = slk_spot_new(ctx);
@@ -368,45 +368,45 @@ slk_spot_subscribe(spot, "topic");
 
 ---
 
-## Compatibility Notes
+## 호환성 참고사항
 
-### Cannot Mix SPOT and Traditional PUB/SUB
+### SPOT과 전통적인 PUB/SUB 혼합 불가
 
-**SPOT uses ROUTER for cluster protocol**, which is incompatible with raw XPUB/XSUB connections.
+**SPOT은 클러스터 프로토콜에 ROUTER를 사용**하므로 원시 XPUB/XSUB 연결과 호환되지 않습니다.
 
-**Incompatible:**
+**호환되지 않음:**
 ```c
 // Traditional XSUB
 slk_socket_t *xsub = slk_socket(ctx, SLK_XSUB);
 slk_connect(xsub, "tcp://spot-node:5555"); // Won't work!
 ```
 
-**Workaround:**
-- Migrate all nodes to SPOT
-- Or use separate endpoints for SPOT and traditional PUB/SUB
+**해결 방법:**
+- 모든 노드를 SPOT으로 마이그레이션
+- 또는 SPOT과 전통적인 PUB/SUB에 별도의 엔드포인트 사용
 
-### Subscription Visibility
+### 구독 가시성
 
-**Traditional XPUB:**
-- Subscription messages visible via `SLK_XPUB_VERBOSE`
+**전통적인 XPUB:**
+- `SLK_XPUB_VERBOSE`를 통해 구독 메시지 표시
 
 **SPOT:**
-- Subscription tracking internal to subscription_manager_t
-- No external visibility (future enhancement)
+- 구독 추적은 subscription_manager_t 내부
+- 외부 가시성 없음 (향후 개선 예정)
 
-### Message Ordering
+### 메시지 순서
 
-**Both:**
-- Maintain FIFO order per topic
-- No ordering guarantees across topics
+**둘 다:**
+- 토픽별 FIFO 순서 유지
+- 토픽 간 순서 보장 없음
 
 ---
 
-## Example Migrations
+## 마이그레이션 예제
 
-### Example 1: Simple Pub/Sub
+### 예제 1: 간단한 Pub/Sub
 
-**Before:**
+**이전:**
 ```c
 // Publisher
 slk_socket_t *pub = slk_socket(ctx, SLK_PUB);
@@ -422,7 +422,7 @@ char buf[256];
 slk_recv(sub, buf, sizeof(buf), 0);
 ```
 
-**After:**
+**이후:**
 ```c
 // Combined pub/sub
 slk_spot_t *spot = slk_spot_new(ctx);
@@ -438,9 +438,9 @@ slk_spot_recv(spot, topic, sizeof(topic), &topic_len,
               data, sizeof(data), &data_len, SLK_DONTWAIT);
 ```
 
-### Example 2: Multiple Publishers
+### 예제 2: 다중 발행자
 
-**Before:**
+**이전:**
 ```c
 // Publisher 1
 slk_socket_t *pub1 = slk_socket(ctx, SLK_XPUB);
@@ -456,7 +456,7 @@ slk_connect(sub, "inproc://topic1");
 slk_connect(sub, "inproc://topic2");
 ```
 
-**After:**
+**이후:**
 ```c
 // Single SPOT instance
 slk_spot_t *spot = slk_spot_new(ctx);
@@ -470,9 +470,9 @@ slk_spot_subscribe(spot, "topic1");
 slk_spot_subscribe(spot, "topic2");
 ```
 
-### Example 3: Pattern Subscription
+### 예제 3: 패턴 구독
 
-**Before:**
+**이전:**
 ```c
 slk_socket_t *xsub = slk_socket(ctx, SLK_XSUB);
 slk_connect(xsub, "inproc://game");
@@ -481,19 +481,19 @@ const char *pattern = "player:";
 slk_setsockopt(xsub, SLK_PSUBSCRIBE, pattern, strlen(pattern));
 ```
 
-**After:**
+**이후:**
 ```c
 slk_spot_t *spot = slk_spot_new(ctx);
 slk_spot_subscribe_pattern(spot, "player:*");
 ```
 
-**Note:** Pattern matching syntax differs:
-- Traditional: Prefix match ("player:" matches "player:123")
-- SPOT: Wildcard match ("player:*" matches "player:123")
+**참고:** 패턴 매칭 문법이 다릅니다:
+- 전통적인 방식: 접두사 매칭 ("player:"는 "player:123"과 매칭)
+- SPOT: 와일드카드 매칭 ("player:*"는 "player:123"과 매칭)
 
-### Example 4: TCP Pub/Sub
+### 예제 4: TCP Pub/Sub
 
-**Before:**
+**이전:**
 ```c
 // Server
 slk_socket_t *pub = slk_socket(ctx, SLK_PUB);
@@ -508,7 +508,7 @@ char buf[256];
 slk_recv(sub, buf, sizeof(buf), 0);
 ```
 
-**After:**
+**이후:**
 ```c
 // Server
 slk_spot_t *spot = slk_spot_new(ctx);
@@ -529,13 +529,13 @@ slk_spot_recv(spot, topic, sizeof(topic), &topic_len,
 
 ---
 
-## Testing Migration
+## 마이그레이션 테스트
 
-### Parallel Run Strategy
+### 병렬 실행 전략
 
-Run traditional and SPOT systems in parallel:
+전통적인 시스템과 SPOT 시스템을 병렬로 실행:
 
-**Dual Publishing:**
+**이중 발행:**
 ```c
 // Publish to both traditional and SPOT
 slk_send(xpub, data, len, 0);
@@ -544,7 +544,7 @@ slk_spot_publish(spot, topic, data, len);
 // Compare results
 ```
 
-**Shadow Receiving:**
+**섀도우 수신:**
 ```c
 // Receive from both and compare
 char traditional_data[256];
@@ -559,32 +559,32 @@ slk_spot_recv(spot, spot_topic, sizeof(spot_topic), &topic_len,
 assert(memcmp(traditional_data, spot_data, data_len) == 0);
 ```
 
-### Gradual Migration
+### 점진적 마이그레이션
 
-Migrate one topic at a time:
+한 번에 하나의 토픽씩 마이그레이션:
 
-1. **Phase 1**: Migrate publisher (dual-publish)
-2. **Phase 2**: Migrate subscribers (dual-subscribe)
-3. **Phase 3**: Remove traditional code
+1. **1단계**: 발행자 마이그레이션 (이중 발행)
+2. **2단계**: 구독자 마이그레이션 (이중 구독)
+3. **3단계**: 전통적인 코드 제거
 
 ---
 
-## Performance Comparison
+## 성능 비교
 
-| Metric | Traditional PUB/SUB | SPOT | Notes |
+| 지표 | 전통적인 PUB/SUB | SPOT | 참고 |
 |--------|---------------------|------|-------|
-| Latency (inproc) | 0.01-0.1 µs | 0.01-0.1 µs | Equivalent |
-| Latency (TCP) | 10-50 µs | 10-50 µs | Equivalent |
-| Throughput (inproc) | 10M msg/s | 10M msg/s | Equivalent |
-| Throughput (TCP) | 1M msg/s | 1M msg/s | Equivalent |
-| Memory overhead | Low | Medium | SPOT has registry |
-| API complexity | High | Low | SPOT simplifies |
+| 지연시간 (inproc) | 0.01-0.1 µs | 0.01-0.1 µs | 동등 |
+| 지연시간 (TCP) | 10-50 µs | 10-50 µs | 동등 |
+| 처리량 (inproc) | 10M msg/s | 10M msg/s | 동등 |
+| 처리량 (TCP) | 1M msg/s | 1M msg/s | 동등 |
+| 메모리 오버헤드 | 낮음 | 중간 | SPOT에는 레지스트리가 있음 |
+| API 복잡도 | 높음 | 낮음 | SPOT이 단순화 |
 
 ---
 
-## See Also
+## 참고 문서
 
-- [API Reference](API.md)
-- [Quick Start Guide](QUICK_START.md)
-- [Architecture Overview](ARCHITECTURE.md)
-- [Usage Patterns](PATTERNS.md)
+- [API 레퍼런스](API.ko.md)
+- [빠른 시작 가이드](QUICK_START.ko.md)
+- [아키텍처 개요](ARCHITECTURE.ko.md)
+- [사용 패턴](PATTERNS.ko.md)

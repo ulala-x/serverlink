@@ -1,3 +1,5 @@
+[![English](https://img.shields.io/badge/lang:en-red.svg)](README.md) [![한국어](https://img.shields.io/badge/lang:한국어-blue.svg)](README.ko.md)
+
 # SPOT PUB/SUB Documentation
 
 Complete documentation for ServerLink SPOT (Scalable Partitioned Ordered Topics).
@@ -294,7 +296,7 @@ ServerLink is licensed under the Mozilla Public License 2.0 (MPL-2.0).
 - **Documentation**: `docs/spot/`
 - **Examples**: `examples/spot_cluster_sync_example.cpp`
 - **Tests**: `tests/spot/`
-- **GitHub Issues**: https://github.com/ulalax/serverlink/issues
+- **GitHub Issues**: https://github.com/ulala-x/serverlink/issues
 
 ---
 

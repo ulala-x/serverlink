@@ -1,111 +1,111 @@
 [![English](https://img.shields.io/badge/lang:en-red.svg)](PROTOCOL.md) [![한국어](https://img.shields.io/badge/lang:한국어-blue.svg)](PROTOCOL.ko.md)
 
-# SPOT PUB/SUB Protocol Specification
+# SPOT PUB/SUB 프로토콜 명세
 
-Node-to-node communication protocol for ServerLink SPOT.
+ServerLink SPOT의 노드 간 통신 프로토콜입니다.
 
-## Table of Contents
+## 목차
 
-1. [Overview](#overview)
-2. [Message Format](#message-format)
-3. [Command Codes](#command-codes)
-4. [Message Types](#message-types)
-5. [Protocol Flows](#protocol-flows)
-6. [Error Handling](#error-handling)
-7. [Wire Format Examples](#wire-format-examples)
-
----
-
-## Overview
-
-SPOT uses a binary protocol over ServerLink ROUTER/DEALER sockets for cluster communication.
-
-**Transport:**
-- **Inproc**: LOCAL topics (XPUB/XSUB)
-- **TCP**: REMOTE topics and cluster protocol (ROUTER)
-
-**Message Framing:**
-- Multi-frame messages using ServerLink's SNDMORE flag
-- Frame 0: Routing ID (ROUTER messages only)
-- Frame 1: Empty delimiter (ROUTER messages only)
-- Frame 2+: Protocol-specific frames
-
-**Byte Order:**
-- Little-endian for all multi-byte integers
-- UTF-8 for all strings
+1. [개요](#개요)
+2. [메시지 형식](#메시지-형식)
+3. [Command 코드](#command-코드)
+4. [메시지 유형](#메시지-유형)
+5. [프로토콜 흐름](#프로토콜-흐름)
+6. [오류 처리](#오류-처리)
+7. [Wire Format 예제](#wire-format-예제)
 
 ---
 
-## Message Format
+## 개요
 
-### ROUTER Message Envelope
+SPOT은 클러스터 통신을 위해 ServerLink ROUTER/DEALER 소켓 위에서 동작하는 바이너리 프로토콜을 사용합니다.
 
-All cluster protocol messages use ROUTER framing:
+**전송 방식:**
+- **Inproc**: LOCAL 토픽 (XPUB/XSUB)
+- **TCP**: REMOTE 토픽 및 클러스터 프로토콜 (ROUTER)
+
+**메시지 프레이밍:**
+- ServerLink의 SNDMORE 플래그를 사용한 멀티-프레임 메시지
+- Frame 0: Routing ID (ROUTER 메시지 전용)
+- Frame 1: Empty delimiter (ROUTER 메시지 전용)
+- Frame 2+: 프로토콜별 프레임
+
+**바이트 순서:**
+- 모든 멀티바이트 정수는 Little-endian
+- 모든 문자열은 UTF-8
+
+---
+
+## 메시지 형식
+
+### ROUTER 메시지 봉투
+
+모든 클러스터 프로토콜 메시지는 ROUTER 프레이밍을 사용합니다:
 
 ```
 ┌────────────────┐
-│  Routing ID    │  Frame 0: Variable length (0-255 bytes)
+│  Routing ID    │  Frame 0: 가변 길이 (0-255 bytes)
 ├────────────────┤
-│  Empty Frame   │  Frame 1: 0 bytes (delimiter)
+│  Empty Frame   │  Frame 1: 0 bytes (구분자)
 ├────────────────┤
-│  Payload       │  Frame 2+: Protocol-specific
+│  Payload       │  Frame 2+: 프로토콜별 데이터
 └────────────────┘
 ```
 
 **Routing ID:**
-- Assigned by ROUTER socket
-- Used for reply-to addressing
-- Opaque binary blob (not null-terminated)
+- ROUTER 소켓에 의해 할당됨
+- reply-to 주소 지정에 사용
+- 불투명한 바이너리 블롭 (null 종료 아님)
 
 **Empty Frame:**
-- Always 0 bytes
-- Separates routing envelope from payload
-- Required by ROUTER protocol
+- 항상 0 bytes
+- 라우팅 봉투와 페이로드를 분리
+- ROUTER 프로토콜에서 필수
 
 ---
 
-## Command Codes
+## Command 코드
 
-### Enumeration
+### 열거형
 
 ```c
 enum class spot_command_t : uint8_t {
-    PUBLISH      = 0x01,  // Publish message to topic
-    SUBSCRIBE    = 0x02,  // Subscribe to topic
-    UNSUBSCRIBE  = 0x03,  // Unsubscribe from topic
-    QUERY        = 0x04,  // Query local topics
-    QUERY_RESP   = 0x05   // Response to QUERY
+    PUBLISH      = 0x01,  // 토픽에 메시지 발행
+    SUBSCRIBE    = 0x02,  // 토픽 구독
+    UNSUBSCRIBE  = 0x03,  // 토픽 구독 해제
+    QUERY        = 0x04,  // 로컬 토픽 조회
+    QUERY_RESP   = 0x05   // QUERY에 대한 응답
 };
 ```
 
-### Command Summary
+### Command 요약
 
-| Code | Name | Direction | Description |
-|------|------|-----------|-------------|
-| 0x01 | PUBLISH | Client→Server | Publish message to REMOTE topic |
-| 0x02 | SUBSCRIBE | Client→Server | Subscribe to REMOTE topic |
-| 0x03 | UNSUBSCRIBE | Client→Server | Unsubscribe from REMOTE topic |
-| 0x04 | QUERY | Client→Server | Request list of LOCAL topics |
-| 0x05 | QUERY_RESP | Server→Client | Response with topic list |
+| 코드 | 이름 | 방향 | 설명 |
+|------|------|------|------|
+| 0x01 | PUBLISH | Client→Server | REMOTE 토픽에 메시지 발행 |
+| 0x02 | SUBSCRIBE | Client→Server | REMOTE 토픽 구독 |
+| 0x03 | UNSUBSCRIBE | Client→Server | REMOTE 토픽 구독 해제 |
+| 0x04 | QUERY | Client→Server | LOCAL 토픽 목록 요청 |
+| 0x05 | QUERY_RESP | Server→Client | 토픽 목록으로 응답 |
 
 ---
 
-## Message Types
+## 메시지 유형
 
 ### PUBLISH (0x01)
 
-**Purpose:** Publish a message to a REMOTE topic.
+**용도:** REMOTE 토픽에 메시지를 발행합니다.
 
-**Frame Structure:**
+**Frame 구조:**
 ```
-Frame 0: Routing ID (variable)
+Frame 0: Routing ID (가변)
 Frame 1: Empty delimiter (0 bytes)
 Frame 2: Command (1 byte) = 0x01
-Frame 3: Topic ID (variable length string)
-Frame 4: Message data (variable length binary)
+Frame 3: Topic ID (가변 길이 문자열)
+Frame 4: Message data (가변 길이 바이너리)
 ```
 
-**Example:**
+**예제:**
 ```
 Frame 0: [0x12, 0x34, 0x56] (routing_id)
 Frame 1: [] (empty)
@@ -114,9 +114,9 @@ Frame 3: [0x67, 0x61, 0x6D, 0x65, 0x3A, 0x70, 0x31] ("game:p1")
 Frame 4: [0x48, 0x65, 0x6C, 0x6C, 0x6F] ("Hello")
 ```
 
-**C Code:**
+**C 코드:**
 ```c
-// Send PUBLISH
+// PUBLISH 송신
 slk_send(socket, routing_id, id_len, SLK_SNDMORE);
 slk_send(socket, "", 0, SLK_SNDMORE);
 uint8_t cmd = 0x01;
@@ -129,17 +129,17 @@ slk_send(socket, data, data_len, 0);
 
 ### SUBSCRIBE (0x02)
 
-**Purpose:** Subscribe to a REMOTE topic.
+**용도:** REMOTE 토픽을 구독합니다.
 
-**Frame Structure:**
+**Frame 구조:**
 ```
-Frame 0: Routing ID (variable)
+Frame 0: Routing ID (가변)
 Frame 1: Empty delimiter (0 bytes)
 Frame 2: Command (1 byte) = 0x02
-Frame 3: Topic ID (variable length string)
+Frame 3: Topic ID (가변 길이 문자열)
 ```
 
-**Example:**
+**예제:**
 ```
 Frame 0: [0x12, 0x34, 0x56] (routing_id)
 Frame 1: [] (empty)
@@ -147,9 +147,9 @@ Frame 2: [0x02] (SUBSCRIBE)
 Frame 3: [0x67, 0x61, 0x6D, 0x65, 0x3A, 0x70, 0x31] ("game:p1")
 ```
 
-**C Code:**
+**C 코드:**
 ```c
-// Send SUBSCRIBE
+// SUBSCRIBE 송신
 slk_send(socket, routing_id, id_len, SLK_SNDMORE);
 slk_send(socket, "", 0, SLK_SNDMORE);
 uint8_t cmd = 0x02;
@@ -161,17 +161,17 @@ slk_send(socket, topic_id, strlen(topic_id), 0);
 
 ### UNSUBSCRIBE (0x03)
 
-**Purpose:** Unsubscribe from a REMOTE topic.
+**용도:** REMOTE 토픽 구독을 해제합니다.
 
-**Frame Structure:**
+**Frame 구조:**
 ```
-Frame 0: Routing ID (variable)
+Frame 0: Routing ID (가변)
 Frame 1: Empty delimiter (0 bytes)
 Frame 2: Command (1 byte) = 0x03
-Frame 3: Topic ID (variable length string)
+Frame 3: Topic ID (가변 길이 문자열)
 ```
 
-**Example:**
+**예제:**
 ```
 Frame 0: [0x12, 0x34, 0x56] (routing_id)
 Frame 1: [] (empty)
@@ -179,9 +179,9 @@ Frame 2: [0x03] (UNSUBSCRIBE)
 Frame 3: [0x67, 0x61, 0x6D, 0x65, 0x3A, 0x70, 0x31] ("game:p1")
 ```
 
-**C Code:**
+**C 코드:**
 ```c
-// Send UNSUBSCRIBE
+// UNSUBSCRIBE 송신
 slk_send(socket, routing_id, id_len, SLK_SNDMORE);
 slk_send(socket, "", 0, SLK_SNDMORE);
 uint8_t cmd = 0x03;
@@ -193,25 +193,25 @@ slk_send(socket, topic_id, strlen(topic_id), 0);
 
 ### QUERY (0x04)
 
-**Purpose:** Request list of LOCAL topics from a cluster node.
+**용도:** 클러스터 노드로부터 LOCAL 토픽 목록을 요청합니다.
 
-**Frame Structure:**
+**Frame 구조:**
 ```
-Frame 0: Routing ID (variable)
+Frame 0: Routing ID (가변)
 Frame 1: Empty delimiter (0 bytes)
 Frame 2: Command (1 byte) = 0x04
 ```
 
-**Example:**
+**예제:**
 ```
 Frame 0: [0x12, 0x34, 0x56] (routing_id)
 Frame 1: [] (empty)
 Frame 2: [0x04] (QUERY)
 ```
 
-**C Code:**
+**C 코드:**
 ```c
-// Send QUERY
+// QUERY 송신
 slk_send(socket, routing_id, id_len, SLK_SNDMORE);
 slk_send(socket, "", 0, SLK_SNDMORE);
 uint8_t cmd = 0x04;
@@ -222,18 +222,18 @@ slk_send(socket, &cmd, 1, 0);
 
 ### QUERY_RESP (0x05)
 
-**Purpose:** Response to QUERY with list of LOCAL topics.
+**용도:** LOCAL 토픽 목록으로 QUERY에 응답합니다.
 
-**Frame Structure:**
+**Frame 구조:**
 ```
-Frame 0: Routing ID (variable)
+Frame 0: Routing ID (가변)
 Frame 1: Empty delimiter (0 bytes)
 Frame 2: Command (1 byte) = 0x05
 Frame 3: Topic count (4 bytes, uint32_t, little-endian)
-Frame 4+: Topic IDs (variable length strings, one per frame)
+Frame 4+: Topic IDs (가변 길이 문자열, 프레임당 하나씩)
 ```
 
-**Example (2 topics):**
+**예제 (2개 토픽):**
 ```
 Frame 0: [0x12, 0x34, 0x56] (routing_id)
 Frame 1: [] (empty)
@@ -243,9 +243,9 @@ Frame 4: [0x74, 0x6F, 0x70, 0x69, 0x63, 0x31] ("topic1")
 Frame 5: [0x74, 0x6F, 0x70, 0x69, 0x63, 0x32] ("topic2")
 ```
 
-**C Code:**
+**C 코드:**
 ```c
-// Send QUERY_RESP
+// QUERY_RESP 송신
 slk_send(socket, routing_id, id_len, SLK_SNDMORE);
 slk_send(socket, "", 0, SLK_SNDMORE);
 uint8_t cmd = 0x05;
@@ -258,44 +258,44 @@ slk_send(socket, "topic2", 6, 0);
 
 ---
 
-## Protocol Flows
+## 프로토콜 흐름
 
-### Cluster Synchronization
+### 클러스터 동기화
 
-**Scenario:** Node A discovers topics from Node B.
+**시나리오:** Node A가 Node B로부터 토픽을 발견합니다.
 
 ```
 Node A                                Node B
   |                                      |
   | 1. cluster_add("tcp://nodeB:5555")   |
   |─────────────────────────────────────>|
-  |         (TCP connect)                |
+  |         (TCP 연결)                   |
   |                                      |
   | 2. cluster_sync(1000)                |
   |                                      |
   | ┌─ QUERY ──────────────────────────> |
   | │ [rid][empty][0x04]                 |
   | │                                    |
-  | │                     Process QUERY  |
-  | │                     Get LOCAL topics|
+  | │                     QUERY 처리     |
+  | │                     LOCAL 토픽 조회|
   | │                                    |
   | │ <──────────────── QUERY_RESP ────┐|
   | │ [rid][empty][0x05][count][topics] ||
   | │                                   ||
-  | └─ Register REMOTE topics           ||
+  | └─ REMOTE 토픽 등록                 ||
   |    (topic1 → tcp://nodeB:5555)      ||
   |    (topic2 → tcp://nodeB:5555)      ||
   |                                     ||
-  | Return 0                            ||
+  | 0 반환                              ||
   |<─────────────────────────────────────┘|
   |                                      |
 ```
 
 ---
 
-### Remote Topic Publish
+### Remote 토픽 발행
 
-**Scenario:** Node A publishes to topic hosted on Node B.
+**시나리오:** Node A가 Node B에서 호스팅하는 토픽에 발행합니다.
 
 ```
 Publisher                 Node A (Client)              Node B (Server)
@@ -303,30 +303,30 @@ Publisher                 Node A (Client)              Node B (Server)
   | slk_spot_publish()         |                            |
   |───────────────────────────>|                            |
   |                            |                            |
-  |                            | Lookup: topic is REMOTE   |
-  |                            | Find spot_node_t          |
+  |                            | 조회: 토픽이 REMOTE       |
+  |                            | spot_node_t 찾기          |
   |                            |                            |
   |                            | ┌─ PUBLISH ──────────────>|
   |                            | │ [rid][empty][0x01]      |
   |                            | │ [topic_id][data]        |
   |                            | │                         |
-  |                            | │         Receive on ROUTER|
-  |                            | │         Extract topic/data|
-  |                            | │         Forward to XPUB  |
+  |                            | │         ROUTER에서 수신 |
+  |                            | │         topic/data 추출 |
+  |                            | │         XPUB로 전달     |
   |                            | │         ───────────────> subscribers
   |                            | │                         |
-  |                            | └─ (No response)          |
+  |                            | └─ (응답 없음)            |
   |                            |                            |
-  | Return 0                   |                            |
+  | 0 반환                     |                            |
   |<───────────────────────────|                            |
   |                            |                            |
 ```
 
 ---
 
-### Remote Topic Subscribe
+### Remote 토픽 구독
 
-**Scenario:** Node A subscribes to topic hosted on Node B.
+**시나리오:** Node A가 Node B에서 호스팅하는 토픽을 구독합니다.
 
 ```
 Subscriber                Node A (Client)              Node B (Server)
@@ -334,91 +334,91 @@ Subscriber                Node A (Client)              Node B (Server)
   | slk_spot_subscribe()       |                            |
   |───────────────────────────>|                            |
   |                            |                            |
-  |                            | Lookup: topic is REMOTE   |
-  |                            | Find spot_node_t          |
+  |                            | 조회: 토픽이 REMOTE       |
+  |                            | spot_node_t 찾기          |
   |                            |                            |
   |                            | ┌─ SUBSCRIBE ────────────>|
   |                            | │ [rid][empty][0x02]      |
   |                            | │ [topic_id]              |
   |                            | │                         |
-  |                            | │         Receive on ROUTER|
-  |                            | │         Process SUBSCRIBE|
-  |                            | │         (future: register subscription)|
+  |                            | │         ROUTER에서 수신 |
+  |                            | │         SUBSCRIBE 처리  |
+  |                            | │         (향후: 구독 등록)|
   |                            | │                         |
-  |                            | └─ (No response)          |
+  |                            | └─ (응답 없음)            |
   |                            |                            |
-  | Return 0                   |                            |
+  | 0 반환                     |                            |
   |<───────────────────────────|                            |
   |                            |                            |
-  |                            | Now can receive PUBLISH   |
+  |                            | 이제 PUBLISH 수신 가능    |
   |                            |<──────────────────────────|
   |                            | [rid][empty][0x01]        |
   |                            | [topic_id][data]          |
   |                            |                            |
 ```
 
-**Note:** Current implementation does not send SUBSCRIBE to remote node for pattern subscriptions.
+**참고:** 현재 구현에서는 패턴 구독에 대해 원격 노드로 SUBSCRIBE를 전송하지 않습니다.
 
 ---
 
-## Error Handling
+## 오류 처리
 
-### Protocol Errors
+### 프로토콜 오류
 
-**Invalid Command Code:**
+**잘못된 Command 코드:**
 ```c
-// Receiver
+// 수신측
 if (cmd < 0x01 || cmd > 0x05) {
     errno = EPROTO;
     return -1;
 }
 ```
 
-**Malformed Message:**
+**잘못된 형식의 메시지:**
 ```c
-// Frame count mismatch
+// Frame 수 불일치
 if (frame_count != expected_count) {
     errno = EPROTO;
     return -1;
 }
 
-// Invalid data type
+// 잘못된 데이터 타입
 if (count_frame_size != sizeof(uint32_t)) {
     errno = EPROTO;
     return -1;
 }
 ```
 
-**Connection Errors:**
+**연결 오류:**
 ```c
-// TCP disconnect
+// TCP 연결 해제
 if (recv_rc == -1 && errno == ECONNRESET) {
-    // Mark node as disconnected
-    // Retry connection with backoff
+    // 노드를 연결 해제됨으로 표시
+    // 백오프로 재연결 시도
 }
 ```
 
-### Timeout Handling
+### 타임아웃 처리
 
-**QUERY Timeout:**
+**QUERY 타임아웃:**
 ```c
-// cluster_sync() uses non-blocking recv with timeout
+// cluster_sync()는 타임아웃과 함께 논블로킹 recv 사용
 int rc = slk_recv(socket, buf, size, SLK_DONTWAIT);
 if (rc == -1 && errno == EAGAIN) {
-    // No response within timeout
-    // Continue with next node
+    // 타임아웃 내에 응답 없음
+    // 다음 노드로 계속
 }
 ```
 
 ---
 
-## Wire Format Examples
+## Wire Format 예제
 
-### Example 1: Simple PUBLISH
+### 예제 1: 간단한 PUBLISH
 
-**Scenario:** Publish "Hello" to "game:p1"
+**시나리오:** "game:p1"에 "Hello" 발행
 
-**Hex Dump:**
+**Hex 덤프:**
 ```
 Frame 0 (Routing ID): 3 bytes
   00 01 02
@@ -436,15 +436,15 @@ Frame 4 (Data): 5 bytes
   48 65 6C 6C 6F                # "Hello"
 ```
 
-**Total:** 16 bytes (excluding routing overhead)
+**총합:** 16 bytes (라우팅 오버헤드 제외)
 
 ---
 
-### Example 2: QUERY_RESP with 3 Topics
+### 예제 2: 3개 토픽의 QUERY_RESP
 
-**Scenario:** Node responds with 3 LOCAL topics
+**시나리오:** 노드가 3개의 LOCAL 토픽으로 응답
 
-**Hex Dump:**
+**Hex 덤프:**
 ```
 Frame 0 (Routing ID): 3 bytes
   00 01 02
@@ -468,102 +468,102 @@ Frame 6 (Topic 3): 11 bytes
   63 68 61 74 3A 6C 6F 62 62 79 # "chat:lobby"
 ```
 
-**Total:** 35 bytes (excluding routing overhead)
+**총합:** 35 bytes (라우팅 오버헤드 제외)
 
 ---
 
-## Version Compatibility
+## 버전 호환성
 
-**Current Version:** 1.0
+**현재 버전:** 1.0
 
-**Future Versioning:**
-- Version byte in command frame (reserved for future)
-- Backward compatibility via feature negotiation
-- Protocol upgrades via QUERY extensions
+**향후 버전 관리:**
+- Command 프레임에 버전 바이트 (향후 예약)
+- 기능 협상을 통한 하위 호환성
+- QUERY 확장을 통한 프로토콜 업그레이드
 
-**Extension Points:**
-- Additional command codes (0x06-0xFF)
-- Optional frames for metadata
-- Topic attributes (TTL, priority, etc.)
-
----
-
-## Security Considerations
-
-**Current Implementation:**
-- No authentication or encryption
-- Trust-based cluster membership
-- Plain-text topic IDs and data
-
-**Future Enhancements:**
-- Topic-level access control
-- Encrypted TCP transport (TLS)
-- Cluster authentication (shared secret)
-- Message signing (HMAC)
+**확장 포인트:**
+- 추가 Command 코드 (0x06-0xFF)
+- 메타데이터용 선택적 프레임
+- 토픽 속성 (TTL, 우선순위 등)
 
 ---
 
-## Performance Optimizations
+## 보안 고려사항
 
-### Batching
+**현재 구현:**
+- 인증 또는 암호화 없음
+- 신뢰 기반 클러스터 멤버십
+- 평문 토픽 ID 및 데이터
 
-**Multiple Publishes:**
+**향후 개선사항:**
+- 토픽 수준 접근 제어
+- 암호화된 TCP 전송 (TLS)
+- 클러스터 인증 (공유 비밀)
+- 메시지 서명 (HMAC)
+
+---
+
+## 성능 최적화
+
+### 배칭
+
+**다중 Publish:**
 ```c
-// Instead of:
+// 대신:
 for (int i = 0; i < 1000; i++) {
     slk_spot_publish(spot, topic, &data[i], 1);
 }
 
-// Consider batching:
+// 배칭 고려:
 slk_spot_publish(spot, topic, data, 1000);
 ```
 
-### Connection Pooling
+### 연결 풀링
 
-**Persistent Connections:**
-- SPOT reuses spot_node_t connections
-- One TCP connection per remote endpoint
-- Automatic reconnection on failure
+**영구 연결:**
+- SPOT은 spot_node_t 연결을 재사용
+- 원격 엔드포인트당 하나의 TCP 연결
+- 실패 시 자동 재연결
 
 ### Zero-Copy
 
-**LOCAL Topics:**
-- inproc transport uses ypipe (zero-copy)
-- No serialization overhead
-- Direct memory mapping
+**LOCAL 토픽:**
+- inproc 전송은 ypipe 사용 (zero-copy)
+- 직렬화 오버헤드 없음
+- 직접 메모리 매핑
 
 ---
 
-## Debugging Protocol
+## 프로토콜 디버깅
 
-### Enable Verbose Logging
+### Verbose 로깅 활성화
 
 ```c
-// Set XPUB_VERBOSE to see subscription messages
+// 구독 메시지를 보려면 XPUB_VERBOSE 설정
 int verbose = 1;
 slk_setsockopt(xpub_socket, SLK_XPUB_VERBOSE, &verbose, sizeof(verbose));
 ```
 
-### Packet Capture
+### 패킷 캡처
 
-**Using tcpdump:**
+**tcpdump 사용:**
 ```bash
-# Capture SPOT traffic on port 5555
+# 포트 5555의 SPOT 트래픽 캡처
 tcpdump -i any -w spot.pcap port 5555
 
-# Analyze with Wireshark
+# Wireshark로 분석
 wireshark spot.pcap
 ```
 
-**Custom Protocol Dissector:**
-- Wireshark Lua dissector (future contribution)
-- Parse ROUTER framing and SPOT commands
+**커스텀 Protocol Dissector:**
+- Wireshark Lua dissector (향후 기여 예정)
+- ROUTER 프레이밍 및 SPOT command 파싱
 
 ---
 
-## See Also
+## 관련 문서
 
-- [API Reference](API.md)
-- [Architecture Overview](ARCHITECTURE.md)
-- [Clustering Guide](CLUSTERING.md)
-- [Quick Start](QUICK_START.md)
+- [API 레퍼런스](API.ko.md)
+- [아키텍처 개요](ARCHITECTURE.ko.md)
+- [클러스터링 가이드](CLUSTERING.ko.md)
+- [빠른 시작](QUICK_START.ko.md)

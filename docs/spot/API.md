@@ -1,3 +1,5 @@
+[![English](https://img.shields.io/badge/lang:en-red.svg)](API.md) [![한국어](https://img.shields.io/badge/lang:한국어-blue.svg)](API.ko.md)
+
 # SPOT PUB/SUB API Reference
 
 Complete API reference for ServerLink SPOT (Scalable Partitioned Ordered Topics).

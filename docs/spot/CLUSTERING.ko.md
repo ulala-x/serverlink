@@ -1,46 +1,46 @@
 [![English](https://img.shields.io/badge/lang:en-red.svg)](CLUSTERING.md) [![한국어](https://img.shields.io/badge/lang:한국어-blue.svg)](CLUSTERING.ko.md)
 
-# SPOT PUB/SUB Clustering Guide
+# SPOT PUB/SUB Clustering 가이드
 
-Complete guide to deploying multi-node SPOT clusters.
+다중 노드 SPOT Cluster 배포를 위한 완벽 가이드입니다.
 
-## Table of Contents
+## 목차
 
-1. [Overview](#overview)
-2. [Single Node Setup](#single-node-setup)
-3. [Two-Node Cluster](#two-node-cluster)
-4. [N-Node Mesh Topology](#n-node-mesh-topology)
+1. [개요](#개요)
+2. [단일 노드 설정](#단일-노드-설정)
+3. [2-노드 Cluster](#2-노드-cluster)
+4. [N-노드 Mesh Topology](#n-노드-mesh-topology)
 5. [Hub-Spoke Topology](#hub-spoke-topology)
-6. [Failure Handling](#failure-handling)
-7. [Network Considerations](#network-considerations)
-8. [Monitoring and Observability](#monitoring-and-observability)
-9. [Production Deployment](#production-deployment)
+6. [장애 처리](#장애-처리)
+7. [네트워크 고려사항](#네트워크-고려사항)
+8. [모니터링과 Observability](#모니터링과-observability)
+9. [프로덕션 배포](#프로덕션-배포)
 
 ---
 
-## Overview
+## 개요
 
-SPOT supports distributed pub/sub across multiple nodes using cluster synchronization.
+SPOT은 Cluster 동기화를 통해 여러 노드에 걸친 분산 pub/sub을 지원합니다.
 
-**Key Concepts:**
-- **LOCAL Topics**: Hosted on this node (XPUB bound to inproc)
-- **REMOTE Topics**: Hosted on other nodes (routed via TCP)
-- **Cluster Sync**: Discovery of remote topics via QUERY/QUERY_RESP
-- **Mesh Topology**: All nodes connect to all other nodes
-- **Hub-Spoke**: Central hub with spoke nodes
+**핵심 개념:**
+- **LOCAL Topics**: 이 노드에서 호스팅됨 (XPUB이 inproc에 bind)
+- **REMOTE Topics**: 다른 노드에서 호스팅됨 (TCP를 통해 라우팅)
+- **Cluster Sync**: QUERY/QUERY_RESP를 통한 원격 topic 검색
+- **Mesh Topology**: 모든 노드가 다른 모든 노드에 연결
+- **Hub-Spoke**: 중앙 hub와 spoke 노드들
 
-**Prerequisites:**
-- ServerLink built with TCP support
-- Network connectivity between nodes
-- Unique bind endpoints for each node
+**필수 조건:**
+- TCP 지원으로 빌드된 ServerLink
+- 노드 간 네트워크 연결
+- 각 노드별 고유한 bind endpoint
 
 ---
 
-## Single Node Setup
+## 단일 노드 설정
 
-Start with a simple single-node deployment.
+간단한 단일 노드 배포부터 시작합니다.
 
-### Configuration
+### 설정
 
 ```c
 #include <serverlink/serverlink.h>
@@ -50,16 +50,16 @@ int main()
     slk_ctx_t *ctx = slk_ctx_new();
     slk_spot_t *spot = slk_spot_new(ctx);
 
-    // Create LOCAL topics
+    // LOCAL topics 생성
     slk_spot_topic_create(spot, "game:player:spawn");
     slk_spot_topic_create(spot, "game:player:death");
     slk_spot_topic_create(spot, "chat:lobby");
 
-    // Subscribe to local topics
+    // local topics 구독
     slk_spot_subscribe(spot, "game:player:spawn");
     slk_spot_subscribe_pattern(spot, "chat:*");
 
-    // Application logic
+    // 애플리케이션 로직
     while (1) {
         char topic[256], data[4096];
         size_t topic_len, data_len;
@@ -68,7 +68,7 @@ int main()
                                data, sizeof(data), &data_len, 100);
 
         if (rc == 0) {
-            // Process message
+            // 메시지 처리
         }
     }
 
@@ -78,19 +78,19 @@ int main()
 }
 ```
 
-**Characteristics:**
-- Zero network overhead (inproc only)
-- Nanosecond latency
-- No failure scenarios
-- Ideal for development and testing
+**특징:**
+- 네트워크 오버헤드 없음 (inproc만 사용)
+- 나노초 지연 시간
+- 장애 시나리오 없음
+- 개발 및 테스트에 이상적
 
 ---
 
-## Two-Node Cluster
+## 2-노드 Cluster
 
-Simplest distributed setup with one publisher and one subscriber node.
+하나의 publisher와 하나의 subscriber 노드로 구성된 가장 간단한 분산 설정입니다.
 
-### Architecture
+### 아키텍처
 
 ```
 ┌─────────────────────┐         ┌─────────────────────┐
@@ -110,22 +110,22 @@ Simplest distributed setup with one publisher and one subscriber node.
 slk_ctx_t *ctx = slk_ctx_new();
 slk_spot_t *spot = slk_spot_new(ctx);
 
-// Create LOCAL topics
+// LOCAL topics 생성
 slk_spot_topic_create(spot, "sensor:temperature");
 slk_spot_topic_create(spot, "sensor:humidity");
 
-// Bind to accept cluster connections
+// cluster 연결을 수락하기 위해 bind
 slk_spot_bind(spot, "tcp://*:5555");
 
 printf("Node A ready on tcp://*:5555\n");
 
-// Publish sensor data
+// 센서 데이터 publish
 while (1) {
     char temp_str[32];
     snprintf(temp_str, sizeof(temp_str), "%.1f", read_temperature());
     slk_spot_publish(spot, "sensor:temperature", temp_str, strlen(temp_str));
 
-    slk_sleep(1000); // 1 second
+    slk_sleep(1000); // 1초
 }
 ```
 
@@ -135,27 +135,27 @@ while (1) {
 slk_ctx_t *ctx = slk_ctx_new();
 slk_spot_t *spot = slk_spot_new(ctx);
 
-// Add Node A to cluster
-slk_sleep(100); // Wait for Node A to bind
+// Cluster에 Node A 추가
+slk_sleep(100); // Node A의 bind 완료 대기
 int rc = slk_spot_cluster_add(spot, "tcp://192.168.1.100:5555");
 if (rc != 0) {
     fprintf(stderr, "Failed to add Node A: %s\n", slk_strerror(slk_errno()));
     return -1;
 }
 
-// Synchronize to discover topics
+// topic 검색을 위한 동기화
 rc = slk_spot_cluster_sync(spot, 1000);
 if (rc != 0) {
     fprintf(stderr, "Cluster sync failed\n");
 }
 
-// Subscribe to REMOTE topic
+// REMOTE topic 구독
 rc = slk_spot_subscribe(spot, "sensor:temperature");
 if (rc != 0) {
     fprintf(stderr, "Subscribe failed: %s\n", slk_strerror(slk_errno()));
 }
 
-// Receive sensor data
+// 센서 데이터 수신
 while (1) {
     char topic[256], data[256];
     size_t topic_len, data_len;
@@ -171,18 +171,18 @@ while (1) {
 }
 ```
 
-**Key Points:**
-- Server binds first, then client connects
-- `cluster_sync()` discovers remote topics
-- Automatic reconnection on TCP failure
+**핵심 포인트:**
+- Server가 먼저 bind한 후 client가 connect
+- `cluster_sync()`가 remote topics를 검색
+- TCP 장애 시 자동 재연결
 
 ---
 
-## N-Node Mesh Topology
+## N-노드 Mesh Topology
 
-All nodes connect to all other nodes (full mesh).
+모든 노드가 다른 모든 노드에 연결됩니다 (full mesh).
 
-### Architecture (3 Nodes)
+### 아키텍처 (3 노드)
 
 ```
         ┌─────────────────┐
@@ -201,86 +201,86 @@ All nodes connect to all other nodes (full mesh).
         └─────────┘
 ```
 
-**Connections:**
+**연결:**
 - Node A ↔ Node B
 - Node A ↔ Node C
 - Node B ↔ Node C
 
-### Node A Configuration
+### Node A 설정
 
 ```c
 slk_spot_t *spot = slk_spot_new(ctx);
 
-// Create LOCAL topics
+// LOCAL topics 생성
 slk_spot_topic_create(spot, "nodeA:data");
 
-// Bind for server mode
+// server 모드를 위해 bind
 slk_spot_bind(spot, "tcp://*:5555");
 
-// Connect to other nodes
+// 다른 노드들에 connect
 slk_spot_cluster_add(spot, "tcp://nodeB:5556");
 slk_spot_cluster_add(spot, "tcp://nodeC:5557");
 
-// Synchronize to discover topics
+// topic 검색을 위한 동기화
 slk_spot_cluster_sync(spot, 1000);
 
-// Subscribe to remote topics
+// remote topics 구독
 slk_spot_subscribe(spot, "nodeB:data");
 slk_spot_subscribe(spot, "nodeC:data");
 ```
 
-### Node B Configuration
+### Node B 설정
 
 ```c
 slk_spot_t *spot = slk_spot_new(ctx);
 
-// Create LOCAL topics
+// LOCAL topics 생성
 slk_spot_topic_create(spot, "nodeB:data");
 
-// Bind for server mode
+// server 모드를 위해 bind
 slk_spot_bind(spot, "tcp://*:5556");
 
-// Connect to other nodes
+// 다른 노드들에 connect
 slk_spot_cluster_add(spot, "tcp://nodeA:5555");
 slk_spot_cluster_add(spot, "tcp://nodeC:5557");
 
-// Synchronize to discover topics
+// topic 검색을 위한 동기화
 slk_spot_cluster_sync(spot, 1000);
 
-// Subscribe to remote topics
+// remote topics 구독
 slk_spot_subscribe(spot, "nodeA:data");
 slk_spot_subscribe(spot, "nodeC:data");
 ```
 
-### Node C Configuration
+### Node C 설정
 
-Similar to Node B, adjust endpoints accordingly.
+Node B와 유사하며, endpoint를 적절히 조정합니다.
 
-### Startup Sequence
+### 시작 순서
 
-1. **All nodes bind** to their respective ports (can happen in parallel)
-2. **Wait for all binds** to complete (e.g., 100ms delay)
-3. **All nodes add cluster peers** via `cluster_add()`
-4. **All nodes synchronize** via `cluster_sync(1000)`
-5. **Nodes subscribe** to discovered topics
+1. **모든 노드 bind** - 각 포트에 bind (병렬 수행 가능)
+2. **모든 bind 완료 대기** (예: 100ms 지연)
+3. **모든 노드 cluster peer 추가** - `cluster_add()` 사용
+4. **모든 노드 동기화** - `cluster_sync(1000)` 사용
+5. **노드 구독** - 검색된 topics 구독
 
-**Complexity:**
-- N nodes: N×(N-1)/2 TCP connections
-- 10 nodes: 45 connections
-- 100 nodes: 4,950 connections
+**복잡도:**
+- N개 노드: N×(N-1)/2 TCP 연결
+- 10개 노드: 45개 연결
+- 100개 노드: 4,950개 연결
 
-**Use Cases:**
-- High availability (no single point of failure)
-- Low latency (direct peer-to-peer)
-- Small clusters (<10 nodes)
+**사용 사례:**
+- 고가용성 (단일 장애점 없음)
+- 낮은 지연 시간 (직접 peer-to-peer)
+- 소규모 cluster (<10 노드)
 
 ---
 
 ## Hub-Spoke Topology
 
-Central hub with spoke nodes connecting to it.
+중앙 hub와 이에 연결되는 spoke 노드들로 구성됩니다.
 
-### Architecture
+### 아키텍처
 
 ```
                   ┌─────────────┐
@@ -298,29 +298,29 @@ Central hub with spoke nodes connecting to it.
 └──────────┘      └──────────┘      └──────────┘
 ```
 
-**Connections:**
+**연결:**
 - Hub ↔ Spoke 1
 - Hub ↔ Spoke 2
 - Hub ↔ Spoke 3
-- **No** Spoke ↔ Spoke connections
+- **Spoke ↔ Spoke 연결 없음**
 
-### Hub Node Configuration
+### Hub Node 설정
 
 ```c
 slk_spot_t *hub = slk_spot_new(ctx);
 
-// Bind for server mode
+// server 모드를 위해 bind
 slk_spot_bind(hub, "tcp://*:5555");
 
-// Connect to all spokes
+// 모든 spoke에 connect
 slk_spot_cluster_add(hub, "tcp://spoke1:5556");
 slk_spot_cluster_add(hub, "tcp://spoke2:5557");
 slk_spot_cluster_add(hub, "tcp://spoke3:5558");
 
-// Synchronize to discover spoke topics
+// spoke topics 검색을 위한 동기화
 slk_spot_cluster_sync(hub, 1000);
 
-// Subscribe to all spoke topics (pattern)
+// 모든 spoke topics 구독 (패턴)
 char **topics;
 size_t count;
 slk_spot_list_topics(hub, &topics, &count);
@@ -329,34 +329,34 @@ for (size_t i = 0; i < count; i++) {
 }
 slk_spot_list_topics_free(topics, count);
 
-// Forward messages between spokes (relay logic)
+// spoke 간 메시지 전달 (relay 로직)
 // ...
 ```
 
-### Spoke Node Configuration
+### Spoke Node 설정
 
 ```c
 slk_spot_t *spoke = slk_spot_new(ctx);
 
-// Create LOCAL topics
+// LOCAL topics 생성
 slk_spot_topic_create(spoke, "spoke1:sensor:temp");
 
-// Bind for server mode
+// server 모드를 위해 bind
 slk_spot_bind(spoke, "tcp://*:5556");
 
-// Connect ONLY to hub
+// hub에만 connect
 slk_spot_cluster_add(spoke, "tcp://hub:5555");
 
-// Synchronize to discover hub topics
+// hub topics 검색을 위한 동기화
 slk_spot_cluster_sync(spoke, 1000);
 
-// Subscribe to topics of interest
+// 관심 있는 topics 구독
 slk_spot_subscribe(spoke, "hub:config");
 ```
 
-**Message Relay (Hub):**
+**메시지 Relay (Hub):**
 ```c
-// Hub receives message from Spoke 1
+// Hub가 Spoke 1로부터 메시지 수신
 char topic[256], data[4096];
 size_t topic_len, data_len;
 
@@ -364,30 +364,30 @@ int rc = slk_spot_recv(hub, topic, sizeof(topic), &topic_len,
                        data, sizeof(data), &data_len, 100);
 
 if (rc == 0) {
-    // Forward to all other spokes
-    // (requires explicit publish to remote topics)
-    // Note: Current SPOT doesn't support direct forwarding
-    // This is a future enhancement
+    // 다른 모든 spoke로 전달
+    // (remote topics로의 명시적 publish 필요)
+    // 참고: 현재 SPOT은 직접 forwarding을 지원하지 않음
+    // 이것은 향후 개선 사항임
 }
 ```
 
-**Complexity:**
-- N spokes: N TCP connections (hub has N connections)
-- Scales better than mesh
-- Single point of failure (hub)
+**복잡도:**
+- N개 spoke: N개 TCP 연결 (hub가 N개 연결 보유)
+- mesh보다 확장성 좋음
+- 단일 장애점 (hub)
 
-**Use Cases:**
-- Large clusters (>10 nodes)
-- Centralized monitoring/logging
-- Message brokering
+**사용 사례:**
+- 대규모 cluster (>10 노드)
+- 중앙 집중식 모니터링/로깅
+- 메시지 브로커링
 
 ---
 
-## Failure Handling
+## 장애 처리
 
-### Network Partition
+### 네트워크 분할
 
-**Scenario:** Node B loses connection to Node A.
+**시나리오:** Node B가 Node A와의 연결을 잃음.
 
 ```
 ┌─────────┐         ┌─────────┐
@@ -401,12 +401,12 @@ if (rc == 0) {
 └─────────┘         └─────────┘
 ```
 
-**Automatic Behavior:**
-- Node B's ROUTER socket detects TCP disconnect
-- Subscriptions to Node A topics fail with `EHOSTUNREACH`
-- Node B attempts automatic reconnection (backoff: 100ms → 5000ms)
+**자동 동작:**
+- Node B의 ROUTER 소켓이 TCP disconnect 감지
+- Node A topics 구독이 `EHOSTUNREACH`로 실패
+- Node B가 자동 재연결 시도 (backoff: 100ms → 5000ms)
 
-**Application Handling:**
+**애플리케이션 처리:**
 ```c
 int rc = slk_spot_recv(spot, topic, sizeof(topic), &topic_len,
                        data, sizeof(data), &data_len, 100);
@@ -414,59 +414,59 @@ int rc = slk_spot_recv(spot, topic, sizeof(topic), &topic_len,
 if (rc != 0) {
     int err = slk_errno();
     if (err == SLK_EAGAIN) {
-        // No message available (normal)
+        // 메시지 없음 (정상)
     } else if (err == SLK_EHOSTUNREACH) {
-        // Node disconnected, retry or failover
+        // 노드 연결 끊김, 재시도 또는 failover
         slk_sleep(1000);
-        slk_spot_cluster_sync(spot, 1000); // Re-sync
+        slk_spot_cluster_sync(spot, 1000); // 재동기화
     }
 }
 ```
 
 ---
 
-### Node Failure
+### 노드 장애
 
-**Scenario:** Node A crashes.
+**시나리오:** Node A가 crash됨.
 
-**Detection:**
-- TCP keepalive detects dead connection (default: 30s)
-- SPOT marks node as disconnected
-- REMOTE topics from Node A become unavailable
+**감지:**
+- TCP keepalive가 죽은 연결 감지 (기본값: 30초)
+- SPOT이 노드를 disconnected로 표시
+- Node A의 REMOTE topics가 사용 불가 상태가 됨
 
-**Recovery:**
+**복구:**
 ```c
-// Manual retry after delay
-slk_sleep(5000); // Wait 5 seconds
+// 지연 후 수동 재시도
+slk_sleep(5000); // 5초 대기
 
-// Re-add cluster node
-slk_spot_cluster_remove(spot, "tcp://nodeA:5555"); // Clean up
-slk_spot_cluster_add(spot, "tcp://nodeA:5555");    // Reconnect
+// cluster 노드 재추가
+slk_spot_cluster_remove(spot, "tcp://nodeA:5555"); // 정리
+slk_spot_cluster_add(spot, "tcp://nodeA:5555");    // 재연결
 
-// Re-sync
+// 재동기화
 if (slk_spot_cluster_sync(spot, 1000) == 0) {
     printf("Node A recovered\n");
 }
 ```
 
-**Failover Example:**
+**Failover 예제:**
 ```c
-// Primary and backup servers
+// Primary와 backup 서버
 const char *primary = "tcp://primary:5555";
 const char *backup = "tcp://backup:5555";
 
 int rc = slk_spot_topic_route(spot, "critical:topic", primary);
 if (rc != 0) {
-    // Primary failed, use backup
+    // Primary 실패, backup 사용
     rc = slk_spot_topic_route(spot, "critical:topic", backup);
 }
 ```
 
 ---
 
-### Split-Brain Scenario
+### Split-Brain 시나리오
 
-**Scenario:** Cluster splits into two partitions.
+**시나리오:** Cluster가 두 개의 partition으로 분리됨.
 
 ```
 Partition 1              Partition 2
@@ -476,23 +476,23 @@ Partition 1              Partition 2
 └─────────┘              └─────────┘
 ```
 
-**Current Behavior:**
-- No automatic partition detection
-- Each partition operates independently
-- Potential message loss for REMOTE topics
+**현재 동작:**
+- 자동 partition 감지 없음
+- 각 partition이 독립적으로 동작
+- REMOTE topics에 대한 잠재적 메시지 손실
 
-**Mitigation:**
-- Use quorum-based decisions (application-level)
-- Implement health checks and monitoring
-- Design for eventual consistency
+**완화 방안:**
+- Quorum 기반 결정 사용 (애플리케이션 레벨)
+- 상태 확인 및 모니터링 구현
+- Eventual consistency를 위한 설계
 
 ---
 
-## Network Considerations
+## 네트워크 고려사항
 
-### Firewall Configuration
+### 방화벽 설정
 
-**Required Ports:**
+**필요 포트:**
 ```bash
 # Node A
 iptables -A INPUT -p tcp --dport 5555 -j ACCEPT
@@ -501,7 +501,7 @@ iptables -A INPUT -p tcp --dport 5555 -j ACCEPT
 iptables -A INPUT -p tcp --dport 5556 -j ACCEPT
 ```
 
-**Docker Networking:**
+**Docker 네트워킹:**
 ```yaml
 version: '3'
 services:
@@ -531,19 +531,19 @@ networks:
 
 ---
 
-### Latency Optimization
+### 지연 시간 최적화
 
-**TCP Tuning:**
+**TCP 튜닝:**
 ```c
-// Disable Nagle's algorithm for low latency
+// 낮은 지연 시간을 위해 Nagle 알고리즘 비활성화
 int nodelay = 1;
 slk_setsockopt(socket, SLK_TCP_NODELAY, &nodelay, sizeof(nodelay));
 
-// Adjust TCP keepalive
+// TCP keepalive 조정
 int keepalive = 1;
-int keepalive_idle = 10;  // 10 seconds
-int keepalive_intvl = 5;  // 5 seconds
-int keepalive_cnt = 3;    // 3 probes
+int keepalive_idle = 10;  // 10초
+int keepalive_intvl = 5;  // 5초
+int keepalive_cnt = 3;    // 3번 probe
 
 slk_setsockopt(socket, SLK_TCP_KEEPALIVE, &keepalive, sizeof(keepalive));
 slk_setsockopt(socket, SLK_TCP_KEEPALIVE_IDLE, &keepalive_idle, sizeof(keepalive_idle));
@@ -551,52 +551,52 @@ slk_setsockopt(socket, SLK_TCP_KEEPALIVE_INTVL, &keepalive_intvl, sizeof(keepali
 slk_setsockopt(socket, SLK_TCP_KEEPALIVE_CNT, &keepalive_cnt, sizeof(keepalive_cnt));
 ```
 
-**Note:** ServerLink does not yet expose `SLK_TCP_NODELAY`, this is a future enhancement.
+**참고:** ServerLink는 아직 `SLK_TCP_NODELAY`를 노출하지 않습니다. 이것은 향후 개선 사항입니다.
 
 ---
 
-### Bandwidth Management
+### 대역폭 관리
 
-**HWM Tuning:**
+**HWM 튜닝:**
 ```c
-// High-bandwidth scenario
+// 고대역폭 시나리오
 slk_spot_set_hwm(spot, 100000, 100000);
 
-// Low-bandwidth scenario (IoT)
+// 저대역폭 시나리오 (IoT)
 slk_spot_set_hwm(spot, 100, 100);
 ```
 
-**Message Batching:**
+**메시지 배칭:**
 ```c
-// Instead of many small publishes
+// 많은 작은 publish 대신
 for (int i = 0; i < 1000; i++) {
     slk_spot_publish(spot, topic, &data[i], sizeof(data[i]));
 }
 
-// Batch into larger message
+// 더 큰 메시지로 배치
 slk_spot_publish(spot, topic, data, sizeof(data));
 ```
 
 ---
 
-## Monitoring and Observability
+## 모니터링과 Observability
 
-### Health Checks
+### 상태 확인
 
 ```c
-// Check if cluster node is reachable
+// cluster 노드 도달 가능 여부 확인
 int is_healthy(slk_spot_t *spot, const char *endpoint)
 {
-    // Attempt cluster sync with short timeout
+    // 짧은 timeout으로 cluster sync 시도
     int rc = slk_spot_cluster_sync(spot, 100);
     return (rc == 0) ? 1 : 0;
 }
 ```
 
-### Metrics Collection
+### 메트릭 수집
 
 ```c
-// Track publish/subscribe counts
+// publish/subscribe 카운트 추적
 typedef struct {
     uint64_t publishes;
     uint64_t subscribes;
@@ -606,11 +606,11 @@ typedef struct {
 
 spot_metrics_t metrics = {0};
 
-// Increment on publish
+// publish 시 증가
 slk_spot_publish(spot, topic, data, len);
 metrics.publishes++;
 
-// Increment on recv
+// recv 시 증가
 int rc = slk_spot_recv(spot, topic, topic_size, &topic_len,
                        data, data_size, &data_len, flags);
 if (rc == 0) {
@@ -619,10 +619,10 @@ if (rc == 0) {
 }
 ```
 
-### Logging
+### 로깅
 
 ```c
-// Enable verbose logging (application-level)
+// 상세 로깅 활성화 (애플리케이션 레벨)
 #define SPOT_LOG_LEVEL_DEBUG 1
 
 void spot_log(int level, const char *fmt, ...)
@@ -635,25 +635,25 @@ void spot_log(int level, const char *fmt, ...)
     }
 }
 
-// Example usage
+// 사용 예
 spot_log(SPOT_LOG_LEVEL_DEBUG, "Cluster sync: discovered %zu topics\n", count);
 ```
 
 ---
 
-## Production Deployment
+## 프로덕션 배포
 
-### Checklist
+### 체크리스트
 
-- [ ] **Network Security**: Firewalls configured, ports exposed
-- [ ] **Monitoring**: Health checks, metrics collection
-- [ ] **Logging**: Centralized logging (syslog, ELK)
-- [ ] **High Availability**: Redundant nodes, failover logic
-- [ ] **Resource Limits**: HWM tuning, memory limits
-- [ ] **Testing**: Load testing, failure injection
-- [ ] **Documentation**: Topology diagrams, runbooks
+- [ ] **네트워크 보안**: 방화벽 구성, 포트 노출
+- [ ] **모니터링**: 상태 확인, 메트릭 수집
+- [ ] **로깅**: 중앙 집중식 로깅 (syslog, ELK)
+- [ ] **고가용성**: 중복 노드, failover 로직
+- [ ] **리소스 제한**: HWM 튜닝, 메모리 제한
+- [ ] **테스트**: 부하 테스트, 장애 주입
+- [ ] **문서화**: topology 다이어그램, 운영 매뉴얼
 
-### Example Production Config
+### 프로덕션 설정 예제
 
 ```c
 typedef struct {
@@ -667,39 +667,39 @@ typedef struct {
 
 int spot_init_production(slk_spot_t *spot, const spot_config_t *config)
 {
-    // Bind to endpoint
+    // endpoint에 bind
     if (slk_spot_bind(spot, config->bind_endpoint) != 0) {
         fprintf(stderr, "Failed to bind to %s\n", config->bind_endpoint);
         return -1;
     }
 
-    // Set HWM
+    // HWM 설정
     if (slk_spot_set_hwm(spot, config->sndhwm, config->rcvhwm) != 0) {
         fprintf(stderr, "Failed to set HWM\n");
         return -1;
     }
 
-    // Add cluster peers
+    // cluster peer 추가
     for (int i = 0; i < config->peer_count; i++) {
         int rc = slk_spot_cluster_add(spot, config->cluster_peers[i]);
         if (rc != 0) {
             fprintf(stderr, "Warning: Failed to add peer %s\n",
                     config->cluster_peers[i]);
-            // Continue with other peers
+            // 다른 peer들로 계속 진행
         }
     }
 
-    // Initial sync
+    // 초기 sync
     if (slk_spot_cluster_sync(spot, config->sync_timeout_ms) != 0) {
         fprintf(stderr, "Warning: Cluster sync incomplete\n");
-        // Not fatal, can retry later
+        // 치명적이지 않음, 나중에 재시도 가능
     }
 
     return 0;
 }
 ```
 
-**Usage:**
+**사용법:**
 ```c
 const char *peers[] = {
     "tcp://node2:5556",
@@ -721,9 +721,9 @@ spot_init_production(spot, &config);
 
 ---
 
-## See Also
+## 참고 문서
 
-- [API Reference](API.md)
-- [Architecture Overview](ARCHITECTURE.md)
-- [Protocol Specification](PROTOCOL.md)
-- [Usage Patterns](PATTERNS.md)
+- [API Reference](API.ko.md)
+- [Architecture Overview](ARCHITECTURE.ko.md)
+- [Protocol Specification](PROTOCOL.ko.md)
+- [Usage Patterns](PATTERNS.ko.md)

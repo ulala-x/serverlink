@@ -1,15 +1,15 @@
 [![English](https://img.shields.io/badge/lang:en-red.svg)](PATTERNS.md) [![한국어](https://img.shields.io/badge/lang:한국어-blue.svg)](PATTERNS.ko.md)
 
-# SPOT PUB/SUB Usage Patterns
+# SPOT PUB/SUB 사용 패턴
 
-Common design patterns and best practices for SPOT applications.
+SPOT 애플리케이션을 위한 일반적인 설계 패턴과 모범 사례입니다.
 
-## Table of Contents
+## 목차
 
-1. [Overview](#overview)
-2. [Explicit Routing (Game Servers)](#explicit-routing-game-servers)
-3. [Central Registry (Microservices)](#central-registry-microservices)
-4. [Hybrid Approach (Partial Automation)](#hybrid-approach-partial-automation)
+1. [개요](#개요)
+2. [Explicit Routing (게임 서버)](#explicit-routing-게임-서버)
+3. [Central Registry (마이크로서비스)](#central-registry-마이크로서비스)
+4. [Hybrid Approach (부분 자동화)](#hybrid-approach-부분-자동화)
 5. [Producer-Consumer Pattern](#producer-consumer-pattern)
 6. [Fan-Out Pattern (1:N)](#fan-out-pattern-1n)
 7. [Fan-In Pattern (N:1)](#fan-in-pattern-n1)
@@ -19,22 +19,22 @@ Common design patterns and best practices for SPOT applications.
 
 ---
 
-## Overview
+## 개요
 
-SPOT supports multiple architectural patterns depending on your use case.
+SPOT은 사용 사례에 따라 여러 아키텍처 패턴을 지원합니다.
 
-**Pattern Selection Criteria:**
-- **Explicit Routing**: Full control, manual topic-to-endpoint mapping
-- **Central Registry**: Automatic discovery, service registry required
-- **Hybrid**: Mix of explicit and automatic routing
+**패턴 선택 기준:**
+- **Explicit Routing**: 완전한 제어, 수동 토픽-엔드포인트 매핑
+- **Central Registry**: 자동 검색, 서비스 레지스트리 필요
+- **Hybrid**: Explicit Routing과 자동 라우팅의 조합
 
 ---
 
-## Explicit Routing (Game Servers)
+## Explicit Routing (게임 서버)
 
-**Use Case:** Game server assigns players to rooms, explicit topic routing to room servers.
+**사용 사례:** 게임 서버가 플레이어를 방에 배정하고, 명시적 토픽 라우팅으로 방 서버에 연결합니다.
 
-### Architecture
+### 아키텍처
 
 ```
 ┌─────────────────┐
@@ -55,7 +55,7 @@ SPOT supports multiple architectural patterns depending on your use case.
 └─────────┘ └─────────┘
 ```
 
-### Implementation
+### 구현
 
 **Game Server (Coordinator):**
 ```c
@@ -117,23 +117,23 @@ slk_spot_publish(spot, "player:123", "spawn", 5);
 slk_spot_publish(spot, "player:789", "move", 4);
 ```
 
-**Advantages:**
-- Full control over routing
-- No service discovery overhead
-- Deterministic message flow
+**장점:**
+- 라우팅에 대한 완전한 제어
+- 서비스 검색 오버헤드 없음
+- 결정론적 메시지 흐름
 
-**Disadvantages:**
-- Manual configuration
-- Static topology
-- No automatic failover
+**단점:**
+- 수동 설정 필요
+- 정적 토폴로지
+- 자동 페일오버 없음
 
 ---
 
-## Central Registry (Microservices)
+## Central Registry (마이크로서비스)
 
-**Use Case:** Microservices architecture with dynamic service discovery.
+**사용 사례:** 동적 서비스 검색이 필요한 마이크로서비스 아키텍처
 
-### Architecture
+### 아키텍처
 
 ```
 ┌──────────────────────┐
@@ -152,7 +152,7 @@ slk_spot_publish(spot, "player:789", "move", 4);
 └──────────────────────┘
 ```
 
-### Implementation
+### 구현
 
 **Service Registration:**
 ```c
@@ -196,7 +196,7 @@ slk_spot_subscribe(spot, "service:auth");
 slk_spot_subscribe(spot, "service:user");
 ```
 
-**Service Implementation:**
+**Service 구현:**
 ```c
 // Auth Service
 slk_spot_t *spot = slk_spot_new(ctx);
@@ -210,23 +210,23 @@ register_service("service:auth", "tcp://auth:5555");
 slk_spot_publish(spot, "service:auth", "user_login", 10);
 ```
 
-**Advantages:**
-- Dynamic service discovery
-- Automatic failover (if registry supports health checks)
-- Scalable architecture
+**장점:**
+- 동적 서비스 검색
+- 자동 페일오버 (레지스트리가 헬스 체크를 지원하는 경우)
+- 확장 가능한 아키텍처
 
-**Disadvantages:**
-- External dependency (registry)
-- Additional network hops
-- Registry becomes single point of failure
+**단점:**
+- 외부 의존성 (레지스트리)
+- 추가적인 네트워크 홉
+- 레지스트리가 단일 장애점이 될 수 있음
 
 ---
 
-## Hybrid Approach (Partial Automation)
+## Hybrid Approach (부분 자동화)
 
-**Use Case:** Mix of critical services (explicit routing) and dynamic services (cluster sync).
+**사용 사례:** 중요 서비스(Explicit Routing)와 동적 서비스(클러스터 동기화)의 조합
 
-### Architecture
+### 아키텍처
 
 ```
 ┌────────────────────┐       ┌────────────────────┐
@@ -245,7 +245,7 @@ slk_spot_publish(spot, "service:auth", "user_login", 10);
            └──────────────┘
 ```
 
-### Implementation
+### 구현
 
 ```c
 slk_ctx_t *ctx = slk_ctx_new();
@@ -267,22 +267,22 @@ slk_spot_subscribe_pattern(spot, "analytics:*");
 slk_spot_subscribe_pattern(spot, "logging:*");
 ```
 
-**Advantages:**
-- Best of both worlds
-- Critical paths are deterministic
-- Dynamic services can scale independently
+**장점:**
+- 두 방식의 장점을 모두 취함
+- 중요 경로는 결정론적
+- 동적 서비스는 독립적으로 확장 가능
 
-**Disadvantages:**
-- More complex configuration
-- Mixed failure modes
+**단점:**
+- 더 복잡한 설정
+- 혼합된 장애 모드
 
 ---
 
 ## Producer-Consumer Pattern
 
-**Use Case:** Work queue for asynchronous task processing.
+**사용 사례:** 비동기 작업 처리를 위한 작업 큐
 
-### Architecture
+### 아키텍처
 
 ```
 ┌──────────┐     ┌──────────┐     ┌──────────┐
@@ -293,9 +293,9 @@ slk_spot_subscribe_pattern(spot, "logging:*");
 └──────────┘     └──────────┘     └──────────┘
 ```
 
-### Implementation
+### 구현
 
-**Shared Queue Topic:**
+**공유 Queue Topic:**
 ```c
 // Producer 1
 slk_spot_t *spot = slk_spot_new(ctx);
@@ -329,15 +329,15 @@ while (1) {
 }
 ```
 
-**Note:** SPOT uses **fair-queueing** for subscriptions. Multiple consumers receive messages in round-robin fashion.
+**참고:** SPOT은 구독에 대해 **fair-queueing**을 사용합니다. 여러 Consumer는 라운드 로빈 방식으로 메시지를 수신합니다.
 
 ---
 
 ## Fan-Out Pattern (1:N)
 
-**Use Case:** Broadcast message to multiple subscribers.
+**사용 사례:** 여러 구독자에게 메시지 브로드캐스트
 
-### Architecture
+### 아키텍처
 
 ```
 ┌────────────┐
@@ -353,7 +353,7 @@ while (1) {
 └─────┘  └─────┘ └─────┘ └─────┘
 ```
 
-### Implementation
+### 구현
 
 **Publisher:**
 ```c
@@ -380,9 +380,9 @@ slk_spot_subscribe(sub2, "broadcast:alerts");
 
 ## Fan-In Pattern (N:1)
 
-**Use Case:** Aggregate data from multiple sources.
+**사용 사례:** 여러 소스에서 데이터 집계
 
-### Architecture
+### 아키텍처
 
 ```
 ┌─────┐  ┌─────┐  ┌─────┐  ┌─────┐
@@ -397,7 +397,7 @@ slk_spot_subscribe(sub2, "broadcast:alerts");
          └─────────────┘
 ```
 
-### Implementation
+### 구현
 
 **Sources:**
 ```c
@@ -436,11 +436,11 @@ while (1) {
 
 ## Request-Reply Pattern
 
-**Use Case:** Synchronous RPC-style communication.
+**사용 사례:** 동기식 RPC 스타일 통신
 
-**Note:** SPOT is designed for pub/sub, not request/reply. For RPC, consider using ServerLink ROUTER/DEALER directly.
+**참고:** SPOT은 pub/sub용으로 설계되었으며, request/reply용이 아닙니다. RPC의 경우 ServerLink ROUTER/DEALER를 직접 사용하는 것을 고려하세요.
 
-### Workaround Implementation
+### 우회 구현
 
 ```c
 // Client: Publish request with reply-to topic
@@ -481,18 +481,18 @@ slk_spot_topic_route(server, reply_topic, "tcp://client:5556");
 slk_spot_publish(server, reply_topic, "{\"id\":123,\"name\":\"John\"}", 24);
 ```
 
-**Limitations:**
-- Manual correlation ID management
-- No timeout handling in SPOT
-- Better suited for ServerLink ROUTER/DEALER
+**제한 사항:**
+- 수동 correlation ID 관리
+- SPOT에서 타임아웃 처리 없음
+- ServerLink ROUTER/DEALER가 더 적합함
 
 ---
 
 ## Event Sourcing
 
-**Use Case:** Store all state changes as immutable events.
+**사용 사례:** 모든 상태 변경을 불변 이벤트로 저장
 
-### Architecture
+### 아키텍처
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
@@ -501,7 +501,7 @@ slk_spot_publish(server, reply_topic, "{\"id\":123,\"name\":\"John\"}", 24);
 └──────────────┘     └──────────────┘     └──────────────┘
 ```
 
-### Implementation
+### 구현
 
 **Event Store (Publisher):**
 ```c
@@ -566,9 +566,9 @@ while (1) {
 
 ## Stream Processing
 
-**Use Case:** Real-time analytics and metrics.
+**사용 사례:** 실시간 분석 및 메트릭
 
-### Architecture
+### 아키텍처
 
 ```
 ┌────────────┐     ┌────────────┐     ┌────────────┐
@@ -577,7 +577,7 @@ while (1) {
 └────────────┘     └────────────┘     └────────────┘
 ```
 
-### Implementation
+### 구현
 
 **Sensors (Publishers):**
 ```c
@@ -642,36 +642,36 @@ while (1) {
 
 ---
 
-## Best Practices
+## 모범 사례
 
-1. **Topic Naming Conventions**
-   - Use hierarchical names: `domain:entity:action`
-   - Example: `game:player:spawn`, `chat:room:message`
+1. **토픽 명명 규칙**
+   - 계층적 이름 사용: `domain:entity:action`
+   - 예: `game:player:spawn`, `chat:room:message`
 
-2. **Error Handling**
-   - Always check return values
-   - Use `slk_errno()` for error codes
-   - Implement retry logic with exponential backoff
+2. **오류 처리**
+   - 항상 반환 값 확인
+   - 오류 코드는 `slk_errno()` 사용
+   - 지수 백오프를 사용한 재시도 로직 구현
 
-3. **Resource Management**
-   - Destroy SPOT instances when done
-   - Use `slk_spot_destroy()` to clean up sockets
+3. **리소스 관리**
+   - 완료 시 SPOT 인스턴스 파괴
+   - `slk_spot_destroy()`로 소켓 정리
 
-4. **Performance**
-   - Use LOCAL topics for same-process communication
-   - Batch publishes when possible
-   - Tune HWM for high-throughput scenarios
+4. **성능**
+   - 동일 프로세스 통신에는 LOCAL 토픽 사용
+   - 가능하면 publish 배치 처리
+   - 높은 처리량 시나리오에 맞게 HWM 조정
 
-5. **Testing**
-   - Unit test with LOCAL topics
-   - Integration test with REMOTE topics
-   - Use separate SPOT instances for isolation
+5. **테스트**
+   - LOCAL 토픽으로 단위 테스트
+   - REMOTE 토픽으로 통합 테스트
+   - 격리를 위해 별도의 SPOT 인스턴스 사용
 
 ---
 
-## See Also
+## 관련 문서
 
-- [API Reference](API.md)
-- [Quick Start Guide](QUICK_START.md)
-- [Architecture Overview](ARCHITECTURE.md)
-- [Clustering Guide](CLUSTERING.md)
+- [API Reference](API.ko.md)
+- [Quick Start Guide](QUICK_START.ko.md)
+- [Architecture Overview](ARCHITECTURE.ko.md)
+- [Clustering Guide](CLUSTERING.ko.md)

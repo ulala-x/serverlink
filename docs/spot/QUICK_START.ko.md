@@ -1,57 +1,57 @@
 [![English](https://img.shields.io/badge/lang:en-red.svg)](QUICK_START.md) [![한국어](https://img.shields.io/badge/lang:한국어-blue.svg)](QUICK_START.ko.md)
 
-# SPOT PUB/SUB Quick Start Guide
+# SPOT PUB/SUB 빠른 시작 가이드
 
-Get started with ServerLink SPOT (Scalable Partitioned Ordered Topics) in 5 minutes.
+ServerLink SPOT (Scalable Partitioned Ordered Topics)을 5분 안에 시작하세요.
 
-## Table of Contents
+## 목차
 
-1. [What is SPOT?](#what-is-spot)
-2. [Installation](#installation)
-3. [Your First SPOT Application](#your-first-spot-application)
-4. [Local Topics](#local-topics)
-5. [Remote Topics](#remote-topics)
-6. [Next Steps](#next-steps)
-
----
-
-## What is SPOT?
-
-**SPOT** (Scalable Partitioned Ordered Topics) is a location-transparent pub/sub system built on ServerLink.
-
-**Key Features:**
-- **Location Transparency**: Subscribe to topics without knowing their location
-- **LOCAL Topics**: Zero-copy inproc messaging (nanosecond latency)
-- **REMOTE Topics**: TCP networking with automatic routing
-- **Cluster Sync**: Discover topics across multiple nodes
-- **Pattern Matching**: Subscribe to multiple topics with wildcards
-
-**Use Cases:**
-- Game servers (player events, chat rooms)
-- Microservices (event distribution)
-- IoT systems (sensor data routing)
-- Real-time analytics (data aggregation)
+1. [SPOT이란?](#spot이란)
+2. [설치](#설치)
+3. [첫 번째 SPOT 애플리케이션](#첫-번째-spot-애플리케이션)
+4. [LOCAL Topic](#local-topic)
+5. [REMOTE Topic](#remote-topic)
+6. [다음 단계](#다음-단계)
 
 ---
 
-## Installation
+## SPOT이란?
 
-### Build ServerLink
+**SPOT** (Scalable Partitioned Ordered Topics)은 ServerLink 기반의 위치 투명 Pub/Sub 시스템입니다.
+
+**주요 기능:**
+- **위치 투명성**: Topic 위치를 몰라도 Subscribe 가능
+- **LOCAL Topic**: Zero-copy inproc 메시징 (나노초 지연)
+- **REMOTE Topic**: 자동 라우팅이 포함된 TCP 네트워킹
+- **Cluster Sync**: 여러 노드에서 Topic 자동 탐색
+- **Pattern Matching**: 와일드카드로 여러 Topic에 Subscribe
+
+**사용 사례:**
+- 게임 서버 (플레이어 이벤트, 채팅방)
+- 마이크로서비스 (이벤트 배포)
+- IoT 시스템 (센서 데이터 라우팅)
+- 실시간 분석 (데이터 집계)
+
+---
+
+## 설치
+
+### ServerLink 빌드
 
 ```bash
-# Clone repository
-git clone https://github.com/ulalax/serverlink.git
+# 저장소 복제
+git clone https://github.com/ulala-x/serverlink.git
 cd serverlink
 
-# Build with CMake
+# CMake로 빌드
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON
 cmake --build build --config Release
 
-# Run tests
+# 테스트 실행
 cd build && ctest -C Release
 ```
 
-### Link to Your Project
+### 프로젝트에 연결
 
 **CMake:**
 ```cmake
@@ -59,16 +59,16 @@ find_package(ServerLink REQUIRED)
 target_link_libraries(your_app ServerLink::serverlink)
 ```
 
-**Manual:**
+**수동:**
 ```bash
 gcc your_app.c -lserverlink -o your_app
 ```
 
 ---
 
-## Your First SPOT Application
+## 첫 번째 SPOT 애플리케이션
 
-### Simple Pub/Sub (Single Process)
+### 간단한 Pub/Sub (단일 프로세스)
 
 ```c
 #include <serverlink/serverlink.h>
@@ -77,24 +77,24 @@ gcc your_app.c -lserverlink -o your_app
 
 int main()
 {
-    // Create context and SPOT instance
+    // Context와 SPOT 인스턴스 생성
     slk_ctx_t *ctx = slk_ctx_new();
     slk_spot_t *spot = slk_spot_new(ctx);
 
-    // Create a LOCAL topic
+    // LOCAL Topic 생성
     slk_spot_topic_create(spot, "chat:lobby");
 
-    // Subscribe to the topic
+    // Topic에 Subscribe
     slk_spot_subscribe(spot, "chat:lobby");
 
-    // Publish a message
+    // 메시지 Publish
     const char *msg = "Hello, SPOT!";
     slk_spot_publish(spot, "chat:lobby", msg, strlen(msg));
 
-    // Wait for message to arrive (inproc is fast!)
+    // 메시지 도착 대기 (inproc은 빠름!)
     slk_sleep(10);
 
-    // Receive the message
+    // 메시지 수신
     char topic[256], data[4096];
     size_t topic_len, data_len;
 
@@ -107,7 +107,7 @@ int main()
         printf("Received on '%s': %s\n", topic, data);
     }
 
-    // Cleanup
+    // 정리
     slk_spot_destroy(&spot);
     slk_ctx_destroy(ctx);
 
@@ -115,58 +115,58 @@ int main()
 }
 ```
 
-**Expected Output:**
+**예상 출력:**
 ```
 Received on 'chat:lobby': Hello, SPOT!
 ```
 
 ---
 
-## Local Topics
+## LOCAL Topic
 
-LOCAL topics use inproc transport for zero-copy, same-process messaging.
+LOCAL Topic은 Zero-copy 동일 프로세스 메시징을 위해 inproc 전송을 사용합니다.
 
-### Creating Multiple Topics
+### 여러 Topic 생성
 
 ```c
 slk_ctx_t *ctx = slk_ctx_new();
 slk_spot_t *spot = slk_spot_new(ctx);
 
-// Create game-related topics
+// 게임 관련 Topic 생성
 slk_spot_topic_create(spot, "game:player:spawn");
 slk_spot_topic_create(spot, "game:player:death");
 slk_spot_topic_create(spot, "game:score:update");
 
-// Subscribe to specific topics
+// 특정 Topic에 Subscribe
 slk_spot_subscribe(spot, "game:player:spawn");
 slk_spot_subscribe(spot, "game:player:death");
 ```
 
-### Pattern Subscriptions
+### Pattern Subscribe
 
 ```c
-// Subscribe to all player events
+// 모든 플레이어 이벤트에 Subscribe
 slk_spot_subscribe_pattern(spot, "game:player:*");
 
-// Now receives messages from:
+// 이제 다음 Topic에서 메시지를 수신:
 // - game:player:spawn
 // - game:player:death
 // - game:player:move
-// - etc.
+// - 등등
 ```
 
-### Publishing and Receiving
+### Publish와 수신
 
 ```c
-// Publish to different topics
+// 여러 Topic에 Publish
 slk_spot_publish(spot, "game:player:spawn", "Player1", 7);
 slk_spot_publish(spot, "game:player:death", "Player2", 7);
 slk_spot_publish(spot, "game:score:update", "1000", 4);
 
-slk_sleep(10); // Allow messages to propagate
+slk_sleep(10); // 메시지 전파 대기
 
-// Receive messages
-for (int i = 0; i < 2; i++) { // Expecting 2 messages (pattern match)
+// 메시지 수신
+for (int i = 0; i < 2; i++) { // 2개 메시지 예상 (Pattern 매칭)
     char topic[256], data[256];
     size_t topic_len, data_len;
 
@@ -183,13 +183,13 @@ for (int i = 0; i < 2; i++) { // Expecting 2 messages (pattern match)
 
 ---
 
-## Remote Topics
+## REMOTE Topic
 
-REMOTE topics route messages across TCP connections to other SPOT nodes.
+REMOTE Topic은 다른 SPOT 노드로 TCP 연결을 통해 메시지를 라우팅합니다.
 
-### Two-Node Setup
+### 2노드 설정
 
-**Node 1 (Server):**
+**Node 1 (서버):**
 ```c
 #include <serverlink/serverlink.h>
 
@@ -198,21 +198,21 @@ void run_server()
     slk_ctx_t *ctx = slk_ctx_new();
     slk_spot_t *spot = slk_spot_new(ctx);
 
-    // Create LOCAL topic
+    // LOCAL Topic 생성
     slk_spot_topic_create(spot, "sensor:temperature");
 
-    // Bind to accept connections
+    // 연결 수락을 위해 bind()
     slk_spot_bind(spot, "tcp://*:5555");
 
-    // Publish sensor data
+    // 센서 데이터 Publish
     while (1) {
         slk_spot_publish(spot, "sensor:temperature", "25.5", 4);
-        slk_sleep(1000); // 1 second
+        slk_sleep(1000); // 1초
     }
 }
 ```
 
-**Node 2 (Client):**
+**Node 2 (클라이언트):**
 ```c
 #include <serverlink/serverlink.h>
 #include <stdio.h>
@@ -222,13 +222,13 @@ void run_client()
     slk_ctx_t *ctx = slk_ctx_new();
     slk_spot_t *spot = slk_spot_new(ctx);
 
-    // Route topic to remote server
+    // Topic을 원격 서버로 라우팅
     slk_spot_topic_route(spot, "sensor:temperature", "tcp://localhost:5555");
 
-    // Subscribe to REMOTE topic
+    // REMOTE Topic에 Subscribe
     slk_spot_subscribe(spot, "sensor:temperature");
 
-    // Receive sensor data
+    // 센서 데이터 수신
     while (1) {
         char topic[256], data[256];
         size_t topic_len, data_len;
@@ -246,35 +246,35 @@ void run_client()
 
 ---
 
-## Cluster Synchronization
+## Cluster 동기화
 
-Automatically discover topics across multiple nodes.
+여러 노드에서 Topic을 자동으로 탐색합니다.
 
-### Three-Node Mesh Cluster
+### 3노드 메시 Cluster
 
 **Node A:**
 ```c
 slk_spot_t *spot = slk_spot_new(ctx);
 
-// Create LOCAL topics
+// LOCAL Topic 생성
 slk_spot_topic_create(spot, "nodeA:data");
 slk_spot_bind(spot, "tcp://*:5555");
 
-// Connect to other nodes
+// 다른 노드에 connect()
 slk_spot_cluster_add(spot, "tcp://nodeB:5556");
 slk_spot_cluster_add(spot, "tcp://nodeC:5557");
 
-// Synchronize (discover topics from nodeB and nodeC)
+// 동기화 (nodeB와 nodeC에서 Topic 탐색)
 slk_spot_cluster_sync(spot, 1000);
 
-// Now can subscribe to topics from nodeB and nodeC
+// 이제 nodeB와 nodeC의 Topic에 Subscribe 가능
 slk_spot_subscribe(spot, "nodeB:data");
 slk_spot_subscribe(spot, "nodeC:data");
 ```
 
-**Node B and C:** Similar setup with different ports.
+**Node B와 C:** 다른 포트로 유사하게 설정.
 
-### Listing All Topics
+### 모든 Topic 나열
 
 ```c
 char **topics;
@@ -292,7 +292,7 @@ for (size_t i = 0; i < count; i++) {
 slk_spot_list_topics_free(topics, count);
 ```
 
-**Output:**
+**출력:**
 ```
 All topics in cluster:
   - nodeA:data (LOCAL)
@@ -302,9 +302,9 @@ All topics in cluster:
 
 ---
 
-## Event Loop Integration
+## Event Loop 통합
 
-Use with `poll()` or `epoll()` for non-blocking I/O.
+비차단 I/O를 위해 `poll()` 또는 `epoll()`과 함께 사용합니다.
 
 ```c
 #include <poll.h>
@@ -313,7 +313,7 @@ slk_spot_t *spot = slk_spot_new(ctx);
 slk_spot_topic_create(spot, "events");
 slk_spot_subscribe(spot, "events");
 
-// Get pollable file descriptor
+// Poll 가능한 파일 디스크립터 가져오기
 slk_fd_t spot_fd;
 slk_spot_fd(spot, &spot_fd);
 
@@ -332,16 +332,16 @@ while (1) {
         slk_spot_recv(spot, topic, sizeof(topic), &topic_len,
                       data, sizeof(data), &data_len, SLK_DONTWAIT);
 
-        // Process message
+        // 메시지 처리
     }
 }
 ```
 
 ---
 
-## Error Handling
+## 오류 처리
 
-Always check return values and use `slk_errno()`.
+항상 반환 값을 확인하고 `slk_errno()`를 사용하세요.
 
 ```c
 int rc = slk_spot_publish(spot, "topic", data, len);
@@ -360,7 +360,7 @@ if (rc != 0) {
 
 ---
 
-## Common Patterns
+## 일반적인 패턴
 
 ### Producer-Consumer
 
@@ -380,10 +380,10 @@ while (1) {
     size_t topic_len, data_len;
 
     int rc = slk_spot_recv(spot, topic, sizeof(topic), &topic_len,
-                           data, sizeof(data), &data_len, -1); // Block
+                           data, sizeof(data), &data_len, -1); // 차단
 
     if (rc == 0) {
-        // Process job
+        // 작업 처리
         data[data_len] = '\0';
         printf("Processing: %s\n", data);
     }
@@ -396,106 +396,106 @@ while (1) {
 // Publisher
 slk_spot_topic_create(spot, "broadcast");
 
-// Multiple subscribers
+// 여러 Subscriber
 slk_spot_subscribe(spot_sub1, "broadcast");
 slk_spot_subscribe(spot_sub2, "broadcast");
 slk_spot_subscribe(spot_sub3, "broadcast");
 
-// All subscribers receive the message
+// 모든 Subscriber가 메시지 수신
 slk_spot_publish(spot, "broadcast", "announcement", 12);
 ```
 
 ### Fan-In (N:1)
 
 ```c
-// Multiple publishers to different topics
+// 여러 Publisher가 다른 Topic으로 Publish
 slk_spot_topic_create(spot1, "source1");
 slk_spot_topic_create(spot2, "source2");
 slk_spot_topic_create(spot3, "source3");
 
-// Single subscriber with pattern
+// Pattern으로 단일 Subscriber
 slk_spot_subscribe_pattern(aggregator, "source*");
 
-// Receives messages from all sources
+// 모든 소스에서 메시지 수신
 ```
 
 ---
 
-## Performance Tips
+## 성능 팁
 
-1. **Use LOCAL topics** for same-process communication (zero-copy)
-2. **Increase HWM** for high-throughput scenarios:
+1. **LOCAL Topic 사용**: 동일 프로세스 통신용 (Zero-copy)
+2. **HWM 증가**: 고처리량 시나리오용:
    ```c
    slk_spot_set_hwm(spot, 100000, 100000);
    ```
-3. **Batch publishes** when possible
-4. **Use non-blocking recv** with event loop integration
-5. **Pattern subscriptions** have CPU overhead, use sparingly
+3. **Publish 일괄 처리**: 가능할 때
+4. **비차단 recv() 사용**: Event Loop 통합과 함께
+5. **Pattern Subscribe**: CPU 오버헤드가 있으므로 적절히 사용
 
 ---
 
-## Next Steps
+## 다음 단계
 
-Now that you understand the basics, explore:
+기본을 이해했으니 다음을 살펴보세요:
 
-1. **[Architecture Guide](ARCHITECTURE.md)** - Internal design and data flow
-2. **[Protocol Specification](PROTOCOL.md)** - Message formats and commands
-3. **[Clustering Guide](CLUSTERING.md)** - Multi-node deployment patterns
-4. **[API Reference](API.md)** - Complete function documentation
-5. **[Usage Patterns](PATTERNS.md)** - Common design patterns
+1. **[아키텍처 가이드](ARCHITECTURE.md)** - 내부 설계와 데이터 흐름
+2. **[프로토콜 명세](PROTOCOL.md)** - 메시지 형식과 명령
+3. **[클러스터링 가이드](CLUSTERING.md)** - 멀티 노드 배포 패턴
+4. **[API 레퍼런스](API.md)** - 전체 함수 문서
+5. **[사용 패턴](PATTERNS.md)** - 일반적인 설계 패턴
 
 ---
 
-## Troubleshooting
+## 문제 해결
 
-### No messages received
+### 메시지가 수신되지 않음
 
 ```c
-// Ensure topic exists
+// Topic 존재 확인
 if (!slk_spot_topic_exists(spot, "topic")) {
     fprintf(stderr, "Topic not found\n");
 }
 
-// Check subscription
-slk_spot_subscribe(spot, "topic"); // Idempotent
+// Subscribe 확인
+slk_spot_subscribe(spot, "topic"); // 멱등성
 
-// Add delay for inproc propagation
+// inproc 전파를 위한 지연 추가
 slk_sleep(10);
 ```
 
-### Connection refused (REMOTE topics)
+### 연결 거부 (REMOTE Topic)
 
 ```c
-// Ensure server is bound first
+// 서버가 먼저 bind() 되었는지 확인
 slk_spot_bind(server_spot, "tcp://*:5555");
 
-// Then connect client
+// 그 다음 클라이언트 connect()
 int rc = slk_spot_topic_route(client_spot, "topic", "tcp://server:5555");
 if (rc != 0 && slk_errno() == SLK_EHOSTUNREACH) {
     fprintf(stderr, "Server not reachable\n");
 }
 ```
 
-### HWM errors (EAGAIN)
+### HWM 오류 (EAGAIN)
 
 ```c
-// Increase HWM
+// HWM 증가
 slk_spot_set_hwm(spot, 100000, 100000);
 
-// Or handle backpressure
+// 또는 백프레셔 처리
 if (slk_errno() == SLK_EAGAIN) {
     slk_sleep(10);
-    // Retry publish
+    // Publish 재시도
 }
 ```
 
 ---
 
-## Complete Example
+## 전체 예제
 
-See `examples/spot_cluster_sync_example.cpp` for a full working example of cluster synchronization.
+Cluster 동기화의 전체 작동 예제는 `examples/spot_cluster_sync_example.cpp`를 참조하세요.
 
-**Run the example:**
+**예제 실행:**
 ```bash
 cd build
 ./examples/spot_cluster_sync_example
@@ -503,11 +503,11 @@ cd build
 
 ---
 
-## Getting Help
+## 도움 받기
 
-- **GitHub Issues**: https://github.com/ulalax/serverlink/issues
-- **Documentation**: `docs/spot/`
-- **Examples**: `examples/`
-- **Tests**: `tests/spot/`
+- **GitHub Issues**: https://github.com/ulala-x/serverlink/issues
+- **문서**: `docs/spot/`
+- **예제**: `examples/`
+- **테스트**: `tests/spot/`
 
-Happy messaging with SPOT! 🚀
+SPOT과 함께 즐거운 메시징 되세요!
