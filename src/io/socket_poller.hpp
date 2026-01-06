@@ -26,7 +26,6 @@
 
 #include "../core/socket_base.hpp"
 #include "../io/signaler.hpp"
-#include "../io/polling_util.hpp"
 
 namespace slk
 {

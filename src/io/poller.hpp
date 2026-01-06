@@ -5,30 +5,21 @@
 
 #include "../util/config.hpp"
 
-// Force Asio if requested
+// ServerLink now exclusively uses Boost.Asio for its I/O backend.
+// Legacy pollers (epoll, kqueue, select, wepoll) have been removed.
+
 #if defined SL_USE_ASIO
-  #undef SL_USE_WEPOLL
-  #undef SL_USE_EPOLL
-  #undef SL_USE_KQUEUE
-  #undef SL_USE_SELECT
   #include "asio/poller.hpp"
-#elif defined SL_USE_WEPOLL
-  #include "wepoll.hpp"
-#elif defined SL_USE_EPOLL
-  #include "epoll.hpp"
-#elif defined SL_USE_KQUEUE
-  #include "kqueue.hpp"
-#elif defined SL_USE_SELECT
-  #include "select.hpp"
 #else
-  #error "No I/O multiplexing mechanism available"
+  #error "Boost.Asio is required for ServerLink I/O"
 #endif
 
 // Define polling mechanism for signaler wait function
-#if defined SL_USE_EPOLL || defined SL_USE_KQUEUE
-  #define SL_POLL_BASED_ON_POLL
-#elif defined SL_USE_SELECT || defined SL_USE_WEPOLL || defined SL_USE_ASIO
+// All platforms now use SELECT-style or POLL-style timeout logic for signaller wait
+#if defined _WIN32
   #define SL_POLL_BASED_ON_SELECT
+#else
+  #define SL_POLL_BASED_ON_POLL
 #endif
 
 #endif

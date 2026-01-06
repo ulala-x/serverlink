@@ -6,7 +6,6 @@
 #include "../precompiled.hpp"
 #include "socket_poller.hpp"
 #include "../util/err.hpp"
-#include "../io/polling_util.hpp"
 #include "../util/macros.hpp"
 #include "../util/clock.hpp"
 #include "../util/constants.hpp"

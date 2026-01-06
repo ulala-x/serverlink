@@ -252,9 +252,6 @@ void slk::stream_engine_base_t::handle_write(size_t bytes_transferred, int error
         if (error_code == asio::error::operation_aborted) {
             return;
         }
-        // I/O error has occurred. We stop waiting for output events.
-        // The engine is not terminated until we detect input error;
-        // this is necessary to prevent losing incoming messages.
         _io_error = true;
         _output_stopped = true;
         return;
@@ -275,16 +272,32 @@ void slk::stream_engine_base_t::handle_write(size_t bytes_transferred, int error
         return;
     }
 
+    // Batching: Pull as many messages as possible into the encoder
     std::weak_ptr<int> sentinel = _lifetime_sentinel;
-    if (_encoder->is_empty() && (this->*_next_msg) (&_tx_msg) != -1) {
-        if (sentinel.expired()) return;
-        _encoder->load_msg (&_tx_msg);
-        _outpos = NULL;
-        _outsize = _encoder->encode(&_outpos, _options.out_batch_size);
-        if (_outsize > 0) {
-            start_write();
-            return;
+    _outsize = 0;
+    _outpos = NULL;
+    
+    while (_outsize < static_cast<size_t>(_options.out_batch_size)) {
+        if (_encoder->is_empty()) {
+            if ((this->*_next_msg) (&_tx_msg) == -1)
+                break;
+            if (sentinel.expired()) return;
+            _encoder->load_msg (&_tx_msg);
         }
+        
+        unsigned char* buffer_ptr = _outpos ? (_outpos + _outsize) : NULL;
+        size_t n = _encoder->encode(&buffer_ptr, static_cast<size_t>(_options.out_batch_size) - _outsize);
+        
+        if (!_outpos) _outpos = buffer_ptr;
+        _outsize += n;
+        
+        if (!_encoder->is_empty()) // Message too large for remaining batch space or zero-copy
+            break;
+    }
+
+    if (_outsize > 0) {
+        start_write();
+        return;
     }
     
     // No more data to send, output is now stopped.
@@ -306,10 +319,24 @@ void slk::stream_engine_base_t::restart_output ()
                 return;
             }
 
-            if (_encoder->is_empty() && (this->*_next_msg) (&_tx_msg) != -1) {
-                _encoder->load_msg (&_tx_msg);
-                _outpos = NULL;
-                _outsize = _encoder->encode(&_outpos, _options.out_batch_size);
+            // Batching: Pull as many messages as possible into the encoder
+            _outsize = 0;
+            _outpos = NULL;
+            while (_outsize < static_cast<size_t>(_options.out_batch_size)) {
+                if (_encoder->is_empty()) {
+                    if ((this->*_next_msg) (&_tx_msg) == -1)
+                        break;
+                    _encoder->load_msg (&_tx_msg);
+                }
+                
+                unsigned char* buffer_ptr = _outpos ? (_outpos + _outsize) : NULL;
+                size_t n = _encoder->encode(&buffer_ptr, static_cast<size_t>(_options.out_batch_size) - _outsize);
+                
+                if (!_outpos) _outpos = buffer_ptr;
+                _outsize += n;
+                
+                if (!_encoder->is_empty())
+                    break;
             }
         }
 
@@ -423,13 +450,9 @@ int slk::stream_engine_base_t::next_handshake_command (msg_t *msg_)
 int slk::stream_engine_base_t::process_handshake_command (msg_t *msg_)
 {
     slk_assert (_mechanism != NULL);
-    SL_DEBUG_LOG("DEBUG: process_handshake_command called, msg size=%zu\n", msg_->size());
     const int rc = _mechanism->process_handshake_command (msg_);
-    SL_DEBUG_LOG("DEBUG: mechanism->process_handshake_command returned %d, status=%d\n",
-            rc, (int)_mechanism->status());
     if (rc == 0) {
         if (_mechanism->status () == mechanism_t::ready) {
-            SL_DEBUG_LOG("DEBUG: mechanism is ready, calling mechanism_ready()\n");
             mechanism_ready ();
         }
         else if (_mechanism->status () == mechanism_t::error) {
@@ -466,10 +489,8 @@ int slk::stream_engine_base_t::pull_and_encode (msg_t *msg_)
 int slk::stream_engine_base_t::decode_and_push (msg_t *msg_)
 {
     slk_assert (_mechanism != NULL);
-    SL_DEBUG_LOG("DEBUG: decode_and_push called, msg size=%zu\n", msg_->size());
 
     if (_mechanism->decode (msg_) == -1) {
-        SL_DEBUG_LOG("DEBUG: decode_and_push: decode failed\n");
         return -1;
     }
 
@@ -481,14 +502,11 @@ int slk::stream_engine_base_t::decode_and_push (msg_t *msg_)
     if (_metadata)
         msg_->set_metadata (_metadata);
 
-    SL_DEBUG_LOG("DEBUG: decode_and_push: pushing msg to session, size=%zu\n", msg_->size());
     if (_session->push_msg (msg_) == -1) {
-        SL_DEBUG_LOG("DEBUG: decode_and_push: push_msg failed, errno=%d\n", errno);
         if (errno == EAGAIN)
             _process_msg = &stream_engine_base_t::push_one_then_decode_and_push;
         return -1;
     }
-    SL_DEBUG_LOG("DEBUG: decode_and_push: success\n");
     return 0;
 }
 
@@ -525,7 +543,6 @@ int slk::stream_engine_base_t::write_credential (msg_t *msg_)
 
 void slk::stream_engine_base_t::mechanism_ready ()
 {
-    SL_DEBUG_LOG("DEBUG: mechanism_ready() called\n");
     // TODO: Port timers
     // if (_options.heartbeat_interval > 0 && !_has_heartbeat_timer) {
     //     add_timer (_options.heartbeat_interval, heartbeat_ivl_timer_id);
@@ -535,7 +552,6 @@ void slk::stream_engine_base_t::mechanism_ready ()
     //  Notify session that engine is ready - creates the pipe
     //  MUST be called before push_msg
     if (_has_handshake_stage) {
-        SL_DEBUG_LOG("DEBUG: calling session->engine_ready()\n");
         _session->engine_ready ();
     }
 
@@ -546,18 +562,13 @@ void slk::stream_engine_base_t::mechanism_ready ()
     if (_options.recv_routing_id) {
         msg_t routing_id;
         _mechanism->peer_routing_id (&routing_id);
-        SL_DEBUG_LOG("DEBUG: mechanism_ready: pushing routing_id, size=%zu\n", routing_id.size());
         const int rc = _session->push_msg (&routing_id);
-        SL_DEBUG_LOG("DEBUG: mechanism_ready: push_msg returned %d\n", rc);
         if (rc == -1 && errno == EAGAIN) {
             // Pipe is shutting down
-            SL_DEBUG_LOG("DEBUG: mechanism_ready: pipe shutting down, returning early\n");
             return;
         }
         errno_assert (rc == 0);
         flush_session = true;
-    } else {
-        SL_DEBUG_LOG("DEBUG: mechanism_ready: recv_routing_id is false\n");
     }
 
     //  Send connect notification if ROUTER_NOTIFY is enabled

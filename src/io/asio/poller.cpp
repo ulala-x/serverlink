@@ -140,11 +140,17 @@ void slk::asio_poller_t::loop()
     while (!_stopping) {
         // 1. Execute ServerLink timers
         uint64_t wait_ms = execute_timers();
-        if (wait_ms == 0) wait_ms = 10;
 
-        // 2. Process Asio events
+        // 2. Process all ready Asio handlers
         if (_io_context.stopped()) _io_context.restart();
-        _io_context.run_one_for(std::chrono::milliseconds(wait_ms));
+        size_t work_done = _io_context.poll();
+        
+        // 3. If no work was done and no timers are immediately due, 
+        // wait for a short duration or until new work arrives.
+        if (work_done == 0) {
+            if (wait_ms == 0) wait_ms = 10;
+            _io_context.run_one_for(std::chrono::milliseconds(wait_ms));
+        }
     }
 }
 

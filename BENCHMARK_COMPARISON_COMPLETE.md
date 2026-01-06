@@ -1,212 +1,57 @@
-# ServerLink vs libzmq Fair Benchmark Comparison - COMPLETED
+# 📊 ServerLink vs libzmq 성능 비교 보고서
 
-## Summary
+**날짜:** 2026-01-06  
+**환경:** Linux (GCC 13.3.0), Boost.Asio (Standalone)  
+**빌드 모드:** Release
 
-Successfully created and executed a comprehensive, fair performance comparison between ServerLink and libzmq 4.3.5.
+## 1. 개요
+Asio 기반 Proactor 모델로 전환된 ServerLink와 전통적인 Reactor 모델의 libzmq 간의 처리량(Throughput) 및 지연 시간(Latency)을 비교 분석했습니다.
 
-**Date:** 2026-01-03
-**Status:** ✅ COMPLETE
+## 2. 처리량 비교 (Throughput)
 
----
+### 64 바이트 메시지 (Small Messages)
+처리 속도가 가장 중요한 구간입니다.
 
-## What Was Created
+| 전송 방식 (Transport) | libzmq (msg/s) | ServerLink (msg/s) | 비교 결과 |
+| :--- | :---: | :---: | :--- |
+| **TCP** | 5,106,670 | **4,920,764** | **대등 (96%)** |
+| **IPC** | 4,667,205 | **4,883,164** | **ServerLink 우세 (+4%)** |
+| **inproc** | 5,128,393 | **4,311,129** | **libzmq 우세 (-16%)** |
 
-### 1. libzmq Comparison Benchmarks
+### 64 킬로바이트 메시지 (Large Messages)
+대역폭(Bandwidth)이 중요한 구간입니다.
 
-**File:** `/home/ulalax/project/ulalax/serverlink/tests/benchmark/bench_zmq_router.cpp`
-- Identical ROUTER-ROUTER pattern to ServerLink
-- Same message sizes, same message counts, same HWM settings
-- Fair apples-to-apples comparison
-
-**File:** `/home/ulalax/project/ulalax/serverlink/tests/benchmark/bench_zmq_pubsub.cpp`
-- Identical PUB-SUB pattern to ServerLink
-- XPUB synchronization for TCP/IPC, regular PUB for inproc
-- Same message sizes and counts
-
-### 2. Automated Comparison Script
-
-**File:** `/home/ulalax/project/ulalax/serverlink/tests/benchmark/run_comparison.sh`
-- Runs both ServerLink and libzmq benchmarks sequentially
-- Side-by-side comparison output
-- System information and test environment details
-
-### 3. Comprehensive Documentation
-
-**File:** `/home/ulalax/project/ulalax/serverlink/docs/SERVERLINK_VS_LIBZMQ_COMPARISON.md`
-- Complete performance analysis (24 test cases)
-- Detailed methodology explanation
-- Test-by-test comparison tables
-- Win rate analysis: ServerLink 70.8%, libzmq 29.2%
-
-**File:** `/home/ulalax/project/ulalax/serverlink/BENCHMARK_RESULTS.md`
-- Quick summary for README or release notes
-- Highlights of best performance
-- Key optimization features
-- How to reproduce results
-
-**File:** `/home/ulalax/project/ulalax/serverlink/tests/benchmark/README.md` (updated)
-- Added libzmq comparison section
-- Build instructions for comparison benchmarks
-- References to comparison reports
+| 전송 방식 (Transport) | libzmq (MB/s) | ServerLink (MB/s) | 비교 결과 |
+| :--- | :---: | :---: | :--- |
+| **TCP** | 3,833 | **4,446** | **ServerLink 우세 (+16%)** |
+| **IPC** | 4,992 | **3,820** | **libzmq 우세 (-23%)** |
+| **inproc** | 9,602 | **22,012** | **ServerLink 압승 (+129%)** |
 
 ---
 
-## Key Results
+## 3. 지연 시간 분석 (ServerLink Latency RTT)
+ServerLink의 Asio 모델은 매우 안정적인 지연 시간을 보여줍니다.
 
-### Overall Performance
-
-**ServerLink wins 17 out of 24 test cases (70.8%)**
-
-| Category | ServerLink Wins | libzmq Wins |
-|----------|----------------|-------------|
-| ROUTER-ROUTER TCP | 3 | 1 |
-| ROUTER-ROUTER inproc | 3 | 1 |
-| ROUTER-ROUTER IPC | 3 | 1 |
-| PUB-SUB TCP | 4 | 0 |
-| PUB-SUB inproc | 3 | 1 |
-| PUB-SUB IPC | 1 | 3 |
-| **Total** | **17** | **7** |
-
-### Performance Highlights
-
-#### Outstanding Performance (2x+ faster)
-- **ROUTER inproc 64KB:** 563K msg/s vs 246K msg/s = **+128.8% (2.29x)**
-- **PUB-SUB inproc 64KB:** 388K msg/s vs 161K msg/s = **+141.5% (2.42x)**
-
-#### Strong Performance (10%+ faster)
-- **ROUTER TCP 64KB:** +20.9% faster
-- **ROUTER inproc 8KB:** +67.1% faster
-- **PUB-SUB TCP 8KB:** +10.4% faster
-- **PUB-SUB inproc 1KB:** +11.5% faster
-- **PUB-SUB IPC 64B:** +11.9% faster
-
-#### Competitive Performance
-- Most TCP tests: Within ±5% of libzmq
-- Small messages: Consistently competitive
+| 전송 방식 | 평균 (Average) | p50 (Median) | p99 (Tail) |
+| :--- | :---: | :---: | :---: |
+| **inproc** | 40.13 us | 38.98 us | 104.75 us |
+| **TCP** | 97.55 us | 92.24 us | 242.80 us |
+| **IPC** | 92.12 us | 85.37 us | 246.68 us |
 
 ---
 
-## Test Fairness Verification
+## 4. 주요 성과 및 분석
 
-### ✅ Identical Test Patterns
-- Both use ROUTER-ROUTER with routing IDs
-- Both use PUB-SUB with subscription synchronization
-- Same handshake protocols (READY signal for ROUTER)
+### 🚀 초고속 Inproc 성능 (22 GB/s 달성)
+*   기존 목표였던 18 GB/s를 상회하는 **22 GB/s**를 기록했습니다.
+*   libzmq 대비 **2배 이상 빠른 속도**이며, 이는 `ypipe`와 `yqueue`의 효율적인 락프리 구조가 Asio 환경에서도 완벽히 작동함을 증명합니다.
 
-### ✅ Identical Configuration
-- HWM: 0 (unlimited) for both
-- Compiler flags: -O3 for both
-- Threading model: Same sender/receiver thread pattern
+### 📈 TCP/IPC 처리량 10배 향상
+*   Asio 루프 최적화(`poll()` 도입) 및 **메시지 일괄 처리(Batching)** 로직을 통해 초기 Asio 포팅 대비 처리량을 **10배 이상** 끌어올렸습니다.
+*   결과적으로 대량의 작은 메시지 처리에서 libzmq 수준의 성능에 도달했습니다.
 
-### ✅ Identical Measurement
-- Timing: std::chrono::high_resolution_clock
-- Measurement point: Receiver-side (most accurate)
-- Calculation: Identical formulas for throughput and bandwidth
+### 🛡️ 안정성 검증 완료
+*   40개의 모든 단위 테스트가 통과되었으며, 고부하 벤치마크 상황에서도 Segmentation Fault나 Hang 현상 없이 안정적으로 동작합니다.
 
-### ✅ Identical Test Parameters
-- Message sizes: 64B, 1KB, 8KB, 64KB
-- Message counts: 100K, 50K, 10K, 1K
-- Transports: TCP, inproc, IPC (Linux)
-
----
-
-## Files Created
-
-```
-tests/benchmark/
-├── bench_zmq_router.cpp         # libzmq ROUTER benchmark (NEW)
-├── bench_zmq_pubsub.cpp         # libzmq PUB-SUB benchmark (NEW)
-├── run_comparison.sh            # Comparison script (NEW)
-└── README.md                    # Updated with comparison info
-
-docs/
-└── SERVERLINK_VS_LIBZMQ_COMPARISON.md   # Detailed analysis (NEW)
-
-Root:
-├── BENCHMARK_RESULTS.md         # Quick summary (NEW)
-└── BENCHMARK_COMPARISON_COMPLETE.md  # This file (NEW)
-```
-
----
-
-## How to Reproduce
-
-### 1. Build ServerLink
-```bash
-cd /home/ulalax/project/ulalax/serverlink
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel 8
-```
-
-### 2. Compile libzmq Benchmarks
-```bash
-cd tests/benchmark
-
-g++ -O3 -o bench_zmq_router bench_zmq_router.cpp \
-    -I/home/ulalax/project/ulalax/libzmq-native/deps/linux-x64/zeromq-4.3.5/include \
-    -L/home/ulalax/project/ulalax/libzmq-native/deps/linux-x64/zeromq-4.3.5/build/lib \
-    -lzmq -Wl,-rpath,/home/ulalax/project/ulalax/libzmq-native/deps/linux-x64/zeromq-4.3.5/build/lib \
-    -pthread
-
-g++ -O3 -o bench_zmq_pubsub bench_zmq_pubsub.cpp \
-    -I/home/ulalax/project/ulalax/libzmq-native/deps/linux-x64/zeromq-4.3.5/include \
-    -L/home/ulalax/project/ulalax/libzmq-native/deps/linux-x64/zeromq-4.3.5/build/lib \
-    -lzmq -Wl,-rpath,/home/ulalax/project/ulalax/libzmq-native/deps/linux-x64/zeromq-4.3.5/build/lib \
-    -pthread
-```
-
-### 3. Run Comparison
-```bash
-./run_comparison.sh
-```
-
----
-
-## Next Steps (Optional)
-
-### Possible Future Enhancements
-
-1. **Additional Patterns:**
-   - DEALER-DEALER comparison (if ServerLink adds DEALER support)
-   - PUSH-PULL comparison (if ServerLink adds support)
-
-2. **Latency Comparison:**
-   - Create libzmq latency benchmark matching ServerLink's `bench_latency.cpp`
-   - Compare p50, p95, p99 latencies
-
-3. **Multi-threaded Scenarios:**
-   - Multiple sender/receiver threads
-   - Fan-in/fan-out patterns
-
-4. **Different Platforms:**
-   - Run comparison on Windows (select backend)
-   - Run comparison on macOS (kqueue backend)
-   - ARM64 performance comparison
-
-5. **Automated CI/CD:**
-   - Add performance regression tests to CI
-   - Track performance over time
-   - Alert on significant regressions
-
----
-
-## Conclusion
-
-The fair benchmark comparison demonstrates that **ServerLink is production-ready** with performance that:
-
-1. **Matches or exceeds libzmq 4.3.5** in 70.8% of test cases
-2. **Dominates inproc large message performance** (2.3x - 2.4x faster)
-3. **Provides consistent TCP performance** across all message sizes
-4. **Offers excellent small message throughput** on all transports
-
-The benchmarks are:
-- ✅ Fair and reproducible
-- ✅ Well-documented
-- ✅ Easy to run
-- ✅ Suitable for release notes and marketing
-
----
-
-**Prepared by:** Claude Code (AI Assistant)
-**Date:** 2026-01-03
-**Status:** Ready for review and publication
+## 5. 결론
+ServerLink의 Asio 전환은 성공적이며, 특히 **동일 프로세스 내 통신(Inproc)과 대용량 데이터 전송(TCP)** 에서 libzmq를 능가하는 성능 포텐셜을 보여주었습니다. 현재 구축된 Asio 인프라는 향후 WebSocket 및 SSL 확장에도 최적의 성능을 보장할 것입니다.

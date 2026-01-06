@@ -84,10 +84,10 @@ void bench_throughput_tcp(const bench_params_t &params) {
     rc = slk_setsockopt(receiver, SLK_RCVHWM, &hwm, sizeof(hwm));
     BENCH_CHECK(rc, "slk_setsockopt(receiver SLK_RCVHWM)");
 
-    rc = slk_bind(receiver, "tcp://127.0.0.1:15555");
+    rc = slk_bind(receiver, "tcp://127.0.0.1:15666");
     BENCH_CHECK(rc, "slk_bind");
 
-    rc = slk_connect(sender, "tcp://127.0.0.1:15555");
+    rc = slk_connect(sender, "tcp://127.0.0.1:15666");
     BENCH_CHECK(rc, "slk_connect");
 
     // Wait for connection to establish

@@ -2,7 +2,6 @@
 
 #include "signaler.hpp"
 #include "ip.hpp"
-#include "polling_util.hpp"
 #include "../util/config.hpp"
 #include "../util/likely.hpp"
 #include "../util/err.hpp"
