@@ -6,24 +6,39 @@
 #include <cstdio>
 #include <chrono>
 #include <thread>
+#include <vector>
 
 #if defined SL_USE_ASIO
 
-#ifdef _WIN32
-#include <winsock2.h>
-#else
-#include <sys/select.h>
-#include <sys/time.h>
+#ifndef _WIN32
+#include <asio/posix/stream_descriptor.hpp>
 #endif
 
 slk::asio_poller_t::asio_poller_t(ctx_t* ctx_)
     : worker_poller_base_t(ctx_),
-      _work_guard(asio::make_work_guard(_io_context.get_executor()))
+      _work_guard(asio::make_work_guard(_io_context.get_executor())),
+      _lifetime_sentinel(std::make_shared<int>(0))
 {
 }
 
 slk::asio_poller_t::~asio_poller_t()
 {
+    stop_worker();
+    
+    // Explicitly release all native handles to avoid double-close
+    std::lock_guard<std::mutex> lock(_entries_mutex);
+    for (auto& pair : _entries) {
+        if (pair.second.socket) {
+            asio::error_code ec;
+            pair.second.socket->cancel(ec);
+#ifdef _WIN32
+            pair.second.socket->release(ec);
+#else
+            (void)pair.second.socket->release();
+#endif
+        }
+    }
+    _entries.clear();
 }
 
 slk::asio_poller_t::handle_t slk::asio_poller_t::add_fd(fd_t fd_, i_poll_events* events_)
@@ -35,7 +50,10 @@ slk::asio_poller_t::handle_t slk::asio_poller_t::add_fd(fd_t fd_, i_poll_events*
     fd_entry_t entry;
     entry.fd = fd_;
     entry.sink = events_;
-    entry.polling = false;
+    entry.pollin = false;
+    entry.pollout = false;
+    entry.reading = false;
+    entry.writing = false;
     entry.socket = nullptr; 
     
     {
@@ -50,6 +68,15 @@ void slk::asio_poller_t::rm_fd(handle_t handle_)
     std::lock_guard<std::mutex> lock(_entries_mutex);
     auto it = _entries.find(handle_);
     if (it != _entries.end()) {
+        if (it->second.socket) {
+            asio::error_code ec;
+            it->second.socket->cancel(ec);
+#ifdef _WIN32
+            it->second.socket->release(ec);
+#else
+            (void)it->second.socket->release();
+#endif
+        }
         _entries.erase(it);
         adjust_load (-1);
     }
@@ -57,11 +84,14 @@ void slk::asio_poller_t::rm_fd(handle_t handle_)
 
 void slk::asio_poller_t::set_pollin(handle_t handle_)
 {
-    std::lock_guard<std::mutex> lock(_entries_mutex);
-    auto it = _entries.find(handle_);
-    if (it != _entries.end()) {
-        it->second.polling = true;
+    {
+        std::lock_guard<std::mutex> lock(_entries_mutex);
+        auto it = _entries.find(handle_);
+        if (it != _entries.end()) {
+            it->second.pollin = true;
+        }
     }
+    start_polling(handle_);
 }
 
 void slk::asio_poller_t::reset_pollin(handle_t handle_)
@@ -69,16 +99,29 @@ void slk::asio_poller_t::reset_pollin(handle_t handle_)
     std::lock_guard<std::mutex> lock(_entries_mutex);
     auto it = _entries.find(handle_);
     if (it != _entries.end()) {
-        it->second.polling = false;
+        it->second.pollin = false;
     }
 }
 
 void slk::asio_poller_t::set_pollout(handle_t handle_)
 {
+    {
+        std::lock_guard<std::mutex> lock(_entries_mutex);
+        auto it = _entries.find(handle_);
+        if (it != _entries.end()) {
+            it->second.pollout = true;
+        }
+    }
+    start_polling(handle_);
 }
 
 void slk::asio_poller_t::reset_pollout(handle_t handle_)
 {
+    std::lock_guard<std::mutex> lock(_entries_mutex);
+    auto it = _entries.find(handle_);
+    if (it != _entries.end()) {
+        it->second.pollout = false;
+    }
 }
 
 void slk::asio_poller_t::stop()
@@ -95,65 +138,85 @@ int slk::asio_poller_t::max_fds()
 void slk::asio_poller_t::loop()
 {
     while (!_stopping) {
-        // 1. Process Asio events (wait up to 10ms if no work)
-        _io_context.run_one_for(std::chrono::milliseconds(10));
-        
-        // 2. Poll traditional FDs (mailbox signals)
-        fd_set readfds;
-        FD_ZERO(&readfds);
-        int max_fd = -1;
-        bool has_fds = false;
+        // 1. Execute ServerLink timers
+        uint64_t wait_ms = execute_timers();
+        if (wait_ms == 0) wait_ms = 10;
 
-        {
-            std::lock_guard<std::mutex> lock(_entries_mutex);
-            for (auto const& [handle, entry] : _entries) {
-                if (entry.polling) {
-                    FD_SET(entry.fd, &readfds);
-#ifndef _WIN32
-                    if ((int)entry.fd > max_fd) max_fd = (int)entry.fd;
-#endif
-                    has_fds = true;
-                }
-            }
-        }
-
-        if (has_fds) {
-            timeval tv = {0, 0}; // Non-blocking check since run_one_for already waited
-#ifdef _WIN32
-            int rc = select(0, &readfds, NULL, NULL, &tv);
-#else
-            int rc = select(max_fd + 1, &readfds, NULL, NULL, &tv);
-#endif
-            if (rc > 0) {
-                // To avoid calling in_event while holding the lock, 
-                // we collect targets first.
-                std::vector<i_poll_events*> targets;
-                {
-                    std::lock_guard<std::mutex> lock(_entries_mutex);
-                    for (auto& [handle, entry] : _entries) {
-                        if (entry.polling && FD_ISSET(entry.fd, &readfds)) {
-                            targets.push_back(entry.sink);
-                        }
-                    }
-                }
-                for (auto sink : targets) {
-                    sink->in_event();
-                }
-            }
-        }
-        
-        // 3. Process ServerLink timers
-        execute_timers();
-        
-        // 4. If io_context was stopped, restart it for the next iteration if not stopping
-        if (_io_context.stopped() && !_stopping) {
-            _io_context.restart();
-        }
+        // 2. Process Asio events
+        if (_io_context.stopped()) _io_context.restart();
+        _io_context.run_one_for(std::chrono::milliseconds(wait_ms));
     }
 }
 
 void slk::asio_poller_t::start_polling(handle_t handle)
 {
+    std::unique_lock<std::mutex> lock(_entries_mutex);
+    auto it = _entries.find(handle);
+    if (it == _entries.end()) return;
+
+    auto& entry = it->second;
+
+    if (!entry.socket) {
+        entry.socket = std::make_shared<native_socket_t>(_io_context);
+        asio::error_code ec;
+#ifdef _WIN32
+        entry.socket->assign(asio::ip::tcp::v4(), entry.fd, ec);
+#else
+        entry.socket->assign(entry.fd, ec); 
+#endif
+        if (ec) {
+            entry.socket.reset();
+            return;
+        }
+    }
+
+    if (entry.pollin && !entry.reading) {
+        entry.reading = true;
+        std::weak_ptr<int> sentinel = _lifetime_sentinel;
+        entry.socket->async_wait(native_socket_t::wait_read,
+            [this, handle, sentinel](const asio::error_code& ec) {
+                if (sentinel.expired()) return;
+                
+                i_poll_events* sink = nullptr;
+                {
+                    std::lock_guard<std::mutex> lock(_entries_mutex);
+                    if (_entries.count(handle)) {
+                        _entries[handle].reading = false;
+                        if (!ec && _entries[handle].pollin) sink = _entries[handle].sink;
+                    }
+                }
+                
+                if (sink) {
+                    sink->in_event();
+                    // Re-arm
+                    start_polling(handle);
+                }
+            });
+    }
+
+    if (entry.pollout && !entry.writing) {
+        entry.writing = true;
+        std::weak_ptr<int> sentinel = _lifetime_sentinel;
+        entry.socket->async_wait(native_socket_t::wait_write,
+            [this, handle, sentinel](const asio::error_code& ec) {
+                if (sentinel.expired()) return;
+                
+                i_poll_events* sink = nullptr;
+                {
+                    std::lock_guard<std::mutex> lock(_entries_mutex);
+                    if (_entries.count(handle)) {
+                        _entries[handle].writing = false;
+                        if (!ec && _entries[handle].pollout) sink = _entries[handle].sink;
+                    }
+                }
+                
+                if (sink) {
+                    sink->out_event();
+                    // Re-arm
+                    start_polling(handle);
+                }
+            });
+    }
 }
 
 #endif

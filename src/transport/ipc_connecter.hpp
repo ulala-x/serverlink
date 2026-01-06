@@ -7,6 +7,7 @@
 
 #if defined SL_HAVE_IPC
 
+#include <asio.hpp>
 #include "../io/fd.hpp"
 #include "../util/constants.hpp"
 #include "stream_connecter_base.hpp"
@@ -30,27 +31,18 @@ class ipc_connecter_t final : public stream_connecter_base_t
                     bool delayed_start_);
     ~ipc_connecter_t() override;
 
-  private:
-    // Handlers for I/O events
-    void out_event() override;
-
-    // Internal function to start the actual connection establishment
+  protected:
+    // Overrides from stream_connecter_base_t
     void start_connecting() override;
+    void close() override;
 
-    // Get socket name for logging
-    std::string get_socket_name(fd_t fd_, socket_end_t socket_end_) const;
+  private:
+    // Handlers for async operations
+    void handle_connect(const asio::error_code& ec);
 
-    // Open IPC connecting socket. Returns -1 in case of error,
-    // 0 if connect was successful immediately. Returns -1 with
-    // EINPROGRESS errno if async connect was launched.
-    int open();
-
-    // Get the file descriptor of newly created connection. Returns
-    // retired_fd if the connection was unsuccessful.
-    fd_t connect();
-
-    // Address to connect to
-    ipc_address_t _address;
+    // Asio members
+    asio::local::stream_protocol::socket _socket;
+    std::string _path;
 
     SL_NON_COPYABLE_NOR_MOVABLE(ipc_connecter_t)
 };

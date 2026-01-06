@@ -1,0 +1,13 @@
+ServerLink Build Information
+=============================
+
+Version:        0.1.0
+Build Date:     2026-01-02 15:25:31 UTC
+Platform:       Linux x64
+Build Type:     Release
+Shared Library: ON
+Compiler:       gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0
+CMake:          cmake version 3.28.3
+
+Build Directory: /home/ulalax/project/ulalax/serverlink/build-x64
+Install Prefix:  /home/ulalax/project/ulalax/serverlink/dist/linux-x64

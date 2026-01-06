@@ -102,12 +102,8 @@ void worker_poller_base_t::check_thread () const
 
 void worker_poller_base_t::worker_routine (void *arg_)
 {
-    fprintf(stderr, "DEBUG: worker_routine starting thread\n");
-    fflush(stderr);
     worker_poller_base_t *self = static_cast<worker_poller_base_t *> (arg_);
     self->loop ();
-    fprintf(stderr, "DEBUG: worker_routine thread exiting\n");
-    fflush(stderr);
 }
 
 } // namespace slk

@@ -7,6 +7,7 @@
 
 #if defined SL_HAVE_IPC
 
+#include <asio.hpp>
 #include "../io/fd.hpp"
 #include "stream_listener_base.hpp"
 #include "ipc_address.hpp"
@@ -28,20 +29,18 @@ class ipc_listener_t final : public stream_listener_base_t
     // Set address to listen on
     int set_local_address(const char *addr_);
 
-  protected:
-    std::string get_socket_name(fd_t fd_, socket_end_t socket_end_) const override;
-
   private:
-    // Handlers for I/O events
-    void in_event() override;
+    //  Start the accept loop.
+    void start_accept();
 
-    // Accept the new connection. Returns the file descriptor of the
-    // newly created connection. The function may return retired_fd
-    // if the connection was dropped while waiting in the listen backlog.
-    fd_t accept();
+    //  Handler for a new connection.
+    void handle_accept(const asio::error_code& ec, asio::local::stream_protocol::socket socket);
 
     // Close the listening socket and unlink the socket file
-    int close() override;
+    void close() override;
+
+    //  Asio acceptor for incoming connections.
+    asio::local::stream_protocol::acceptor _acceptor;
 
     // Address to listen on
     ipc_address_t _address;
@@ -51,6 +50,9 @@ class ipc_listener_t final : public stream_listener_base_t
 
     // Did we create the socket file?
     bool _has_file;
+
+    // Lifetime sentinel for async handlers.
+    std::shared_ptr<int> _lifetime_sentinel;
 
     SL_NON_COPYABLE_NOR_MOVABLE(ipc_listener_t)
 };

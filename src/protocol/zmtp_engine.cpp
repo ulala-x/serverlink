@@ -66,13 +66,18 @@ void slk::zmtp_engine_t::plug_internal ()
     // start optional timer, to prevent handshake hanging on no input
     set_handshake_timer ();
 
-    //  Send the 'length' and 'flags' fields of the routing id message.
-    //  The 'length' field is encoded in the long format.
+    //  Send the greeting.
     _outpos = _greeting_send;
-    _outpos[_outsize++] = 0xff; // UCHAR_MAX signature start
-    put_uint64 (&_outpos[_outsize], _options.routing_id_size + 1);
-    _outsize += 8;
-    _outpos[_outsize++] = 0x7f;
+    memset(_outpos, 0, v3_greeting_size);
+    _outpos[0] = 0xff;
+    put_uint64 (&_outpos[1], 1); // 8-byte length, only for signature
+    _outpos[9] = 0x7f;
+    _outpos[10] = 3; // Revision
+    _outpos[11] = 0; // Minor
+    memcpy(_outpos + 12, "NULL", 4);
+    _outsize = v3_greeting_size;
+
+    _greeting_size = v3_greeting_size;
 
     // The read loop is now started automatically in the base class plug().
     // The write loop will be started when there's data to send.
@@ -203,6 +208,9 @@ bool slk::zmtp_engine_t::handshake_v3_x ()
 
     _next_msg = &zmtp_engine_t::next_handshake_command;
     _process_msg = &zmtp_engine_t::process_handshake_command;
+
+    // Trigger sending the READY command
+    restart_output ();
 
     return true;
 }

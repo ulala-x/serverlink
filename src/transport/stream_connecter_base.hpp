@@ -46,6 +46,9 @@ class stream_connecter_base_t : public own_t
     //  Close the connecting socket.
     virtual void close () = 0;
 
+    //  Internal function to start the connection process.
+    virtual void start_connecting () = 0;
+
     //  Address to connect to. Owned by session_base_t.
     //  It is non-const since some parts may change during opening.
     address_t *const _addr;
@@ -59,19 +62,20 @@ class stream_connecter_base_t : public own_t
     //  Asio timer for reconnect logic.
     asio::steady_timer _reconnect_timer;
 
-  private:
-    //  Internal function to return a reconnect backoff delay.
-    //  Will modify the current_reconnect_ivl used for next call
-    //  Returns the currently used interval
-    int get_new_reconnect_ivl ();
-
-    virtual void start_connecting () = 0;
+    //  Lifetime sentinel for async handlers.
+    std::shared_ptr<int> _lifetime_sentinel;
 
     //  If true, connecter is waiting a while before trying to connect.
     const bool _delayed_start;
 
     //  Current reconnect ivl, updated for backoff strategy
     int _current_reconnect_ivl;
+
+  private:
+    //  Internal function to return a reconnect backoff delay.
+    //  Will modify the current_reconnect_ivl used for next call
+    //  Returns the currently used interval
+    int get_new_reconnect_ivl ();
 
     SL_NON_COPYABLE_NOR_MOVABLE (stream_connecter_base_t)
 

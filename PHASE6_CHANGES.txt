@@ -1,0 +1,164 @@
+ServerLink C++20 Phase 6: consteval/constinit Changes
+=====================================================
+
+Date: 2026-01-02
+Status: ✅ COMPLETE - All 45 tests passing
+
+FILES MODIFIED:
+--------------
+
+1. src/protocol/zmtp_engine.hpp
+   - Converted anonymous enum to inline constexpr
+   - Before: enum { ZMTP_1_0 = 0, ZMTP_2_0 = 1, ZMTP_3_x = 3 };
+   - After:  inline constexpr int ZMTP_1_0 = 0;
+             inline constexpr int ZMTP_2_0 = 1;
+             inline constexpr int ZMTP_3_x = 3;
+   - Benefits: Type safety, better error messages, namespace scoping
+
+2. src/io/polling_util.hpp (2 locations)
+   - Converted macro to inline constexpr
+   - Before: #define SL_POLLITEMS_DFLT 16
+   - After:  inline constexpr size_t SL_POLLITEMS_DFLT = 16;
+   - Benefits: Type safety (size_t), no macro pollution
+
+FILES ADDED:
+-----------
+
+3. src/util/consteval_helpers.hpp (NEW)
+   - Compile-time utility functions
+   - consteval functions:
+     * is_power_of_2()
+     * next_power_of_2()
+     * is_aligned()
+     * align_up()
+     * validate_queue_granularity()
+   - Constants:
+     * message_pipe_granularity = 256
+     * command_pipe_granularity = 16
+     * default_pollitems = 16
+   - Includes fallback to constexpr for older compilers
+
+4. docs/CPP20_CONSTEVAL_GUIDE.md (NEW)
+   - Comprehensive developer guide
+   - Usage examples and best practices
+   - Performance tips and patterns
+
+5. PHASE6_CONSTEVAL_SUMMARY.md (NEW)
+   - Complete phase documentation
+   - Test results and benchmarks
+   - Migration guide
+
+EXISTING FEATURES PRESERVED:
+---------------------------
+
+- src/util/err.hpp (already has inline constexpr error codes)
+  * SL_EFSM = 156
+  * SL_ENOCOMPATPROTO = 157
+  * SL_ETERM = 158
+  * SL_EMTHREAD = 159
+
+CMAKE CONFIGURATION:
+-------------------
+
+- cmake/platform.cmake (already has SL_HAVE_CONSTEVAL detection)
+- cmake/config.h.in (already exports SL_HAVE_CONSTEVAL)
+- Current system: SL_HAVE_CONSTEVAL = 1 ✓
+
+TEST RESULTS:
+------------
+
+All 45 tests passing:
+- Unit tests:       10/10 ✓
+- ROUTER tests:      8/8  ✓
+- PubSub tests:     12/12 ✓
+- Transport tests:   4/4  ✓
+- Utility tests:     4/4  ✓
+- Integration:       1/1  ✓
+- Monitor tests:     2/2  ✓
+- Poller tests:      1/1  ✓
+- Proxy tests:       1/1  ✓
+- Pattern tests:     2/2  ✓
+
+Total time: 39.97 seconds
+
+BENCHMARK RESULTS:
+-----------------
+
+Transport | Size      | Throughput      | Bandwidth
+----------|-----------|-----------------|------------
+TCP       | 64 B      | 3,474,935 msg/s | 212 MB/s
+inproc    | 64 B      | 3,101,882 msg/s | 189 MB/s
+IPC       | 64 B      | 3,666,947 msg/s | 224 MB/s
+TCP       | 1 KB      | 583,808 msg/s   | 570 MB/s
+inproc    | 1 KB      | 1,223,072 msg/s | 1194 MB/s
+IPC       | 1 KB      | 826,513 msg/s   | 807 MB/s
+TCP       | 8 KB      | 153,062 msg/s   | 1196 MB/s
+inproc    | 8 KB      | 501,622 msg/s   | 3919 MB/s
+IPC       | 8 KB      | 196,621 msg/s   | 1536 MB/s
+TCP       | 64 KB     | 76,611 msg/s    | 4788 MB/s
+inproc    | 64 KB     | 415,386 msg/s   | 25962 MB/s
+IPC       | 64 KB     | 73,328 msg/s    | 4583 MB/s
+
+IMPACT ANALYSIS:
+---------------
+
+Performance: ✅ No regression, stable performance
+Compile Time: ✅ ~2 seconds for full rebuild
+Binary Size: ✅ No increase (constants folded)
+Type Safety: ✅ Improved with inline constexpr
+Error Messages: ✅ Better compiler diagnostics
+
+COMPILER COMPATIBILITY:
+----------------------
+
+GCC 10+:     ✅ Full consteval support
+Clang 10+:   ✅ Full consteval support
+MSVC 19.29+: ✅ Full consteval support
+Fallback:    ✅ Uses constexpr on older compilers
+
+KEY IMPROVEMENTS:
+----------------
+
+1. Type Safety
+   - Replaced macros with typed constants
+   - Compiler enforces correct types
+   - Better error messages
+
+2. Compile-Time Guarantees
+   - consteval ensures zero runtime overhead
+   - All computations done at compile time
+   - Invalid configurations caught early
+
+3. Maintainability
+   - Self-documenting code
+   - Namespace scoping
+   - Easier to refactor
+
+4. Performance
+   - Zero runtime overhead
+   - Better constant folding
+   - Optimized machine code
+
+MIGRATION NOTES:
+---------------
+
+Breaking Changes: NONE
+API Changes: NONE
+Binary Compatibility: MAINTAINED
+Public Headers: UNCHANGED
+
+All changes are internal implementation improvements.
+No user-facing API changes required.
+
+NEXT STEPS:
+----------
+
+Phase 7: Advanced C++20 features (modules, coroutines)
+Phase 8: Performance profiling and optimization
+Phase 9: Additional compile-time validations
+Phase 10: Documentation and best practices
+
+---
+Phase 6 complete: 2026-01-02
+Quality gate: ✅ PASSED
+Production ready: ✅ YES

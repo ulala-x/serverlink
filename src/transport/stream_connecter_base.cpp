@@ -24,7 +24,8 @@ slk::stream_connecter_base_t::stream_connecter_base_t (
     _reconnect_timer(io_thread_->get_io_context()),
     _delayed_start (delayed_start_),
     _current_reconnect_ivl (-1),
-    _session (session_)
+    _session (session_),
+    _lifetime_sentinel (std::make_shared<int> (0))
 {
     slk_assert (_addr);
     _addr->to_string (_endpoint);
@@ -55,8 +56,10 @@ void slk::stream_connecter_base_t::add_reconnect_timer ()
         const int interval = get_new_reconnect_ivl ();
         
         _reconnect_timer.expires_after(std::chrono::milliseconds(interval));
+        std::weak_ptr<int> sentinel = _lifetime_sentinel;
         _reconnect_timer.async_wait(
-            [this](const asio::error_code& ec) {
+            [this, sentinel](const asio::error_code& ec) {
+                if (sentinel.expired()) return;
                 handle_reconnect_timer(ec);
             });
     }

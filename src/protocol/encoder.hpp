@@ -105,6 +105,11 @@ class encoder_base_t : public i_encoder
         (static_cast<T*>(this)->*m_next)();
     }
 
+    bool is_empty() const
+    {
+        return m_in_progress == nullptr;
+    }
+
   protected:
     // Prototype of state machine action.
     typedef void (T::*step_t)();

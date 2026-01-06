@@ -37,6 +37,9 @@ class tcp_listener_t final : public stream_listener_base_t
     //  Address to listen on.
     tcp_address_t _address;
 
+    //  Lifetime sentinel for async handlers.
+    std::shared_ptr<int> _lifetime_sentinel;
+
     SL_NON_COPYABLE_NOR_MOVABLE (tcp_listener_t)
 };
 }

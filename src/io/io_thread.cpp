@@ -30,8 +30,6 @@ slk::io_thread_t::~io_thread_t ()
 
 void slk::io_thread_t::start () 
 {
-    fprintf(stderr, "DEBUG: io_thread_t::start calling poller->start()\n");
-    fflush(stderr);
     //  Start the underlying I/O thread.
     _poller->start ();
 }

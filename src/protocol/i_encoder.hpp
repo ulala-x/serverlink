@@ -27,6 +27,9 @@ struct i_encoder
 
     // Load a new message into the encoder for encoding.
     virtual void load_msg(msg_t* msg) = 0;
+
+    // Check if the encoder is ready for a new message.
+    virtual bool is_empty() const = 0;
 };
 
 } // namespace slk

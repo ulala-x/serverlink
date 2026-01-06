@@ -1,0 +1,147 @@
+================================================================================
+            libzmq Benchmark Compilation Guide
+================================================================================
+
+PROBLEM: bench_zmq_router.cpp and bench_zmq_pubsub.cpp failed to compile
+ERROR:   fatal error: zmq.h: No such file or directory
+
+SOLUTION: Fixed include paths and added proper compiler flags
+
+================================================================================
+                            Fix Applied
+================================================================================
+
+File: bench_zmq_router.cpp, bench_zmq_pubsub.cpp
+
+Change:
+  - #include <zmq.h>
+  + #include "/home/ulalax/project/.../zeromq-4.3.5/include/zmq.h"
+
+================================================================================
+                        Compilation Commands
+================================================================================
+
+Method 1: Automated Script (RECOMMENDED)
+-----------------------------------------
+./compile_zmq_benchmarks.sh
+
+Method 2: Manual Compilation
+-----------------------------
+LIBZMQ=/home/ulalax/project/ulalax/libzmq-native/deps/linux-x64/zeromq-4.3.5
+
+g++ -O3 -std=c++17 -o bench_zmq_router bench_zmq_router.cpp \
+    -I${LIBZMQ}/include \
+    -L${LIBZMQ}/build/lib -lzmq \
+    -Wl,-rpath,${LIBZMQ}/build/lib \
+    -pthread
+
+g++ -O3 -std=c++17 -o bench_zmq_pubsub bench_zmq_pubsub.cpp \
+    -I${LIBZMQ}/include \
+    -L${LIBZMQ}/build/lib -lzmq \
+    -Wl,-rpath,${LIBZMQ}/build/lib \
+    -pthread
+
+================================================================================
+                        Verification Steps
+================================================================================
+
+1. Check Executables Exist:
+   ls -lh bench_zmq_router bench_zmq_pubsub
+
+2. Verify Dynamic Linkage:
+   ldd bench_zmq_router | grep zmq
+   ldd bench_zmq_pubsub | grep zmq
+
+   Expected Output:
+   libzmq.so.5 => /home/ulalax/.../zeromq-4.3.5/build/lib/libzmq.so.5
+
+3. Run Benchmarks:
+   ./bench_zmq_router
+   ./bench_zmq_pubsub
+
+================================================================================
+                        Directory Structure
+================================================================================
+
+serverlink/
+├── tests/
+│   └── benchmark/
+│       ├── bench_zmq_router.cpp          (libzmq ROUTER benchmark)
+│       ├── bench_zmq_pubsub.cpp          (libzmq PUB/SUB benchmark)
+│       ├── bench_zmq_router              (compiled executable)
+│       ├── bench_zmq_pubsub              (compiled executable)
+│       ├── compile_zmq_benchmarks.sh     (compilation script)
+│       ├── run_comparison.sh             (full benchmark suite)
+│       └── README.md                     (comprehensive guide)
+├── build/
+│   └── tests/
+│       └── benchmark/
+│           ├── bench_throughput          (ServerLink ROUTER)
+│           └── bench_pubsub              (ServerLink PUB/SUB)
+└── benchmark_results/
+    ├── libzmq_vs_serverlink_comparison.md  (detailed analysis)
+    └── performance_summary.txt             (quick summary)
+
+================================================================================
+                        Compiler Flags Explained
+================================================================================
+
+-O3                  : Maximum optimization level
+-std=c++17           : C++17 standard (both libraries compatible)
+-pthread             : POSIX threads support
+-I${LIBZMQ}/include  : Add libzmq headers to search path
+-L${LIBZMQ}/build/lib: Add libzmq library directory
+-lzmq                : Link against libzmq
+-Wl,-rpath,...       : Set runtime library search path (no LD_LIBRARY_PATH)
+
+================================================================================
+                        Troubleshooting
+================================================================================
+
+Issue: "zmq.h: No such file or directory"
+Fix:   Verify libzmq path exists:
+       ls /home/ulalax/project/.../zeromq-4.3.5/include/zmq.h
+
+Issue: "cannot find -lzmq"
+Fix:   Verify library exists:
+       ls /home/ulalax/project/.../zeromq-4.3.5/build/lib/libzmq.so*
+
+Issue: "error while loading shared libraries: libzmq.so.5"
+Fix:   Check rpath or set LD_LIBRARY_PATH:
+       export LD_LIBRARY_PATH=/home/ulalax/.../zeromq-4.3.5/build/lib
+
+Issue: Port already in use (TCP benchmarks)
+Fix:   Wait a moment or kill process using port 15556-15557
+
+================================================================================
+                        Performance Results
+================================================================================
+
+After successful compilation and execution:
+
+ServerLink WINS:
+  - inproc 8KB:  +66% faster (824K vs 497K msg/s)
+  - inproc 64KB: +36% faster (254K vs 187K msg/s)
+  - TCP 64B:     +5% consistently
+
+libzmq WINS:
+  - TCP 64KB:    -21% (libzmq faster for large TCP)
+  - inproc 1KB:  -19% (optimization opportunity)
+
+PARITY:
+  - inproc 64B, IPC 1KB, TCP 8KB PUB/SUB
+
+See detailed comparison:
+  ../../benchmark_results/libzmq_vs_serverlink_comparison.md
+  ../../benchmark_results/performance_summary.txt
+
+================================================================================
+                        Quick Reference
+================================================================================
+
+Compile:    ./compile_zmq_benchmarks.sh
+Run All:    ./run_comparison.sh
+Results:    cat ../../benchmark_results/performance_summary.txt
+Help:       cat README.md
+
+================================================================================

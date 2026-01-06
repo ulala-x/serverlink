@@ -323,8 +323,6 @@ int slk::ctx_t::get (int option_)
 
 bool slk::ctx_t::start ()
 {
-    fprintf(stderr, "DEBUG: ctx_t::start entered\n");
-    fflush(stderr);
     // Initialise the array of mailboxes. Additional two slots are for
     // slk_ctx_term thread and reaper thread
     _opt_sync.lock ();
@@ -347,8 +345,6 @@ bool slk::ctx_t::start ()
     _slots[term_tid] = &_term_mailbox;
 
     // Create the reaper thread
-    fprintf(stderr, "DEBUG: ctx_t::start creating reaper\n");
-    fflush(stderr);
     _reaper = new (std::nothrow) reaper_t (this, reaper_tid);
     if (!_reaper) {
         errno = ENOMEM;
@@ -358,8 +354,6 @@ bool slk::ctx_t::start ()
         goto fail_cleanup_reaper;
     _slots[reaper_tid] = _reaper->get_mailbox ();
     
-    fprintf(stderr, "DEBUG: ctx_t::start starting reaper\n");
-    fflush(stderr);
     _reaper->start ();
 
     // Create I/O thread objects and launch them
@@ -367,8 +361,6 @@ bool slk::ctx_t::start ()
 
     for (int i = term_and_reaper_threads_count;
          i != ios + term_and_reaper_threads_count; i++) {
-        fprintf(stderr, "DEBUG: ctx_t::start creating io_thread %d\n", i);
-        fflush(stderr);
         io_thread_t *io_thread = new (std::nothrow) io_thread_t (this, i);
         if (!io_thread) {
             errno = ENOMEM;
@@ -381,8 +373,6 @@ bool slk::ctx_t::start ()
         _io_threads.push_back (io_thread);
         _slots[i] = io_thread->get_mailbox ();
         
-        fprintf(stderr, "DEBUG: ctx_t::start starting io_thread %d\n", i);
-        fflush(stderr);
         io_thread->start ();
     }
 
@@ -392,8 +382,6 @@ bool slk::ctx_t::start ()
         _empty_slots.push_back (i);
     }
 
-    fprintf(stderr, "DEBUG: ctx_t::start success\n");
-    fflush(stderr);
     _starting = false;
     return true;
 

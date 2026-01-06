@@ -244,7 +244,7 @@ endif()
 
 # Detect IPC support (Unix Domain Sockets)
 # Available on all Unix-like systems, not on Windows
-if(NOT WIN32)
+if(NOT WIN32 AND NOT APPLE)
     check_include_file("sys/un.h" HAVE_SYS_UN_H)
     if(HAVE_SYS_UN_H)
         set(SL_HAVE_IPC 1)
@@ -266,6 +266,10 @@ else()
     # GCC/Clang flags
     add_compile_options(-Wall -Wextra -Wpedantic)
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        # Standard optimization: -O3 provides the best balance of performance,
+        # portability, and stability for ServerLink
+        # Note: Aggressive optimizations (-march=native, -ffast-math, LTO) were tested
+        # and showed net negative impact. See COMPILER_OPTIMIZATION_RESULTS.md
         add_compile_options(-O3)
     endif()
 endif()

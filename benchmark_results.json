@@ -1,0 +1,344 @@
+{
+  "timestamp": "2026-01-03T07:43:28.734007Z",
+  "platform": "linux",
+  "benchmarks": [
+    {
+      "type": "latency",
+      "results": [
+        {
+          "transport": "TCP",
+          "message_size": 64,
+          "avg_latency_us": 97.35,
+          "p50_latency_us": 82.64,
+          "p95_latency_us": 198.19,
+          "p99_latency_us": 276.68
+        },
+        {
+          "transport": "inproc",
+          "message_size": 64,
+          "avg_latency_us": 52.06,
+          "p50_latency_us": 49.4,
+          "p95_latency_us": 98.32,
+          "p99_latency_us": 142.61
+        },
+        {
+          "transport": "IPC",
+          "message_size": 64,
+          "avg_latency_us": 114.63,
+          "p50_latency_us": 98.86,
+          "p95_latency_us": 205.37,
+          "p99_latency_us": 286.58
+        },
+        {
+          "transport": "TCP",
+          "message_size": 1024,
+          "avg_latency_us": 95.01,
+          "p50_latency_us": 83.44,
+          "p95_latency_us": 196.47,
+          "p99_latency_us": 278.25
+        },
+        {
+          "transport": "inproc",
+          "message_size": 1024,
+          "avg_latency_us": 45.46,
+          "p50_latency_us": 38.85,
+          "p95_latency_us": 91.02,
+          "p99_latency_us": 117.33
+        },
+        {
+          "transport": "IPC",
+          "message_size": 1024,
+          "avg_latency_us": 65.14,
+          "p50_latency_us": 53.5,
+          "p95_latency_us": 115.51,
+          "p99_latency_us": 178.02
+        },
+        {
+          "transport": "TCP",
+          "message_size": 8192,
+          "avg_latency_us": 104.72,
+          "p50_latency_us": 70.66,
+          "p95_latency_us": 239.54,
+          "p99_latency_us": 287.16
+        },
+        {
+          "transport": "inproc",
+          "message_size": 8192,
+          "avg_latency_us": 34.55,
+          "p50_latency_us": 26.13,
+          "p95_latency_us": 65.45,
+          "p99_latency_us": 113.76
+        },
+        {
+          "transport": "IPC",
+          "message_size": 8192,
+          "avg_latency_us": 127.15,
+          "p50_latency_us": 96.75,
+          "p95_latency_us": 239.63,
+          "p99_latency_us": 305.26
+        }
+      ],
+      "name": "bench_latency"
+    },
+    {
+      "type": "pubsub",
+      "results": [
+        {
+          "transport": "PUB/SUB TCP",
+          "message_size": 64,
+          "message_count": 100000,
+          "elapsed_ms": 17.78,
+          "throughput_msg_per_sec": 5624527,
+          "bandwidth_mb_per_sec": 343.29
+        },
+        {
+          "transport": "PUB/SUB inproc",
+          "message_size": 64,
+          "message_count": 100000,
+          "elapsed_ms": 18.18,
+          "throughput_msg_per_sec": 5500797,
+          "bandwidth_mb_per_sec": 335.74
+        },
+        {
+          "transport": "PUB/SUB IPC",
+          "message_size": 64,
+          "message_count": 100000,
+          "elapsed_ms": 18.51,
+          "throughput_msg_per_sec": 5402886,
+          "bandwidth_mb_per_sec": 329.77
+        },
+        {
+          "transport": "PUB/SUB TCP",
+          "message_size": 1024,
+          "message_count": 50000,
+          "elapsed_ms": 56.78,
+          "throughput_msg_per_sec": 880619,
+          "bandwidth_mb_per_sec": 859.98
+        },
+        {
+          "transport": "PUB/SUB inproc",
+          "message_size": 1024,
+          "message_count": 50000,
+          "elapsed_ms": 31.86,
+          "throughput_msg_per_sec": 1569428,
+          "bandwidth_mb_per_sec": 1532.64
+        },
+        {
+          "transport": "PUB/SUB IPC",
+          "message_size": 1024,
+          "message_count": 50000,
+          "elapsed_ms": 47.26,
+          "throughput_msg_per_sec": 1058008,
+          "bandwidth_mb_per_sec": 1033.21
+        },
+        {
+          "transport": "PUB/SUB TCP",
+          "message_size": 8192,
+          "message_count": 10000,
+          "elapsed_ms": 56.52,
+          "throughput_msg_per_sec": 176914,
+          "bandwidth_mb_per_sec": 1382.14
+        },
+        {
+          "transport": "PUB/SUB inproc",
+          "message_size": 8192,
+          "message_count": 10000,
+          "elapsed_ms": 15.8,
+          "throughput_msg_per_sec": 632919,
+          "bandwidth_mb_per_sec": 4944.68
+        },
+        {
+          "transport": "PUB/SUB IPC",
+          "message_size": 8192,
+          "message_count": 10000,
+          "elapsed_ms": 51.61,
+          "throughput_msg_per_sec": 193774,
+          "bandwidth_mb_per_sec": 1513.86
+        },
+        {
+          "transport": "PUB/SUB TCP",
+          "message_size": 65536,
+          "message_count": 1000,
+          "elapsed_ms": 13.44,
+          "throughput_msg_per_sec": 74415,
+          "bandwidth_mb_per_sec": 4650.92
+        },
+        {
+          "transport": "PUB/SUB inproc",
+          "message_size": 65536,
+          "message_count": 1000,
+          "elapsed_ms": 4.95,
+          "throughput_msg_per_sec": 202143,
+          "bandwidth_mb_per_sec": 12633.95
+        },
+        {
+          "transport": "PUB/SUB IPC",
+          "message_size": 65536,
+          "message_count": 1000,
+          "elapsed_ms": 13.29,
+          "throughput_msg_per_sec": 75252,
+          "bandwidth_mb_per_sec": 4703.25
+        },
+        {
+          "transport": "Fan-out TCP",
+          "message_size": 2,
+          "message_count": 64,
+          "elapsed_ms": 20000,
+          "throughput_msg_per_sec": 7035990,
+          "bandwidth_mb_per_sec": 429.44
+        },
+        {
+          "transport": "Fan-out inproc",
+          "message_size": 2,
+          "message_count": 64,
+          "elapsed_ms": 20000,
+          "throughput_msg_per_sec": 8186136,
+          "bandwidth_mb_per_sec": 499.64
+        },
+        {
+          "transport": "Fan-out TCP",
+          "message_size": 4,
+          "message_count": 64,
+          "elapsed_ms": 40000,
+          "throughput_msg_per_sec": 8635519,
+          "bandwidth_mb_per_sec": 527.07
+        },
+        {
+          "transport": "Fan-out inproc",
+          "message_size": 4,
+          "message_count": 64,
+          "elapsed_ms": 40000,
+          "throughput_msg_per_sec": 13193491,
+          "bandwidth_mb_per_sec": 805.27
+        },
+        {
+          "transport": "Fan-out TCP",
+          "message_size": 8,
+          "message_count": 64,
+          "elapsed_ms": 80000,
+          "throughput_msg_per_sec": 9075071,
+          "bandwidth_mb_per_sec": 553.9
+        },
+        {
+          "transport": "Fan-out inproc",
+          "message_size": 8,
+          "message_count": 64,
+          "elapsed_ms": 80000,
+          "throughput_msg_per_sec": 13885336,
+          "bandwidth_mb_per_sec": 847.49
+        }
+      ],
+      "name": "bench_pubsub"
+    },
+    {
+      "type": "throughput",
+      "results": [
+        {
+          "transport": "TCP",
+          "message_size": 64,
+          "message_count": 100000,
+          "elapsed_ms": 19.45,
+          "throughput_msg_per_sec": 5142692,
+          "bandwidth_mb_per_sec": 313.89
+        },
+        {
+          "transport": "inproc",
+          "message_size": 64,
+          "message_count": 100000,
+          "elapsed_ms": 23.17,
+          "throughput_msg_per_sec": 4315038,
+          "bandwidth_mb_per_sec": 263.37
+        },
+        {
+          "transport": "IPC",
+          "message_size": 64,
+          "message_count": 100000,
+          "elapsed_ms": 20.21,
+          "throughput_msg_per_sec": 4947285,
+          "bandwidth_mb_per_sec": 301.96
+        },
+        {
+          "transport": "TCP",
+          "message_size": 1024,
+          "message_count": 50000,
+          "elapsed_ms": 60.23,
+          "throughput_msg_per_sec": 830145,
+          "bandwidth_mb_per_sec": 810.69
+        },
+        {
+          "transport": "inproc",
+          "message_size": 1024,
+          "message_count": 50000,
+          "elapsed_ms": 34.74,
+          "throughput_msg_per_sec": 1439224,
+          "bandwidth_mb_per_sec": 1405.49
+        },
+        {
+          "transport": "IPC",
+          "message_size": 1024,
+          "message_count": 50000,
+          "elapsed_ms": 54.97,
+          "throughput_msg_per_sec": 909626,
+          "bandwidth_mb_per_sec": 888.31
+        },
+        {
+          "transport": "TCP",
+          "message_size": 8192,
+          "message_count": 10000,
+          "elapsed_ms": 55.57,
+          "throughput_msg_per_sec": 179969,
+          "bandwidth_mb_per_sec": 1406.01
+        },
+        {
+          "transport": "inproc",
+          "message_size": 8192,
+          "message_count": 10000,
+          "elapsed_ms": 21.78,
+          "throughput_msg_per_sec": 459209,
+          "bandwidth_mb_per_sec": 3587.57
+        },
+        {
+          "transport": "IPC",
+          "message_size": 8192,
+          "message_count": 10000,
+          "elapsed_ms": 48.27,
+          "throughput_msg_per_sec": 207174,
+          "bandwidth_mb_per_sec": 1618.54
+        },
+        {
+          "transport": "TCP",
+          "message_size": 65536,
+          "message_count": 1000,
+          "elapsed_ms": 15.74,
+          "throughput_msg_per_sec": 63552,
+          "bandwidth_mb_per_sec": 3971.98
+        },
+        {
+          "transport": "inproc",
+          "message_size": 65536,
+          "message_count": 1000,
+          "elapsed_ms": 8.08,
+          "throughput_msg_per_sec": 123801,
+          "bandwidth_mb_per_sec": 7737.54
+        },
+        {
+          "transport": "IPC",
+          "message_size": 65536,
+          "message_count": 1000,
+          "elapsed_ms": 11.87,
+          "throughput_msg_per_sec": 84227,
+          "bandwidth_mb_per_sec": 5264.18
+        }
+      ],
+      "name": "bench_throughput"
+    }
+  ],
+  "system": {
+    "os": "Ubuntu 24.04.3 LTS",
+    "arch": "x86_64",
+    "cpu": "Intel(R) Core(TM) Ultra 7 265K",
+    "cores": 20,
+    "memory_gb": 62,
+    "kernel": "6.6.87.2-microsoft-standard-WSL2"
+  }
+}

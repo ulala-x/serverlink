@@ -58,9 +58,11 @@ void slk::tcp_connecter_t::close()
 void slk::tcp_connecter_t::start_connecting ()
 {
     // Start async resolution
+    std::weak_ptr<int> sentinel = _lifetime_sentinel;
     _resolver.async_resolve(
         _host, _port,
-        [this](const asio::error_code& ec, const asio::ip::tcp::resolver::results_type& endpoints) {
+        [this, sentinel](const asio::error_code& ec, const asio::ip::tcp::resolver::results_type& endpoints) {
+            if (sentinel.expired()) return;
             handle_resolve(ec, endpoints);
         });
 }
@@ -76,9 +78,11 @@ void slk::tcp_connecter_t::handle_resolve(const asio::error_code& ec, const asio
     }
 
     // Start async connect
+    std::weak_ptr<int> sentinel = _lifetime_sentinel;
     asio::async_connect(
         _socket, endpoints,
-        [this](const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint) {
+        [this, sentinel](const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint) {
+            if (sentinel.expired()) return;
             handle_connect(ec, endpoint);
         });
 }
@@ -103,7 +107,7 @@ void slk::tcp_connecter_t::handle_connect(const asio::error_code& ec, const asio
 
     // Create stream and engine
     auto stream = std::make_unique<tcp_stream_t>(std::move(_socket));
-    std::string local_addr = endpoint.address().to_string() + ":" + std::to_string(endpoint.port()); // Actually remote addr, but used for endpoint pair
+    std::string local_addr = "tcp://" + endpoint.address().to_string() + ":" + std::to_string(endpoint.port()); // Actually remote addr, but used for endpoint pair
     
     create_engine(std::move(stream), local_addr);
 }

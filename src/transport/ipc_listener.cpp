@@ -6,184 +6,106 @@
 
 #include <new>
 #include <string>
+#include <memory>
 
 #include "ipc_listener.hpp"
+#include "../io/asio/ipc_stream.hpp"
 #include "../io/io_thread.hpp"
 #include "../util/config.hpp"
 #include "../util/err.hpp"
 #include "../core/socket_base.hpp"
 #include "address.hpp"
 
+#ifndef _WIN32
 #include <unistd.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <fcntl.h>
+#endif
 
 slk::ipc_listener_t::ipc_listener_t(io_thread_t *io_thread_,
                                      socket_base_t *socket_,
                                      const options_t &options_) :
     stream_listener_base_t(io_thread_, socket_, options_),
-    _has_file(false)
+    _acceptor(io_thread_->get_io_context()),
+    _has_file(false),
+    _lifetime_sentinel(std::make_shared<int>(0))
 {
 }
 
 slk::ipc_listener_t::~ipc_listener_t()
 {
-    slk_assert(_s == retired_fd);
 }
 
-void slk::ipc_listener_t::in_event()
+void slk::ipc_listener_t::close()
 {
-    const fd_t fd = accept();
+    if (_acceptor.is_open())
+        _acceptor.close();
 
-    // If connection cannot be accepted due to insufficient
-    // resources, just ignore it for now
-    if (fd == retired_fd) {
-        // TODO: event system
-        // _socket->event_accept_failed(
-        //   make_unconnected_bind_endpoint_pair(_endpoint), slk_errno());
-        return;
+    // Remove the socket file if we created it
+    if (_has_file && !_filename.empty()) {
+#ifndef _WIN32
+        ::unlink(_filename.c_str());
+#endif
+        _has_file = false;
     }
-
-    // Create the engine object for this connection
-    create_engine(fd);
-}
-
-std::string
-slk::ipc_listener_t::get_socket_name(slk::fd_t fd_,
-                                      socket_end_t socket_end_) const
-{
-    return slk::get_socket_name<ipc_address_t>(fd_, socket_end_);
 }
 
 int slk::ipc_listener_t::set_local_address(const char *addr_)
 {
-    // Store the filename for cleanup
     _filename = addr_;
 
+#ifndef _WIN32
     // Remove any existing socket file
-    // This is necessary to avoid EADDRINUSE errors
     ::unlink(addr_);
+#endif
 
     // Resolve the address
     int rc = _address.resolve(addr_);
     if (rc != 0)
         return -1;
 
-    // Create the socket
-    _s = ::socket(AF_UNIX, SOCK_STREAM, 0);
-    if (_s == -1)
+    try {
+        asio::local::stream_protocol::endpoint endpoint(addr_);
+        _acceptor.open(endpoint.protocol());
+        _acceptor.bind(endpoint);
+        _acceptor.listen(_options.backlog);
+        _has_file = true;
+    } catch (const asio::system_error& e) {
         return -1;
-
-    // Set socket to non-blocking mode
-    const int flags = ::fcntl(_s, F_GETFL, 0);
-    if (flags == -1) {
-        goto error;
-    }
-    rc = ::fcntl(_s, F_SETFL, flags | O_NONBLOCK);
-    if (rc == -1) {
-        goto error;
     }
 
-    // Set close-on-exec
-#if defined FD_CLOEXEC
-    rc = ::fcntl(_s, F_SETFD, FD_CLOEXEC);
-    errno_assert(rc != -1);
-#endif
+    _endpoint = "ipc://" + _filename;
 
-    // Bind the socket
-    rc = ::bind(_s, _address.addr(), _address.addrlen());
-    if (rc != 0)
-        goto error;
-
-    // Mark that we created the file
-    _has_file = true;
-
-    // Listen for incoming connections
-    rc = ::listen(_s, options.backlog);
-    if (rc != 0)
-        goto error;
-
-    // Store the endpoint for event reporting
-    _endpoint = get_socket_name(_s, socket_end_local);
-
-    // TODO: event system
-    // _socket->event_listening(make_unconnected_bind_endpoint_pair(_endpoint), _s);
+    start_accept();
 
     return 0;
-
-error:
-    const int err = errno;
-    close();
-    errno = err;
-    return -1;
 }
 
-slk::fd_t slk::ipc_listener_t::accept()
+void slk::ipc_listener_t::start_accept()
 {
-    // Accept one connection and deal with different failure modes
-    slk_assert(_s != retired_fd);
-
-    // Accept the connection
-    const fd_t sock = ::accept(_s, NULL, NULL);
-
-    if (sock == -1) {
-        errno_assert(errno == EAGAIN || errno == EWOULDBLOCK ||
-                     errno == EINTR || errno == ECONNABORTED ||
-                     errno == EPROTO || errno == ENOBUFS ||
-                     errno == ENOMEM || errno == EMFILE ||
-                     errno == ENFILE);
-        return retired_fd;
-    }
-
-    // Set socket to non-blocking mode
-    const int flags = ::fcntl(sock, F_GETFL, 0);
-    if (flags == -1) {
-        const int rc = ::close(sock);
-        errno_assert(rc == 0);
-        return retired_fd;
-    }
-
-    int rc = ::fcntl(sock, F_SETFL, flags | O_NONBLOCK);
-    if (rc == -1) {
-        rc = ::close(sock);
-        errno_assert(rc == 0);
-        return retired_fd;
-    }
-
-    // Set close-on-exec
-#if defined FD_CLOEXEC
-    rc = ::fcntl(sock, F_SETFD, FD_CLOEXEC);
-    if (rc == -1) {
-        rc = ::close(sock);
-        errno_assert(rc == 0);
-        return retired_fd;
-    }
-#endif
-
-    return sock;
+    std::weak_ptr<int> sentinel = _lifetime_sentinel;
+    _acceptor.async_accept(
+        [this, sentinel](const asio::error_code& ec, asio::local::stream_protocol::socket socket) {
+            if (sentinel.expired()) return;
+            handle_accept(ec, std::move(socket));
+        });
 }
 
-int slk::ipc_listener_t::close()
+void slk::ipc_listener_t::handle_accept(const asio::error_code& ec, asio::local::stream_protocol::socket socket)
 {
-    slk_assert(_s != retired_fd);
-
-    // Close the socket first
-    const int rc = ::close(_s);
-    errno_assert(rc == 0);
-
-    // TODO: event system
-    // _socket->event_closed(make_unconnected_bind_endpoint_pair(_endpoint), _s);
-
-    _s = retired_fd;
-
-    // Remove the socket file if we created it
-    if (_has_file && !_filename.empty()) {
-        ::unlink(_filename.c_str());
-        _has_file = false;
+    if (ec) {
+        if (ec == asio::error::operation_aborted) {
+            return;
+        }
+        return;
     }
 
-    return 0;
+    // Create the async stream wrapper for the socket
+    auto stream = std::make_unique<ipc_stream_t>(std::move(socket));
+    
+    // Hand off the new stream to the base class to create the engine
+    create_engine(std::move(stream));
+
+    // Continue the accept loop
+    start_accept();
 }
 
 #endif  // SL_HAVE_IPC

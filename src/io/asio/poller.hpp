@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include "../poller_base.hpp"
+#include "../fd.hpp"
 
 namespace slk
 {
@@ -44,12 +45,22 @@ namespace slk
 
         asio::io_context _io_context;
         asio::executor_work_guard<asio::io_context::executor_type> _work_guard;
+        std::shared_ptr<int> _lifetime_sentinel;
+
+#ifdef _WIN32
+        typedef asio::ip::tcp::socket native_socket_t;
+#else
+        typedef asio::posix::stream_descriptor native_socket_t;
+#endif
 
         struct fd_entry_t {
             fd_t fd;
-            std::shared_ptr<asio::ip::tcp::socket> socket;
+            std::shared_ptr<native_socket_t> socket;
             i_poll_events* sink;
-            bool polling;
+            bool pollin;
+            bool pollout;
+            bool reading;
+            bool writing;
         };
         std::map<handle_t, fd_entry_t> _entries;
         std::mutex _entries_mutex;

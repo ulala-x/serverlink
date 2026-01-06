@@ -160,6 +160,12 @@ class stream_engine_base_t : public i_engine
 
     const std::string _peer_address;
 
+    //  Lifetime sentinel for async handlers.
+    std::shared_ptr<int> _lifetime_sentinel;
+
+    //  Buffer for handshake data before decoder is created.
+    unsigned char _handshake_buffer[64];
+
   private:
     //  Unplug the engine from the session.
     void unplug ();

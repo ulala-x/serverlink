@@ -28,9 +28,10 @@ class poller_base_t
     void add_timer (int timeout_, slk::i_poll_events *sink_, int id_);
     void cancel_timer (slk::i_poll_events *sink_, int id_);
 
-  protected:
     // Called by individual poller implementations to manage the load
     void adjust_load (int amount_);
+
+  protected:
 
     // Executes any timers that are due. Returns number of milliseconds
     // to wait to match the next timer or 0 meaning "no timers"

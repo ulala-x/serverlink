@@ -58,7 +58,8 @@ slk::stream_engine_base_t::stream_engine_base_t (
     _io_error (false),
     _session (NULL),
     _socket (NULL),
-    _has_handshake_stage (has_handshake_stage_)
+    _has_handshake_stage (has_handshake_stage_),
+    _lifetime_sentinel (std::make_shared<int> (0))
 {
     const int rc = _tx_msg.init ();
     errno_assert (rc == 0);
@@ -133,11 +134,18 @@ void slk::stream_engine_base_t::start_read()
     }
     
     // Retrieve the buffer for the next read operation.
-    _decoder->get_buffer(&_inpos, &_insize);
+    if (unlikely (!_decoder)) {
+        _inpos = _handshake_buffer;
+        _insize = sizeof (_handshake_buffer);
+    } else {
+        _decoder->get_buffer(&_inpos, &_insize);
+    }
 
     // Initiate an asynchronous read.
+    std::weak_ptr<int> sentinel = _lifetime_sentinel;
     _stream->async_read(_inpos, _insize,
-        [this](size_t bytes_transferred, int error_code) {
+        [this, sentinel](size_t bytes_transferred, int error_code) {
+            if (sentinel.expired()) return;
             handle_read(bytes_transferred, error_code);
         });
 }
@@ -163,8 +171,11 @@ void slk::stream_engine_base_t::handle_read(size_t bytes_transferred, int error_
     //  If still handshaking, process the greeting message.
     if (unlikely (_handshaking)) {
         // The derived class processes the raw buffer.
+        std::weak_ptr<int> sentinel = _lifetime_sentinel;
         process_handshake_data(_inpos, _insize);
         
+        if (sentinel.expired()) return;
+
         // If handshake is still not complete, we need more data.
         if (_handshaking) {
             start_read();
@@ -185,6 +196,7 @@ void slk::stream_engine_base_t::handle_read(size_t bytes_transferred, int error_
 
     int rc = 0;
     size_t processed = 0;
+    std::weak_ptr<int> sentinel = _lifetime_sentinel;
     while (_insize > 0) {
         rc = _decoder->decode(_inpos, _insize, processed);
         slk_assert (processed <= _insize);
@@ -195,6 +207,7 @@ void slk::stream_engine_base_t::handle_read(size_t bytes_transferred, int error_
             break;
 
         rc = (this->*_process_msg) (_decoder->msg());
+        if (sentinel.expired()) return;
         if (rc == -1)
             break;
     }
@@ -225,8 +238,10 @@ void slk::stream_engine_base_t::start_write()
     
     _output_stopped = false;
 
+    std::weak_ptr<int> sentinel = _lifetime_sentinel;
     _stream->async_write(_outpos, _outsize,
-        [this](size_t bytes_transferred, int error_code) {
+        [this, sentinel](size_t bytes_transferred, int error_code) {
+            if (sentinel.expired()) return;
             handle_write(bytes_transferred, error_code);
         });
 }
@@ -255,8 +270,16 @@ void slk::stream_engine_base_t::handle_write(size_t bytes_transferred, int error
     }
 
     // All buffered data sent. Try to get more from the encoder.
-    if ((this->*_next_msg) (&_tx_msg) != -1) {
+    if (unlikely (_encoder == NULL)) {
+        _output_stopped = true;
+        return;
+    }
+
+    std::weak_ptr<int> sentinel = _lifetime_sentinel;
+    if (_encoder->is_empty() && (this->*_next_msg) (&_tx_msg) != -1) {
+        if (sentinel.expired()) return;
         _encoder->load_msg (&_tx_msg);
+        _outpos = NULL;
         _outsize = _encoder->encode(&_outpos, _options.out_batch_size);
         if (_outsize > 0) {
             start_write();
@@ -283,8 +306,9 @@ void slk::stream_engine_base_t::restart_output ()
                 return;
             }
 
-            if ((this->*_next_msg) (&_tx_msg) != -1) {
+            if (_encoder->is_empty() && (this->*_next_msg) (&_tx_msg) != -1) {
                 _encoder->load_msg (&_tx_msg);
+                _outpos = NULL;
                 _outsize = _encoder->encode(&_outpos, _options.out_batch_size);
             }
         }
