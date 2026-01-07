@@ -69,7 +69,7 @@ namespace slk
         }
 
     private:
-        inline asio_context_t() : _running(false)
+        inline asio_context_t() : _io_context(1), _running(false)
         {
         }
 

@@ -142,17 +142,15 @@ class ypipe_t final : public ypipe_base_t<T> {
     // Allocation-efficient queue to store pipe items.
     yqueue_t<T, N> _queue;
 
-    // Points to the first un-flushed item.
-    T *_w;
-
-    // Points to the first un-prefetched item.
-    T *_r;
-
-    // Points to the first item to be flushed in the future.
+    // --- Writer side pointers (Cache line 1) ---
+    alignas(64) T *_w;
     T *_f;
 
-    // The single point of contention between writer and reader thread.
-    atomic_ptr_t<T> _c;
+    // --- Reader side pointer (Cache line 2) ---
+    alignas(64) T *_r;
+
+    // --- Contention point (Cache line 3) ---
+    alignas(64) atomic_ptr_t<T> _c;
 
     SL_NON_COPYABLE_NOR_MOVABLE(ypipe_t)
 };

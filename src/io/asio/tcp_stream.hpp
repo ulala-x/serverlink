@@ -6,6 +6,7 @@
 #include "../../util/config.hpp"
 
 #ifdef SL_USE_ASIO
+#include "../fd.hpp"
 #include "../i_async_stream.hpp"
 #include "asio_context.hpp"
 #include <asio.hpp>
@@ -20,12 +21,16 @@ namespace slk
         inline tcp_stream_t(fd_t fd)
             : _socket(asio_context_t::instance().get_context(), asio::ip::tcp::v4(), fd)
         {
+            asio::error_code ec;
+            _socket.set_option(asio::ip::tcp::no_delay(true), ec);
         }
 
         // 소켓 생성자 (Asio 소켓)
         inline tcp_stream_t(asio::ip::tcp::socket socket)
             : _socket(std::move(socket))
         {
+            asio::error_code ec;
+            _socket.set_option(asio::ip::tcp::no_delay(true), ec);
         }
 
         inline ~tcp_stream_t() override
