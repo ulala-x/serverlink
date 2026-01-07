@@ -321,7 +321,8 @@ static void test_spot_multiple_remote_subscribers()
     rc = slk_spot_subscribe(sub3, "broadcast");
     TEST_SUCCESS(rc);
 
-    test_sleep_ms(SETTLE_TIME);
+    /* Give extra time for multiple remote connections to settle in ASIO */
+    test_sleep_ms(SETTLE_TIME * 2);
 
     /* Publish message */
     const char *msg = "broadcast to all";

@@ -13,10 +13,6 @@ option(BUILD_EXAMPLES "Build examples" ON)
 option(SL_ENABLE_MONITORING "Enable performance monitoring features" OFF)
 option(SL_USE_ASIO "Use Boost.Asio for I/O" ON)
 
-if(NOT SL_USE_ASIO)
-    message(FATAL_ERROR "ServerLink now requires SL_USE_ASIO=ON as legacy pollers have been removed.")
-endif()
-
 # C++ standard - C++20 for modern features (concepts, ranges, span, etc.)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -34,13 +30,15 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(cmake/platform.cmake)
 
 # Boost.Asio integration
-include(FetchContent)
-FetchContent_Declare(
-    asio
-    GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
-    GIT_TAG asio-1-28-0
-)
-FetchContent_MakeAvailable(asio)
+if(SL_USE_ASIO)
+    include(FetchContent)
+    FetchContent_Declare(
+        asio
+        GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
+        GIT_TAG asio-1-28-0
+    )
+    FetchContent_MakeAvailable(asio)
+endif()
 
 # Generate configuration header
 configure_file(
@@ -100,6 +98,7 @@ set(SERVERLINK_SOURCES
 
     # I/O sources
     src/io/ip.cpp
+    src/io/polling_util.cpp
     src/io/signaler.cpp
     src/io/mailbox.cpp
     src/io/mailbox_safe.cpp
@@ -108,7 +107,6 @@ set(SERVERLINK_SOURCES
     src/io/io_thread.cpp
     src/io/io_object.cpp
     src/io/reaper.cpp
-    src/io/asio/poller.cpp
 
     # Core additional sources
     src/core/session_base.cpp
@@ -145,6 +143,13 @@ set(SERVERLINK_SOURCES
     src/monitor/heartbeat.cpp
 )
 
+# Platform-specific I/O sources
+if(SL_HAVE_EPOLL)
+    list(APPEND SERVERLINK_SOURCES src/io/epoll.cpp)
+else()
+    message(FATAL_ERROR "Native Linux epoll required for this optimized branch")
+endif()
+
 # IPC transport sources (Unix-like systems only)
 if(SL_HAVE_IPC)
     list(APPEND SERVERLINK_SOURCES
@@ -155,66 +160,82 @@ if(SL_HAVE_IPC)
 endif()
 
 # Asio integration sources (header-only)
-list(APPEND SERVERLINK_SOURCES
-    src/io/asio/asio_context.hpp
-    src/io/asio/tcp_stream.hpp
-    src/io/asio/ipc_stream.hpp
-)
+if(SL_USE_ASIO)
+    list(APPEND SERVERLINK_SOURCES
+        src/io/asio/asio_context.hpp
+        src/io/asio/tcp_stream.hpp
+    )
+endif()
 
-add_library(serverlink ${SERVERLINK_SOURCES})
+# For now, create an interface library since we have no source files yet
+# This will be changed to add_library once we add actual source files
+if(SERVERLINK_SOURCES)
+    add_library(serverlink ${SERVERLINK_SOURCES})
 
-target_include_directories(serverlink
-    PUBLIC
+    target_include_directories(serverlink
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+
+    target_link_libraries(serverlink
+        PRIVATE
+            ${PLATFORM_LIBS}
+    )
+
+    # Boost.Asio configuration
+    if(SL_USE_ASIO)
+        target_compile_definitions(serverlink PRIVATE
+            SL_USE_ASIO
+            ASIO_STANDALONE
+            ASIO_HEADER_ONLY
+            ASIO_SEPARATE_COMPILATION  # 컴파일 시간 최적화
+        )
+
+        target_include_directories(serverlink PRIVATE ${asio_SOURCE_DIR}/asio/include)
+
+        # Precompiled Headers 설정
+        target_precompile_headers(serverlink PRIVATE
+            <asio.hpp>
+            <asio/ts/buffer.hpp>
+            <asio/ts/io_context.hpp>
+        )
+    endif()
+
+    # Export symbols for shared library
+    if(BUILD_SHARED_LIBS)
+        target_compile_definitions(serverlink
+            PRIVATE SL_BUILDING_DLL
+            INTERFACE SL_USING_DLL
+        )
+    endif()
+
+    # Enable monitoring if requested
+    if(SL_ENABLE_MONITORING)
+        target_compile_definitions(serverlink
+            PUBLIC SL_ENABLE_MONITORING
+        )
+    endif()
+
+    # Set library properties
+    set_target_properties(serverlink PROPERTIES
+        VERSION ${PROJECT_VERSION}
+        SOVERSION ${PROJECT_VERSION_MAJOR}
+        PUBLIC_HEADER "include/serverlink/serverlink.h;include/serverlink/serverlink_export.h"
+    )
+else()
+    # Placeholder interface library for Phase 1
+    add_library(serverlink INTERFACE)
+
+    target_include_directories(serverlink INTERFACE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
         $<INSTALL_INTERFACE:include>
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-)
-
-target_link_libraries(serverlink
-    PRIVATE
-        ${PLATFORM_LIBS}
-)
-
-# Boost.Asio configuration
-target_compile_definitions(serverlink PRIVATE
-    SL_USE_ASIO
-    ASIO_STANDALONE
-    ASIO_HEADER_ONLY
-    ASIO_SEPARATE_COMPILATION  # 컴파일 시간 최적화
-)
-
-target_include_directories(serverlink PRIVATE ${asio_SOURCE_DIR}/asio/include)
-
-# Precompiled Headers 설정
-target_precompile_headers(serverlink PRIVATE
-    <asio.hpp>
-    <asio/ts/buffer.hpp>
-    <asio/ts/io_context.hpp>
-)
-
-# Export symbols for shared library
-if(BUILD_SHARED_LIBS)
-    target_compile_definitions(serverlink
-        PRIVATE SL_BUILDING_DLL
-        INTERFACE SL_USING_DLL
     )
 endif()
-
-# Enable monitoring if requested
-if(SL_ENABLE_MONITORING)
-    target_compile_definitions(serverlink
-        PUBLIC SL_ENABLE_MONITORING
-    )
-endif()
-
-# Set library properties
-set_target_properties(serverlink PROPERTIES
-    VERSION ${PROJECT_VERSION}
-    SOVERSION ${PROJECT_VERSION_MAJOR}
-    PUBLIC_HEADER "include/serverlink/serverlink.h;include/serverlink/serverlink_export.h"
-)
 
 # Tests
 if(BUILD_TESTS)
@@ -230,13 +251,15 @@ endif()
 # Installation
 include(GNUInstallDirs)
 
-install(TARGETS serverlink
-    EXPORT serverlinkTargets
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/serverlink
-)
+if(SERVERLINK_SOURCES)
+    install(TARGETS serverlink
+        EXPORT serverlinkTargets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/serverlink
+    )
+endif()
 
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/serverlink/serverlink.h
@@ -245,33 +268,35 @@ install(FILES
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/serverlink
 )
 
-# Export targets
-install(EXPORT serverlinkTargets
-    FILE serverlinkTargets.cmake
-    NAMESPACE serverlink::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/serverlink
-)
+# Export targets (only if we have actual library sources)
+if(SERVERLINK_SOURCES)
+    install(EXPORT serverlinkTargets
+        FILE serverlinkTargets.cmake
+        NAMESPACE serverlink::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/serverlink
+    )
 
-# Create config file
-include(CMakePackageConfigHelpers)
-write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/serverlinkConfigVersion.cmake"
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
+    # Create config file
+    include(CMakePackageConfigHelpers)
+    write_basic_package_version_file(
+        "${CMAKE_CURRENT_BINARY_DIR}/serverlinkConfigVersion.cmake"
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion
+    )
 
-configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/serverlinkConfig.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/serverlinkConfig.cmake"
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/serverlink
-)
+    configure_package_config_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/serverlinkConfig.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/serverlinkConfig.cmake"
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/serverlink
+    )
 
-# Install config files
-install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/serverlinkConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/serverlinkConfigVersion.cmake"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/serverlink
-)
+    # Install config files
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/serverlinkConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/serverlinkConfigVersion.cmake"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/serverlink
+    )
+endif()
 
 # Print configuration summary
 message(STATUS "")
@@ -284,6 +309,6 @@ message(STATUS "  Build examples:  ${BUILD_EXAMPLES}")
 message(STATUS "  Monitoring:      ${SL_ENABLE_MONITORING}")
 message(STATUS "  Use Asio:        ${SL_USE_ASIO}")
 message(STATUS "  C++ standard:    C++${CMAKE_CXX_STANDARD}")
-message(STATUS "  I/O poller:      Boost.Asio (Native)")
+message(STATUS "  I/O poller:      ${SL_POLLER_NAME}")
 message(STATUS "  Install prefix:  ${CMAKE_INSTALL_PREFIX}")
 message(STATUS "")

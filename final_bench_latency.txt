@@ -1,0 +1,22 @@
+
+=== ServerLink Latency Benchmark (Round-Trip Time) ===
+
+Transport            |   Message Size |      Average |            p50 |            p95 |            p99
+----------------------------------------------------------------------------------------------
+TCP                  |       64 bytes | avg:    65.93 us | p50:    55.78 us | p95:   103.48 us | p99:   206.61 us
+inproc               |       64 bytes | avg:    59.52 us | p50:    53.71 us | p95:   102.92 us | p99:   164.15 us
+IPC                  |       64 bytes | avg:    89.04 us | p50:    81.08 us | p95:   151.33 us | p99:   241.51 us
+
+TCP                  |     1024 bytes | avg:    76.34 us | p50:    57.93 us | p95:   143.16 us | p99:   251.50 us
+inproc               |     1024 bytes | avg:    31.82 us | p50:    24.56 us | p95:    59.70 us | p99:   106.43 us
+IPC                  |     1024 bytes | avg:    67.82 us | p50:    55.21 us | p95:   106.03 us | p99:   242.39 us
+
+TCP                  |     8192 bytes | avg:    76.31 us | p50:    64.95 us | p95:   121.11 us | p99:   226.58 us
+inproc               |     8192 bytes | avg:    52.78 us | p50:    43.22 us | p95:   110.55 us | p99:   134.08 us
+IPC                  |     8192 bytes | avg:   119.64 us | p50:    91.23 us | p95:   239.61 us | p99:   292.99 us
+
+Benchmark completed.
+
+Note: Latencies shown are round-trip times (RTT).
+      One-way latency is approximately RTT/2.
+

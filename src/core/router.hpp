@@ -23,7 +23,7 @@ class pipe_t;
 
 // ROUTER socket implementation
 // Routes messages to peers based on their identity
-class router_t : public routing_socket_base_t
+class router_t final : public routing_socket_base_t
 {
   public:
     router_t (ctx_t *parent_, uint32_t tid_, int sid_);

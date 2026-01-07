@@ -1,0 +1,23 @@
+
+=== ServerLink Throughput Benchmark ===
+
+Transport            |   Message Size | Message Count |        Time |     Throughput |    Bandwidth
+----------------------------------------------------------------------------------------------
+TCP                  |       64 bytes |   100000 msgs |    18.60 ms |    5376287 msg/s |   328.14 MB/s
+inproc               |       64 bytes |   100000 msgs |    22.43 ms |    4458023 msg/s |   272.10 MB/s
+IPC                  |       64 bytes |   100000 msgs |    18.78 ms |    5324093 msg/s |   324.96 MB/s
+
+TCP                  |     1024 bytes |    50000 msgs |    56.94 ms |     878083 msg/s |   857.50 MB/s
+inproc               |     1024 bytes |    50000 msgs |    32.05 ms |    1559993 msg/s |  1523.43 MB/s
+IPC                  |     1024 bytes |    50000 msgs |    48.40 ms |    1033043 msg/s |  1008.83 MB/s
+
+TCP                  |     8192 bytes |    10000 msgs |    56.19 ms |     177974 msg/s |  1390.42 MB/s
+inproc               |     8192 bytes |    10000 msgs |     9.88 ms |    1011708 msg/s |  7903.97 MB/s
+IPC                  |     8192 bytes |    10000 msgs |    43.58 ms |     229488 msg/s |  1792.87 MB/s
+
+TCP                  |    65536 bytes |     1000 msgs |    16.37 ms |      61069 msg/s |  3816.82 MB/s
+inproc               |    65536 bytes |     1000 msgs |     4.27 ms |     234443 msg/s | 14652.68 MB/s
+IPC                  |    65536 bytes |     1000 msgs |    11.76 ms |      85048 msg/s |  5315.52 MB/s
+
+Benchmark completed.
+

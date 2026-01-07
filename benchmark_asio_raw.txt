@@ -1,0 +1,48 @@
+=== ServerLink ASIO Throughput ===
+
+=== ServerLink Throughput Benchmark ===
+
+Transport            |   Message Size | Message Count |        Time |     Throughput |    Bandwidth
+----------------------------------------------------------------------------------------------
+TCP                  |       64 bytes |   100000 msgs |    19.50 ms |    5128323 msg/s |   313.01 MB/s
+inproc               |       64 bytes |   100000 msgs |    21.92 ms |    4562052 msg/s |   278.45 MB/s
+IPC                  |       64 bytes |   100000 msgs |    19.43 ms |    5147672 msg/s |   314.19 MB/s
+
+TCP                  |     1024 bytes |    50000 msgs |    55.70 ms |     897657 msg/s |   876.62 MB/s
+inproc               |     1024 bytes |    50000 msgs |    39.24 ms |    1274169 msg/s |  1244.31 MB/s
+IPC                  |     1024 bytes |    50000 msgs |    47.02 ms |    1063346 msg/s |  1038.42 MB/s
+
+TCP                  |     8192 bytes |    10000 msgs |    59.60 ms |     167776 msg/s |  1310.75 MB/s
+inproc               |     8192 bytes |    10000 msgs |    24.32 ms |     411155 msg/s |  3212.14 MB/s
+IPC                  |     8192 bytes |    10000 msgs |    50.58 ms |     197716 msg/s |  1544.65 MB/s
+
+TCP                  |    65536 bytes |     1000 msgs |    14.76 ms |      67761 msg/s |  4235.05 MB/s
+inproc               |    65536 bytes |     1000 msgs |     4.49 ms |     222619 msg/s | 13913.70 MB/s
+IPC                  |    65536 bytes |     1000 msgs |    11.80 ms |      84725 msg/s |  5295.28 MB/s
+
+Benchmark completed.
+
+\n=== ServerLink ASIO Latency ===
+
+=== ServerLink Latency Benchmark (Round-Trip Time) ===
+
+Transport            |   Message Size |      Average |            p50 |            p95 |            p99
+----------------------------------------------------------------------------------------------
+TCP                  |       64 bytes | avg:    76.78 us | p50:    54.79 us | p95:   182.69 us | p99:   229.34 us
+inproc               |       64 bytes | avg:    34.41 us | p50:    29.76 us | p95:    60.24 us | p99:    94.45 us
+IPC                  |       64 bytes | avg:    65.72 us | p50:    51.29 us | p95:   126.76 us | p99:   204.50 us
+
+TCP                  |     1024 bytes | avg:    64.66 us | p50:    55.19 us | p95:   104.66 us | p99:   201.52 us
+inproc               |     1024 bytes | avg:    42.09 us | p50:    38.26 us | p95:    79.53 us | p99:   137.29 us
+IPC                  |     1024 bytes | avg:    81.60 us | p50:    77.03 us | p95:   131.21 us | p99:   227.36 us
+
+TCP                  |     8192 bytes | avg:    85.91 us | p50:    66.06 us | p95:   149.09 us | p99:   250.24 us
+inproc               |     8192 bytes | avg:    32.39 us | p50:    25.02 us | p95:    56.88 us | p99:   141.31 us
+IPC                  |     8192 bytes | avg:    96.66 us | p50:    88.10 us | p95:   158.96 us | p99:   263.92 us
+
+Benchmark completed.
+
+Note: Latencies shown are round-trip times (RTT).
+      One-way latency is approximately RTT/2.
+
+\n=== ServerLink ASIO SPOT Throughput ===
