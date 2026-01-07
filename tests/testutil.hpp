@@ -320,30 +320,22 @@ static inline const char* test_endpoint_tcp()
     static int base_port = 0;
     static int call_count = 0;
 
-    /* Initialize base port once per process using multiple entropy sources
-     * This ensures different test processes get well-separated port ranges
-     * Port range: 15000-60000 (safe range avoiding common ports) */
     if (base_port == 0) {
-        /* Combine multiple entropy sources for better distribution:
-         * - PID provides process-level uniqueness
-         * - time(NULL) provides second-level uniqueness
-         * - slk_clock() provides microsecond-level uniqueness
-         * - Additional clock call for more entropy */
-        int pid = getpid();
-        int pid_offset = (pid % 500) * 90;  /* 0-44910, step 90 */
-        int time_offset = ((unsigned int)time(NULL) % 200) * 10;  /* 0-1990 */
-        int clock1 = (int)(slk_clock() % 1000);  /* 0-999 */
-        test_sleep_ms(1);  /* Add small delay for more clock variation */
-        int clock2 = (int)(slk_clock() % 1000);  /* 0-999 */
-        int entropy = pid_offset + time_offset + clock1 + (clock2 * 3);
-        base_port = 15000 + (entropy % 44000);  /* 15000-59000 range */
+        int pid = (int)getpid();
+        /* Use high-resolution clock for better entropy even within the same second */
+        uint64_t clock_val = slk_clock();
+        
+        /* Mix PID and clock bits to create a more unique base port */
+        unsigned int seed = (unsigned int)(clock_val ^ (pid << 16) ^ (pid >> 16));
+        srand(seed);
+        
+        /* Safe range: 20000 - 60000 */
+        base_port = 20000 + (rand() % 35000);
     }
 
-    /* Use rotating buffers to avoid overwriting previous endpoints */
     int slot = call_count % 32;
-
-    /* Each call gets a unique port with step of 11 (prime) to avoid TIME_WAIT conflicts */
-    int port = base_port + (call_count * 11);
+    /* Use a larger prime step to minimize collisions */
+    int port = base_port + (call_count * 17);
     call_count++;
 
     /* Wrap around if we exceed port range */

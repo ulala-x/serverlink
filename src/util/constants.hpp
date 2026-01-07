@@ -112,7 +112,6 @@ constexpr int SL_BLOCKY = 70;
 // Default values
 constexpr int SL_IO_THREADS_DFLT = 1;
 constexpr int SL_MAX_SOCKETS_DFLT = 1023;
-// SL_THREAD_PRIORITY_DFLT and SL_THREAD_SCHED_POLICY_DFLT are defined in thread.hpp
 
 // Router notify flags
 constexpr int SL_NOTIFY_CONNECT = 1;
