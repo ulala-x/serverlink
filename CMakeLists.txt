@@ -98,7 +98,6 @@ set(SERVERLINK_SOURCES
 
     # I/O sources
     src/io/ip.cpp
-    src/io/polling_util.cpp
     src/io/signaler.cpp
     src/io/mailbox.cpp
     src/io/mailbox_safe.cpp
@@ -144,10 +143,10 @@ set(SERVERLINK_SOURCES
 )
 
 # Platform-specific I/O sources
-if(SL_HAVE_EPOLL)
-    list(APPEND SERVERLINK_SOURCES src/io/epoll.cpp)
+if(SL_USE_ASIO)
+    # ASIO used instead of native epoll
 else()
-    message(FATAL_ERROR "Native Linux epoll required for this optimized branch")
+    message(FATAL_ERROR "ASIO required for this optimized branch")
 endif()
 
 # IPC transport sources (Unix-like systems only)
@@ -159,11 +158,12 @@ if(SL_HAVE_IPC)
     )
 endif()
 
-# Asio integration sources (header-only)
+# Asio integration sources (header-only and implementation)
 if(SL_USE_ASIO)
     list(APPEND SERVERLINK_SOURCES
         src/io/asio/asio_context.hpp
         src/io/asio/tcp_stream.hpp
+        src/io/asio/poller.cpp
     )
 endif()
 
