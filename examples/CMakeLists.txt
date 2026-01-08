@@ -66,3 +66,7 @@ target_link_libraries(spot_mmorpg_cell serverlink)
 
 message(STATUS "Examples built: test_simple, test_c_api, router_to_router_simple, test_inproc_timing")
 message(STATUS "SPOT examples: spot_basic, spot_multi_topic, spot_cluster_publisher, spot_cluster_subscriber, spot_mmorpg_cell")
+add_executable(master_node master_node.c)
+target_link_libraries(master_node PRIVATE serverlink)
+add_executable(worker_node worker_node.c)
+target_link_libraries(worker_node PRIVATE serverlink)

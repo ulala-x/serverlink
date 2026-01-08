@@ -1,0 +1,14 @@
+build/
+build-asio/
+build-asan/
+build-old/
+build-x64/
+.git/
+.gemini/
+*.log
+*.csv
+# Don't ignore CMakeLists.txt!
+# *.txt  <- This was the bug
+final_bench_latency.txt
+final_bench_throughput.txt
+benchmark_asio_raw.txt
