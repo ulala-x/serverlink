@@ -27,18 +27,20 @@ void slk::dealer_t::xattach_pipe (slk::pipe_t *pipe_,
     SL_UNUSED (locally_initiated_);
     slk_assert (pipe_);
 
-    // If PROBE_ROUTER is set, send an empty message to the peer.
-    if (options.probe_router) {
-        msg_t probe_msg;
-        int rc = probe_msg.init ();
-        errno_assert (rc == 0);
-
-        pipe_->write (&probe_msg);
-        pipe_->flush ();
-
-        rc = probe_msg.close ();
-        errno_assert (rc == 0);
+    // Send the routing ID to the peer so they know who we are.
+    // DEALER sockets must always send an identity frame (even if empty).
+    msg_t routing_id_msg;
+    int rc = routing_id_msg.init_size (options.routing_id_size);
+    errno_assert (rc == 0);
+    if (options.routing_id_size > 0) {
+        memcpy (routing_id_msg.data (), options.routing_id, options.routing_id_size);
     }
+    routing_id_msg.set_flags (msg_t::routing_id);
+    const bool ok = pipe_->write (&routing_id_msg);
+    slk_assert (ok);
+    pipe_->flush ();
+    rc = routing_id_msg.close ();
+    errno_assert (rc == 0);
 
     _fq.attach (pipe_);
     _lb.attach (pipe_);
