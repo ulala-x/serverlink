@@ -79,6 +79,9 @@ struct options_t
     int rcvtimeo;
     int sndtimeo;
 
+    //  If true, send an empty message to the peer when a new pipe is attached.
+    bool probe_router;
+
     // If true, IPv6 is enabled (as well as IPv4)
     bool ipv6;
 

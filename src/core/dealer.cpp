@@ -7,6 +7,7 @@
 #include "../util/err.hpp"
 #include "../msg/msg.hpp"
 #include "../pipe/pipe.hpp"
+#include "../util/constants.hpp"
 
 slk::dealer_t::dealer_t (slk::ctx_t *parent_, uint32_t tid_, int sid_) :
     socket_base_t (parent_, tid_, sid_, false)
@@ -26,9 +27,18 @@ void slk::dealer_t::xattach_pipe (slk::pipe_t *pipe_,
     SL_UNUSED (locally_initiated_);
     slk_assert (pipe_);
 
-    // Send the routing ID to the peer so they know who we are.
-    send_routing_id (pipe_, options);
-    pipe_->flush ();
+    // If PROBE_ROUTER is set, send an empty message to the peer.
+    if (options.probe_router) {
+        msg_t probe_msg;
+        int rc = probe_msg.init ();
+        errno_assert (rc == 0);
+
+        pipe_->write (&probe_msg);
+        pipe_->flush ();
+
+        rc = probe_msg.close ();
+        errno_assert (rc == 0);
+    }
 
     _fq.attach (pipe_);
     _lb.attach (pipe_);

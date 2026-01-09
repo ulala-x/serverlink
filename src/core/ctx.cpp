@@ -78,71 +78,128 @@ int slk::ctx_t::shutdown ()
 
 int slk::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
 {
-    scoped_lock_t locker (_slot_sync);
+    scoped_lock_t locker (_opt_sync);
     if (_terminating) {
         errno = ETERM;
         return -1;
     }
 
+    const bool is_int = (optvallen_ == sizeof (int));
+    int value = 0;
+    if (is_int)
+        memcpy (&value, optval_, sizeof (int));
+
     switch (option_) {
         case SL_MAX_SOCKETS:
-            if (optvallen_ != sizeof (int) || *((int *) optval_) < 1) {
-                errno = EINVAL;
-                return -1;
+            if (is_int && value >= 1) {
+                _max_sockets = value;
+                return 0;
             }
-            _max_sockets = *((int *) optval_);
-            return 0;
+            break;
         case SL_IO_THREADS:
-            if (optvallen_ != sizeof (int) || *((int *) optval_) < 0) {
-                errno = EINVAL;
-                return -1;
+            if (is_int && value >= 0) {
+                _io_thread_count = value;
+                return 0;
             }
-            _io_thread_count = *((int *) optval_);
-            return 0;
+            break;
         case SL_BLOCKY:
-            if (optvallen_ != sizeof (int)) {
-                errno = EINVAL;
-                return -1;
+            if (is_int) {
+                _blocky = (value != 0);
+                return 0;
             }
-            _blocky = (*((int *) optval_) != 0);
-            return 0;
+            break;
+        case SL_MAX_MSGSZ:
+            if (is_int && value >= 0) {
+                _max_msgsz = value;
+                return 0;
+            }
+            break;
+        case SL_IPV6:
+            if (is_int) {
+                _ipv6 = (value != 0);
+                return 0;
+            }
+            break;
+        default:
+            // Unknown option
+            errno = EINVAL;
+            return -1;
     }
 
-    return thread_ctx_t::set (option_, optval_, optvallen_);
+    // Invalid value for known option
+    errno = EINVAL;
+    return -1;
 }
 
 int slk::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
 {
-    scoped_lock_t locker (_slot_sync);
+    const bool is_int = (*optvallen_ == sizeof (int));
+    int *value = static_cast<int *> (optval_);
+
     switch (option_) {
         case SL_MAX_SOCKETS:
-            if (*optvallen_ != sizeof (int)) return -1;
-            *((int *) optval_) = _max_sockets;
-            return 0;
-        case SL_IO_THREADS:
-            if (*optvallen_ != sizeof (int)) return -1;
-            *((int *) optval_) = _io_thread_count;
-            return 0;
+            if (is_int) {
+                scoped_lock_t locker (_opt_sync);
+                *value = _max_sockets;
+                return 0;
+            }
+            break;
+
         case SL_SOCKET_LIMIT:
-            if (*optvallen_ != sizeof (int)) return -1;
-            *((int *) optval_) = _max_sockets;
-            return 0;
+            if (is_int) {
+                *value = 65535; 
+                return 0;
+            }
+            break;
+
+        case SL_IO_THREADS:
+            if (is_int) {
+                scoped_lock_t locker (_opt_sync);
+                *value = _io_thread_count;
+                return 0;
+            }
+            break;
+
+        case SL_IPV6:
+            if (is_int) {
+                scoped_lock_t locker (_opt_sync);
+                *value = _ipv6 ? 1 : 0;
+                return 0;
+            }
+            break;
+
+        case SL_BLOCKY:
+            if (is_int) {
+                scoped_lock_t locker (_opt_sync);
+                *value = _blocky ? 1 : 0;
+                return 0;
+            }
+            break;
+
+        case SL_MAX_MSGSZ:
+            if (is_int) {
+                scoped_lock_t locker (_opt_sync);
+                *value = _max_msgsz;
+                return 0;
+            }
+            break;
+        default:
+            errno = EINVAL;
+            return -1;
     }
-    return thread_ctx_t::get(option_, optval_, optvallen_);
+    
+    errno = EINVAL;
+    return -1;
 }
 
 int slk::ctx_t::get (int option_)
 {
-    switch (option_) {
-        case SL_MAX_SOCKETS:
-            return _max_sockets;
-        case SL_IO_THREADS:
-            return _io_thread_count;
-        case SL_IPV6:
-            return _ipv6 ? 1 : 0;
-        case SL_BLOCKY:
-            return _blocky ? 1 : 0;
-    }
+    int optval = 0;
+    size_t optvallen = sizeof (int);
+
+    if (get (option_, &optval, &optvallen) == 0)
+        return optval;
+
     return -1;
 }
 
@@ -319,41 +376,14 @@ void slk::ctx_t::connect_inproc_sockets (slk::socket_base_t *bind_socket_,
                                          const pending_connection_t &pending_connection_,
                                          side side_)
 {
-    // The critical implementation of inproc connection
     bind_socket_->inc_seqnum();
     pending_connection_.endpoint.socket->inc_seqnum();
 
     if (side_ == bind_side) {
-        // Connect side is already pending, we are binding
-        // We need to attach pipes to sockets
-        // The pipes were created in pend_connection caller (socket_base::connect)
-        // Actually, pipes are created by the connector/listener logic.
-        // For inproc, socket_base manages this.
-        
-        // Wait, socket_base::connect_internal creates the pipes for inproc.
-        // We just need to attach them.
-        
-        // This function is static but accesses private members of socket_base_t?
-        // Yes, ctx_t is friend of socket_base_t.
-        
-        // Attach bind pipe to bind socket
         bind_socket_->attach_pipe(pending_connection_.bind_pipe, true, false);
-        
-        // Attach connect pipe to connect socket
         pending_connection_.endpoint.socket->attach_pipe(pending_connection_.connect_pipe, true, true);
     }
     else {
-        // Connect side
-        // But this function is only called from connect_pending (which is called from bind)
-        // So side_ is always bind_side?
-        // Wait, connect_inproc_sockets is also called if find_endpoint succeeds immediately.
-        
-        // If side_ == connect_side:
-        // We found the bind socket immediately.
-        // pending_connection_ contains the connect side info?
-        // No, if called from connect_side, 'bind_socket_' is the bound socket we found.
-        // 'pending_connection_' holds the connect side info we just created.
-        
         bind_socket_->attach_pipe(pending_connection_.bind_pipe, true, false);
         pending_connection_.endpoint.socket->attach_pipe(pending_connection_.connect_pipe, true, true);
     }

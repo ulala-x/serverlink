@@ -264,6 +264,8 @@ bool slk::mechanism_t::check_socket_type (const char *type_,
                                           const size_t len_) const
 {
     switch (options.type) {
+        case SL_PAIR:
+            return strequals (type_, len_, socket_type_pair);
         case SL_ROUTER:
             // ROUTER accepts DEALER, ROUTER, REQ
             // For now accept any peer type - validation at higher layers

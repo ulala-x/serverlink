@@ -7,7 +7,7 @@ set -e
 SERVERLINK_DIR="/home/ulalax/project/ulalax/serverlink"
 LIBZMQ_DIR="/home/ulalax/project/ulalax/libzmq-ref"
 
-export LD_LIBRARY_PATH="${LIBZMQ_DIR}/build/lib:${SERVERLINK_DIR}/build:${LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="${LIBZMQ_DIR}/build/lib:${SERVERLINK_DIR}/build-asio:${LD_LIBRARY_PATH}"
 
 LIBZMQ_THR="${LIBZMQ_DIR}/perf/router_bench/build/router_throughput"
 LIBZMQ_LAT="${LIBZMQ_DIR}/perf/router_bench/build/router_latency"
@@ -90,7 +90,7 @@ RESULTS_FILE="${RESULTS_DIR}/comparison_${TIMESTAMP}.txt"
     echo "  ServerLink Full Throughput Benchmark"
     echo "============================================================================"
     echo ""
-    cd "${SERVERLINK_DIR}/build"
+    cd "${SERVERLINK_DIR}/build-asio"
     ./tests/benchmark/bench_throughput 2>&1
     echo ""
 
@@ -150,7 +150,7 @@ RESULTS_FILE="${RESULTS_DIR}/comparison_${TIMESTAMP}.txt"
     echo "  ServerLink Full Latency Benchmark"
     echo "============================================================================"
     echo ""
-    cd "${SERVERLINK_DIR}/build"
+    cd "${SERVERLINK_DIR}/build-asio"
     ./tests/benchmark/bench_latency 2>&1
     echo ""
 

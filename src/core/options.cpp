@@ -274,6 +274,10 @@ int slk::options_t::setsockopt (int option_,
             }
             break;
 
+        case SL_PROBE_ROUTER:
+            return do_setsockopt_int_as_bool_relaxed (optval_, optvallen_,
+                                                      &probe_router);
+
         case SL_SNDTIMEO:
             if (is_int && value >= -1) {
                 sndtimeo = value;

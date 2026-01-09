@@ -3,6 +3,7 @@ build/
 cmake-build-*/
 
 # IDE
+.cache/
 .idea/
 .vscode/
 *.swp
@@ -50,3 +51,8 @@ build-asio-verify/
 *error.txt
 *results.txt
 nul
+
+# Benchmark temp and binaries
+tmp_bench/
+tests/benchmark/comparison_suite/slk_perf
+tests/benchmark/comparison_suite/zmq_perf

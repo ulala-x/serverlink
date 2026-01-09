@@ -1,0 +1,319 @@
+Performance Comparison Results
+Date: Fri Jan  9 09:58:36 KST 2026
+System: Linux ulalax-home 6.6.87.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux
+GCC: gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0
+
+============================================================================
+
+############################################################################
+#                         THROUGHPUT BENCHMARKS                            #
+############################################################################
+
+============================================================================
+  Throughput Test: 64 bytes × 100000 messages
+============================================================================
+
+─────────────────────── TCP Transport ───────────────────────
+
+[libzmq]
+
+=== libzmq ROUTER-ROUTER Throughput (tcp) ===
+message size: 64 [B]
+message count: 100000
+mean throughput: 4461497 [msg/s]
+mean throughput: 2284.287 [Mb/s]
+
+─────────────────────── inproc Transport ────────────────────
+
+[libzmq]
+FAILED
+
+─────────────────────── IPC Transport ───────────────────────
+
+[libzmq]
+
+=== libzmq ROUTER-ROUTER Throughput (ipc) ===
+message size: 64 [B]
+message count: 100000
+mean throughput: 4363954 [msg/s]
+mean throughput: 2234.344 [Mb/s]
+
+
+============================================================================
+  Throughput Test: 256 bytes × 100000 messages
+============================================================================
+
+─────────────────────── TCP Transport ───────────────────────
+
+[libzmq]
+FAILED
+
+─────────────────────── inproc Transport ────────────────────
+
+[libzmq]
+FAILED
+
+─────────────────────── IPC Transport ───────────────────────
+
+[libzmq]
+
+=== libzmq ROUTER-ROUTER Throughput (ipc) ===
+message size: 256 [B]
+message count: 100000
+mean throughput: 2301284 [msg/s]
+mean throughput: 4713.030 [Mb/s]
+
+
+============================================================================
+  Throughput Test: 1024 bytes × 50000 messages
+============================================================================
+
+─────────────────────── TCP Transport ───────────────────────
+
+[libzmq]
+
+=== libzmq ROUTER-ROUTER Throughput (tcp) ===
+message size: 1024 [B]
+message count: 50000
+mean throughput: 928919 [msg/s]
+mean throughput: 7609.705 [Mb/s]
+
+─────────────────────── inproc Transport ────────────────────
+
+[libzmq]
+FAILED
+
+─────────────────────── IPC Transport ───────────────────────
+
+[libzmq]
+
+=== libzmq ROUTER-ROUTER Throughput (ipc) ===
+message size: 1024 [B]
+message count: 50000
+mean throughput: 893416 [msg/s]
+mean throughput: 7318.860 [Mb/s]
+
+
+============================================================================
+  Throughput Test: 4096 bytes × 10000 messages
+============================================================================
+
+─────────────────────── TCP Transport ───────────────────────
+
+[libzmq]
+
+=== libzmq ROUTER-ROUTER Throughput (tcp) ===
+message size: 4096 [B]
+message count: 10000
+mean throughput: 278544 [msg/s]
+mean throughput: 9127.322 [Mb/s]
+
+─────────────────────── inproc Transport ────────────────────
+
+[libzmq]
+FAILED
+
+─────────────────────── IPC Transport ───────────────────────
+
+[libzmq]
+
+=== libzmq ROUTER-ROUTER Throughput (ipc) ===
+message size: 4096 [B]
+message count: 10000
+mean throughput: 246731 [msg/s]
+mean throughput: 8084.875 [Mb/s]
+
+
+============================================================================
+  ServerLink Full Throughput Benchmark
+============================================================================
+
+
+=== ServerLink Throughput Benchmark ===
+
+Transport            |   Message Size | Message Count |        Time |     Throughput |    Bandwidth
+----------------------------------------------------------------------------------------------
+TCP                  |       64 bytes |   100000 msgs |    20.31 ms |    4922888 msg/s |   300.47 MB/s
+inproc               |       64 bytes |   100000 msgs |    23.35 ms |    4283029 msg/s |   261.42 MB/s
+IPC                  |       64 bytes |   100000 msgs |    19.97 ms |    5007450 msg/s |   305.63 MB/s
+
+TCP                  |     1024 bytes |    50000 msgs |    59.24 ms |     844027 msg/s |   824.24 MB/s
+inproc               |     1024 bytes |    50000 msgs |    36.49 ms |    1370273 msg/s |  1338.16 MB/s
+IPC                  |     1024 bytes |    50000 msgs |    50.24 ms |     995172 msg/s |   971.85 MB/s
+
+TCP                  |     8192 bytes |    10000 msgs |    58.09 ms |     172147 msg/s |  1344.90 MB/s
+inproc               |     8192 bytes |    10000 msgs |    16.31 ms |     613275 msg/s |  4791.21 MB/s
+IPC                  |     8192 bytes |    10000 msgs |    49.09 ms |     203725 msg/s |  1591.61 MB/s
+
+TCP                  |    65536 bytes |     1000 msgs |    13.77 ms |      72630 msg/s |  4539.35 MB/s
+inproc               |    65536 bytes |     1000 msgs |     6.19 ms |     161620 msg/s | 10101.28 MB/s
+IPC                  |    65536 bytes |     1000 msgs |    14.58 ms |      68574 msg/s |  4285.87 MB/s
+
+Benchmark completed.
+
+
+
+############################################################################
+#                          LATENCY BENCHMARKS                              #
+############################################################################
+
+============================================================================
+  Latency Test: 64 bytes × 10000 roundtrips
+============================================================================
+
+─────────────────────── TCP Transport ───────────────────────
+
+[libzmq]
+
+=== libzmq ROUTER-ROUTER Latency (tcp) ===
+message size: 64 [B]
+roundtrip count: 10000
+average latency: 45.39 [us]
+p50 latency: 38.00 [us]
+p95 latency: 70.50 [us]
+p99 latency: 150.50 [us]
+
+─────────────────────── inproc Transport ────────────────────
+
+[libzmq]
+FAILED
+
+─────────────────────── IPC Transport ───────────────────────
+
+[libzmq]
+FAILED
+
+
+============================================================================
+  Latency Test: 256 bytes × 10000 roundtrips
+============================================================================
+
+─────────────────────── TCP Transport ───────────────────────
+
+[libzmq]
+
+=== libzmq ROUTER-ROUTER Latency (tcp) ===
+message size: 256 [B]
+roundtrip count: 10000
+average latency: 50.43 [us]
+p50 latency: 43.00 [us]
+p95 latency: 79.50 [us]
+p99 latency: 147.00 [us]
+
+─────────────────────── inproc Transport ────────────────────
+
+[libzmq]
+FAILED
+
+─────────────────────── IPC Transport ───────────────────────
+
+[libzmq]
+
+=== libzmq ROUTER-ROUTER Latency (ipc) ===
+message size: 256 [B]
+roundtrip count: 10000
+average latency: 43.62 [us]
+p50 latency: 36.50 [us]
+p95 latency: 65.50 [us]
+p99 latency: 136.00 [us]
+
+
+============================================================================
+  Latency Test: 1024 bytes × 10000 roundtrips
+============================================================================
+
+─────────────────────── TCP Transport ───────────────────────
+
+[libzmq]
+
+=== libzmq ROUTER-ROUTER Latency (tcp) ===
+message size: 1024 [B]
+roundtrip count: 10000
+average latency: 51.11 [us]
+p50 latency: 42.50 [us]
+p95 latency: 89.50 [us]
+p99 latency: 174.50 [us]
+
+─────────────────────── inproc Transport ────────────────────
+
+[libzmq]
+FAILED
+
+─────────────────────── IPC Transport ───────────────────────
+
+[libzmq]
+
+=== libzmq ROUTER-ROUTER Latency (ipc) ===
+message size: 1024 [B]
+roundtrip count: 10000
+average latency: 45.46 [us]
+p50 latency: 40.50 [us]
+p95 latency: 69.00 [us]
+p99 latency: 130.50 [us]
+
+
+============================================================================
+  Latency Test: 4096 bytes × 1000 roundtrips
+============================================================================
+
+─────────────────────── TCP Transport ───────────────────────
+
+[libzmq]
+
+=== libzmq ROUTER-ROUTER Latency (tcp) ===
+message size: 4096 [B]
+roundtrip count: 1000
+average latency: 76.97 [us]
+p50 latency: 78.50 [us]
+p95 latency: 109.00 [us]
+p99 latency: 170.00 [us]
+
+─────────────────────── inproc Transport ────────────────────
+
+[libzmq]
+FAILED
+
+─────────────────────── IPC Transport ───────────────────────
+
+[libzmq]
+
+=== libzmq ROUTER-ROUTER Latency (ipc) ===
+message size: 4096 [B]
+roundtrip count: 1000
+average latency: 55.03 [us]
+p50 latency: 47.00 [us]
+p95 latency: 98.50 [us]
+p99 latency: 160.00 [us]
+
+
+============================================================================
+  ServerLink Full Latency Benchmark
+============================================================================
+
+
+=== ServerLink Latency Benchmark (Round-Trip Time) ===
+
+Transport            |   Message Size |      Average |            p50 |            p95 |            p99
+----------------------------------------------------------------------------------------------
+TCP                  |       64 bytes | avg:    65.61 us | p50:    54.16 us | p95:   105.07 us | p99:   226.43 us
+inproc               |       64 bytes | avg:    29.40 us | p50:    23.25 us | p95:    47.62 us | p99:    83.67 us
+IPC                  |       64 bytes | avg:    68.62 us | p50:    54.15 us | p95:   129.62 us | p99:   197.57 us
+
+TCP                  |     1024 bytes | avg:    69.60 us | p50:    54.95 us | p95:   118.82 us | p99:   235.74 us
+inproc               |     1024 bytes | avg:    28.25 us | p50:    23.56 us | p95:    48.06 us | p99:    76.65 us
+IPC                  |     1024 bytes | avg:    64.69 us | p50:    52.17 us | p95:   110.59 us | p99:   218.85 us
+
+TCP                  |     8192 bytes | avg:    78.83 us | p50:    63.88 us | p95:   132.96 us | p99:   234.16 us
+inproc               |     8192 bytes | avg:    30.99 us | p50:    24.87 us | p95:    54.81 us | p99:    94.50 us
+IPC                  |     8192 bytes | avg:    72.00 us | p50:    58.31 us | p95:   129.46 us | p99:   214.34 us
+
+Benchmark completed.
+
+Note: Latencies shown are round-trip times (RTT).
+      One-way latency is approximately RTT/2.
+
+
+============================================================================
+                         BENCHMARK COMPLETED
+============================================================================
+

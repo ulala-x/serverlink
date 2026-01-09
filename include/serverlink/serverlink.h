@@ -47,6 +47,7 @@ SL_EXPORT void SL_CALL slk_version(int *major, int *minor, int *patch);
 #define SLK_CONNECT_ROUTING_ID  61
 #define SLK_ROUTER_MANDATORY    33
 #define SLK_ROUTER_HANDOVER     56
+#define SLK_PROBE_ROUTER        51
 #define SLK_ROUTER_NOTIFY       97
 #define SLK_LAST_ENDPOINT       32
 #define SLK_HEARTBEAT_IVL       75

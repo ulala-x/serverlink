@@ -18,7 +18,8 @@ slk::fq_t::~fq_t ()
 void slk::fq_t::attach (pipe_t *pipe_)
 {
     _pipes.push_back (pipe_);
-    activated (pipe_);
+    _pipes.swap (_active, _pipes.size () - 1);
+    _active++;
 }
 
 void slk::fq_t::pipe_terminated (pipe_t *pipe_)
@@ -28,19 +29,16 @@ void slk::fq_t::pipe_terminated (pipe_t *pipe_)
     if (index < _active) {
         _active--;
         _pipes.swap (index, _active);
-        if (_current > _active || (_current == _active && _current > 0))
-            _current--;
+        if (_current == _active)
+            _current = 0;
     }
     _pipes.erase (pipe_);
 }
 
 void slk::fq_t::activated (pipe_t *pipe_)
 {
-    const pipes_t::size_type index = _pipes.index (pipe_);
-    if (index >= _active) {
-        _pipes.swap (index, _active);
-        _active++;
-    }
+    _pipes.swap (_pipes.index (pipe_), _active);
+    _active++;
 }
 
 int slk::fq_t::recv (msg_t *msg_)
@@ -54,15 +52,17 @@ int slk::fq_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
     errno_assert (rc == 0);
 
     while (_active > 0) {
-        if (_pipes [_current]->read (msg_)) {
+        if (_pipes[_current]->read (msg_)) {
             if (pipe_)
-                *pipe_ = _pipes [_current];
+                *pipe_ = _pipes[_current];
             _more = (msg_->flags () & msg_t::more) != 0;
             if (!_more) {
                 _current = (_current + 1) % _active;
             }
             return 0;
         }
+
+        slk_assert (!_more);
 
         _active--;
         _pipes.swap (_current, _active);
@@ -82,7 +82,7 @@ bool slk::fq_t::has_in ()
         return true;
 
     while (_active > 0) {
-        if (_pipes [_current]->check_read ())
+        if (_pipes[_current]->check_read ())
             return true;
 
         _active--;
