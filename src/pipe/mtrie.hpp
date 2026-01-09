@@ -95,4 +95,6 @@ template <typename T> class mtrie_t
 };
 }
 
+#include "mtrie_impl.hpp"
+
 #endif

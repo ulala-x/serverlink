@@ -1,75 +1,83 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-/* ServerLink - Ported from libzmq */
 
 #include "../precompiled.hpp"
+#include "../util/macros.hpp"
 #include "dealer.hpp"
-#include <serverlink/serverlink.h>
 #include "../util/err.hpp"
 #include "../msg/msg.hpp"
 #include "../pipe/pipe.hpp"
-#include "../util/constants.hpp"
 
-slk::dealer_t::dealer_t (slk::ctx_t *parent_, uint32_t tid_, int sid_) :
-    socket_base_t (parent_, tid_, sid_, false)
+slk::dealer_t::dealer_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
+    socket_base_t (parent_, tid_, sid_), _probe_router (false)
 {
-    options.type = SLK_DEALER;
+    options.type = SL_DEALER;
+    options.can_send_hello_msg = true;
+    options.can_recv_hiccup_msg = true;
 }
 
 slk::dealer_t::~dealer_t ()
 {
 }
 
-void slk::dealer_t::xattach_pipe (slk::pipe_t *pipe_,
+void slk::dealer_t::xattach_pipe (pipe_t *pipe_,
                                   bool subscribe_to_all_,
                                   bool locally_initiated_)
 {
     SL_UNUSED (subscribe_to_all_);
     SL_UNUSED (locally_initiated_);
+
     slk_assert (pipe_);
 
-    // Send the routing ID to the peer so they know who we are.
-    // DEALER sockets must always send an identity frame (even if empty).
-    msg_t routing_id_msg;
-    int rc = routing_id_msg.init_size (options.routing_id_size);
-    errno_assert (rc == 0);
-    if (options.routing_id_size > 0) {
-        memcpy (routing_id_msg.data (), options.routing_id, options.routing_id_size);
+    if (_probe_router) {
+        msg_t probe_msg;
+        int rc = probe_msg.init ();
+        errno_assert (rc == 0);
+
+        // rc is ignored here, since it is not a bug if write fails.
+        pipe_->write (&probe_msg);
+        pipe_->flush ();
+
+        rc = probe_msg.close ();
+        errno_assert (rc == 0);
     }
-    routing_id_msg.set_flags (msg_t::routing_id);
-    const bool ok = pipe_->write (&routing_id_msg);
-    slk_assert (ok);
-    pipe_->flush ();
-    rc = routing_id_msg.close ();
-    errno_assert (rc == 0);
 
     _fq.attach (pipe_);
     _lb.attach (pipe_);
 }
 
-void slk::dealer_t::xread_activated (slk::pipe_t *pipe_)
+int slk::dealer_t::xsetsockopt (int option_,
+                                const void *optval_,
+                                size_t optvallen_)
 {
-    _fq.activated (pipe_);
+    const bool is_int = (optvallen_ == sizeof (int));
+    int value = 0;
+    if (is_int)
+        memcpy (&value, optval_, sizeof (int));
+
+    switch (option_) {
+        case SL_PROBE_ROUTER:
+            if (is_int && value >= 0) {
+                _probe_router = (value != 0);
+                return 0;
+            }
+            break;
+
+        default:
+            break;
+    }
+
+    errno = EINVAL;
+    return -1;
 }
 
-void slk::dealer_t::xwrite_activated (slk::pipe_t *pipe_)
+int slk::dealer_t::xsend (msg_t *msg_)
 {
-    _lb.activated (pipe_);
+    return sendpipe (msg_, NULL);
 }
 
-void slk::dealer_t::xpipe_terminated (slk::pipe_t *pipe_)
+int slk::dealer_t::xrecv (msg_t *msg_)
 {
-    _fq.pipe_terminated (pipe_);
-    _lb.pipe_terminated (pipe_);
-}
-
-int slk::dealer_t::xsend (slk::msg_t *msg_)
-{
-    return _lb.send (msg_);
-}
-
-int slk::dealer_t::xrecv (slk::msg_t *msg_)
-{
-    return _fq.recv (msg_);
+    return recvpipe (msg_, NULL);
 }
 
 bool slk::dealer_t::xhas_in ()
@@ -80,4 +88,30 @@ bool slk::dealer_t::xhas_in ()
 bool slk::dealer_t::xhas_out ()
 {
     return _lb.has_out ();
+}
+
+void slk::dealer_t::xread_activated (pipe_t *pipe_)
+{
+    _fq.activated (pipe_);
+}
+
+void slk::dealer_t::xwrite_activated (pipe_t *pipe_)
+{
+    _lb.activated (pipe_);
+}
+
+void slk::dealer_t::xpipe_terminated (pipe_t *pipe_)
+{
+    _fq.pipe_terminated (pipe_);
+    _lb.pipe_terminated (pipe_);
+}
+
+int slk::dealer_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
+{
+    return _lb.sendpipe (msg_, pipe_);
+}
+
+int slk::dealer_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
+{
+    return _fq.recvpipe (msg_, pipe_);
 }
