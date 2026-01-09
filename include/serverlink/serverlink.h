@@ -36,10 +36,10 @@ SL_EXPORT void SL_CALL slk_version(int *major, int *minor, int *patch);
 
 /* Internal / Legacy Patterns (Do not use in new code) */
 #define SLK_DEALER 5
-#define SLK_XPUB   9
-#define SLK_XSUB   10
+#define SLK_XPUB        9
+#define SLK_XSUB        10
 
-/****************************************************************************/
+/******************************************************************************/
 /*  Socket Options                                                          */
 /****************************************************************************/
 

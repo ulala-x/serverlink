@@ -384,7 +384,7 @@ int slk::socket_base_t::bind (const char *endpoint_uri_)
 #endif
     else if (protocol == slk::protocol_name::inproc) {
         // inproc: register endpoint in context
-        const endpoint_t endpoint = {this, options};
+        const endpoint_t endpoint (this, options);
         rc = get_ctx ()->register_endpoint (address.c_str (), endpoint);
         if (rc != 0) {
             return -1;
@@ -470,7 +470,7 @@ int slk::socket_base_t::connect_internal (const char *endpoint_uri_)
                           NULL, new_pipes[0]);
 
             // Queue the pending connection
-            const endpoint_t local_endpoint = {this, options};
+            const endpoint_t local_endpoint (this, options);
             get_ctx ()->pend_connection (address, local_endpoint, new_pipes);
 
             return 0;
