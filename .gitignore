@@ -55,4 +55,12 @@ nul
 # Benchmark temp and binaries
 tmp_bench/
 tests/benchmark/comparison_suite/slk_perf
-tests/benchmark/comparison_suite/zmq_perf
+tests/benchmark/comparison_suite/zmq_perf.cache/
+tests/benchmark/comparison_suite/pair_slk
+tests/benchmark/comparison_suite/pair_zmq
+tests/benchmark/comparison_suite/dealer_router_slk
+tests/benchmark/comparison_suite/dealer_router_zmq
+tests/benchmark/comparison_suite/router_router_slk
+tests/benchmark/comparison_suite/router_router_zmq
+tests/benchmark/comparison_suite/pubsub_slk
+tests/benchmark/comparison_suite/pubsub_zmq
