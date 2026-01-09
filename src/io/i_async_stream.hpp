@@ -31,6 +31,7 @@ namespace slk
         virtual void async_write(const void* buf, size_t len, write_handler handler) = 0;
 
         // 스트림 닫기
+        virtual void async_writev(const asio::const_buffer* buffers, std::size_t count, write_handler handler) = 0;
         virtual void close() = 0;
     };
 }

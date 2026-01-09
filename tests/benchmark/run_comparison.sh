@@ -5,7 +5,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="${SCRIPT_DIR}/../../build/tests/benchmark"
+BUILD_DIR="${SCRIPT_DIR}/../../build-asio/tests/benchmark"
 
 # libzmq paths
 LIBZMQ_INCLUDE="/home/ulalax/project/ulalax/libzmq-native/deps/linux-x64/zeromq-4.3.5/include"

@@ -13,7 +13,7 @@ namespace slk {
 // Number of new messages in message pipe needed to trigger new memory
 // allocation. Setting this parameter to 256 decreases the impact of
 // memory allocation by approximately 99.6%
-inline constexpr int message_pipe_granularity = 256;
+inline constexpr int out_batch_size = 131072; inline constexpr int in_batch_size = 131072; inline constexpr int message_pipe_granularity = 256;
 
 // Commands in pipe per allocation event.
 inline constexpr int command_pipe_granularity = 16;

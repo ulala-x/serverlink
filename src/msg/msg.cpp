@@ -83,7 +83,7 @@ int slk::msg_t::init_size (size_t size_)
         _u.lmsg.content->size = size_;
         _u.lmsg.content->ffn = NULL;
         _u.lmsg.content->hint = NULL;
-        new (&_u.lmsg.content->refcnt) slk::atomic_counter_t ();
+        _u.lmsg.content->refcnt.set(1);
     }
     return 0;
 }
@@ -165,7 +165,7 @@ int slk::msg_t::init_data (void *data_,
         _u.lmsg.content->size = size_;
         _u.lmsg.content->ffn = ffn_;
         _u.lmsg.content->hint = hint_;
-        new (&_u.lmsg.content->refcnt) slk::atomic_counter_t ();
+        _u.lmsg.content->refcnt.set(1);
     }
     return 0;
 }
