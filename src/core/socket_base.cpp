@@ -27,6 +27,7 @@
 #include "../io/mailbox.hpp"
 
 #include "pair.hpp"
+#include "dealer.hpp"
 #include "router.hpp"
 #include "pub.hpp"
 #include "sub.hpp"
@@ -57,6 +58,9 @@ slk::socket_base_t *slk::socket_base_t::create (int type_,
     switch (type_) {
         case SL_PAIR:
             s = new (std::nothrow) pair_t (parent_, tid_, sid_);
+            break;
+        case SL_DEALER:
+            s = new (std::nothrow) dealer_t (parent_, tid_, sid_);
             break;
         case SL_ROUTER:
             s = new (std::nothrow) router_t (parent_, tid_, sid_);

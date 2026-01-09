@@ -49,6 +49,7 @@ const slk::blob_t &slk::mechanism_t::get_user_id () const
 const char socket_type_pair[] = "PAIR";
 const char socket_type_pub[] = "PUB";
 const char socket_type_sub[] = "SUB";
+const char socket_type_dealer[] = "DEALER";
 const char socket_type_router[] = "ROUTER";
 const char socket_type_xpub[] = "XPUB";
 const char socket_type_xsub[] = "XSUB";
@@ -64,6 +65,8 @@ const char *slk::mechanism_t::socket_type_string (int socket_type_)
             return socket_type_sub;
         case SL_ROUTER:
             return socket_type_router;
+        case SL_DEALER:
+            return socket_type_dealer;
         case SL_XPUB:
             return socket_type_xpub;
         case SL_XSUB:
@@ -264,6 +267,8 @@ bool slk::mechanism_t::check_socket_type (const char *type_,
         case SL_ROUTER:
             // ROUTER accepts DEALER, ROUTER, REQ
             // For now accept any peer type - validation at higher layers
+            return true;
+        case SL_DEALER:
             return true;
         case SL_PUB:
             return strequals (type_, len_, socket_type_sub)

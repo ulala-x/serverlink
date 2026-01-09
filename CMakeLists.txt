@@ -68,6 +68,7 @@ set(SERVERLINK_SOURCES
     # Pipe sources
     src/pipe/pipe.cpp
     src/pipe/fq.cpp
+    src/pipe/lb.cpp
     src/pipe/dist.cpp
     src/pipe/trie.cpp
 
@@ -89,6 +90,7 @@ set(SERVERLINK_SOURCES
     src/core/endpoint.cpp
     src/core/socket_base.cpp
     src/core/pair.cpp
+    src/core/dealer.cpp
     src/core/router.cpp
     src/core/pub.cpp
     src/core/sub.cpp
