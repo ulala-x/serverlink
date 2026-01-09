@@ -1,11 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-/* ServerLink - Ported from libzmq */
 
 #ifndef SL_FQ_HPP_INCLUDED
 #define SL_FQ_HPP_INCLUDED
 
 #include "../core/array.hpp"
-#include "../msg/blob.hpp"
 #include "../util/macros.hpp"
 
 namespace slk
@@ -23,20 +21,17 @@ class fq_t
     fq_t ();
     ~fq_t ();
 
-    void attach (pipe_t *pipe_);
-    void activated (pipe_t *pipe_);
-    void pipe_terminated (pipe_t *pipe_);
+    void attach (slk::pipe_t *pipe_);
+    void activated (slk::pipe_t *pipe_);
+    void pipe_terminated (slk::pipe_t *pipe_);
 
-    int recv (msg_t *msg_);
-    int recvpipe (msg_t *msg_, pipe_t **pipe_);
+    int recv (slk::msg_t *msg_);
+    int recvpipe (slk::msg_t *msg_, slk::pipe_t **pipe_);
     bool has_in ();
-
-    // Get the number of pipes (for debugging).
-    size_t size () const { return _pipes.size (); }
 
   private:
     //  Inbound pipes.
-    typedef array_t<pipe_t, 1> pipes_t;
+    typedef array_t<slk::pipe_t, 1> pipes_t;
     pipes_t _pipes;
 
     //  Number of active pipes. All the active pipes are located at the

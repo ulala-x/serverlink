@@ -29,6 +29,7 @@ class socket_base_t : public own_t,
                       public i_poll_events,
                       public i_pipe_events
 {
+    friend class ctx_t;
     friend class reaper_t;
 
   public:

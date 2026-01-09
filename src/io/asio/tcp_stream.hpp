@@ -60,7 +60,6 @@ namespace slk
             );
         }
 
-        inline void async_writev(const asio::const_buffer* buffers, std::size_t count, write_handler handler) override { asio::async_write(_socket, std::span<const asio::const_buffer>(buffers, count), [handler](const asio::error_code& ec, std::size_t bt) { handler(bt, ec.value()); }); }
         inline void close() override
         {
             asio::error_code ec;
