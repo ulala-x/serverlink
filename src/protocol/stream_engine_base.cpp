@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
+/* ServerLink - Ported from libzmq - 1:1 Parity Parity with stream_engine_base.cpp */
+
 #include "../precompiled.hpp"
-#include <algorithm>
 #include "stream_engine_base.hpp"
 #include "i_decoder.hpp"
 #include "i_encoder.hpp"
@@ -22,10 +23,9 @@ stream_engine_base_t::stream_engine_base_t (
     _input_stopped (false), _output_stopped (true), _endpoint_uri_pair (endpoint_uri_pair_),
     _peer_address (""), _lifetime_sentinel (std::make_shared<int> (0)),
     _stream (std::move (stream_)), _io_error (false), _session (NULL),
-    _has_handshake_stage (has_handshake_stage_), _is_vectorized(false)
+    _has_handshake_stage (has_handshake_stage_), _batch_count(0), _is_vectorized(false)
 {
     _tx_msg.init ();
-    _out_batch.reserve(32);
 }
 
 stream_engine_base_t::~stream_engine_base_t () { _tx_msg.close (); }
@@ -40,48 +40,84 @@ bool stream_engine_base_t::restart_input () { _input_stopped = false; start_read
 void stream_engine_base_t::restart_output () {
     if (unlikely (_io_error)) return;
     if (likely (_output_stopped)) {
-        if (!_outsize && _out_batch.empty()) {
+        if (!_outsize && _batch_count == 0) {
             if (unlikely (_encoder == NULL)) return;
             fill_out_batch();
         }
-        if (_outsize > 0 || !_out_batch.empty()) start_write();
+        if (_outsize > 0 || _batch_count > 0) start_write();
     }
 }
 
-// Mirroring libzmq's aggressive output strategy
+// Exactly mirroring libzmq's out_event batching strategy
 void stream_engine_base_t::fill_out_batch () {
-    _outsize = 0; _outpos = NULL; _out_batch.clear(); _is_vectorized = false;
+    _outsize = 0; _outpos = NULL; _batch_count = 0; _is_vectorized = false;
 
-    if (_handshaking) {
-        while (_outsize < (size_t)_options.out_batch_size) {
-            if (_encoder->is_empty()) { 
-                if ((this->*_next_msg)(&_tx_msg) == -1) break;
-                _encoder->load_msg(&_tx_msg); 
-            }
-            unsigned char* ptr = _outpos ? (_outpos + _outsize) : NULL;
-            size_t n = _encoder->encode(&ptr, (size_t)_options.out_batch_size - _outsize);
-            if (!_outpos) _outpos = ptr; 
-            _outsize += n;
-            if (!_encoder->is_empty()) break;
-        }
-        return;
-    }
+    // 1. Check encoder for existing data (libzmq line 323)
+    _outsize = _encoder->encode(&_outpos, 0);
 
-    // Aggressive Vectorized Batching
-    while (_out_batch.size() < 32) {
+    // 2. Continuous batching loop (libzmq line 325-342)
+    while (_outsize < static_cast<size_t>(_options.out_batch_size)) {
         if (_encoder->is_empty()) {
             if ((this->*_next_msg)(&_tx_msg) == -1) break;
             _encoder->load_msg(&_tx_msg);
         }
-        unsigned char *ptr = NULL;
-        size_t n = _encoder->encode(&ptr, 1024 * 1024); // Request massive chunks
-        if (n > 0) {
-            _out_batch.push_back(asio::buffer(ptr, n));
+
+        // Optimization: For large messages, use ASIO vector write
+        if (!_handshaking && _tx_msg.size() > 1024) {
+            unsigned char *ptr = NULL;
+            size_t n = _encoder->encode(&ptr, 1024 * 1024);
+            if (n > 0) {
+                if (_outsize > 0 && _batch_count == 0) {
+                    _out_batch[_batch_count++] = asio::buffer(_outpos, _outsize);
+                }
+                _out_batch[_batch_count++] = asio::buffer(ptr, n);
+                _outsize += n;
+                _is_vectorized = true;
+            }
+        } else {
+            // Normal contiguous batching
+            unsigned char *bufptr = _outpos + _outsize;
+            size_t n = _encoder->encode(&bufptr, _options.out_batch_size - _outsize);
+            slk_assert(n > 0);
+            if (_outpos == NULL) _outpos = bufptr;
             _outsize += n;
         }
         if (!_encoder->is_empty()) break;
     }
-    if (!_out_batch.empty()) _is_vectorized = true;
+}
+
+void stream_engine_base_t::handle_write (size_t bt, int ec) {
+    if (ec != 0) { _io_error = true; _output_stopped = true; return; }
+
+    // After write completes, reset exactly like libzmq (line 367-368)
+    if (!_is_vectorized) {
+        _outpos += bt; _outsize -= bt;
+        if (_outsize > 0) { start_write(); return; }
+    } else {
+        _batch_count = 0; _is_vectorized = false; _outsize = 0; _outpos = NULL;
+    }
+
+    if (unlikely (_encoder == NULL)) { _output_stopped = true; return; }
+    fill_out_batch();
+    if (_outsize > 0 || _batch_count > 0) start_write();
+    else _output_stopped = true;
+}
+
+void stream_engine_base_t::start_write () {
+    if (unlikely(_io_error) || (!_outsize && _batch_count == 0)) {
+        _output_stopped = true; return;
+    }
+    _output_stopped = false;
+    std::weak_ptr<int> sentinel = _lifetime_sentinel;
+    if (_is_vectorized) {
+        _stream->async_writev(_out_batch, _batch_count, [this, sentinel](size_t bt, int ec) {
+            if (!sentinel.expired()) handle_write(bt, ec);
+        });
+    } else {
+        _stream->async_write(_outpos, _outsize, [this, sentinel](size_t bt, int ec) {
+            if (!sentinel.expired()) handle_write(bt, ec);
+        });
+    }
 }
 
 void stream_engine_base_t::start_read () {
@@ -110,33 +146,6 @@ void stream_engine_base_t::handle_read (size_t bt, int ec) {
     if (!_input_stopped) start_read();
 }
 
-void stream_engine_base_t::start_write () {
-    if (unlikely(_io_error)) return;
-    _output_stopped = false;
-    std::weak_ptr<int> sentinel = _lifetime_sentinel;
-    if (_is_vectorized) {
-        _stream->async_writev(_out_batch, [this, sentinel](size_t bt, int ec) {
-            if (!sentinel.expired()) handle_write(bt, ec);
-        });
-    } else {
-        _stream->async_write(_outpos, _outsize, [this, sentinel](size_t bt, int ec) {
-            if (!sentinel.expired()) handle_write(bt, ec);
-        });
-    }
-}
-
-void stream_engine_base_t::handle_write (size_t, int ec) {
-    if (ec != 0) { _io_error = true; _output_stopped = true; return; }
-    
-    // Exactly mirroring libzmq: Release current batch and immediately try next
-    _outpos = NULL; _outsize = 0; _out_batch.clear(); _is_vectorized = false;
-    if (unlikely(_encoder == NULL)) { _output_stopped = true; return; }
-    
-    fill_out_batch();
-    if (_outsize > 0 || !_out_batch.empty()) start_write();
-    else _output_stopped = true;
-}
-
 void stream_engine_base_t::error (error_reason_t r) { if (_session) _session->engine_error(true, r); unplug(); }
 void stream_engine_base_t::unplug () { if (_plugged) { _stream->close(); _plugged = false; } }
 void stream_engine_base_t::zap_msg_available () {}
@@ -146,6 +155,5 @@ int stream_engine_base_t::pull_msg_from_session (msg_t *m) { return _session->pu
 int stream_engine_base_t::decode_and_push (msg_t *m) { return _session->push_msg(m); }
 int stream_engine_base_t::process_handshake_command (msg_t *) { return 0; }
 int stream_engine_base_t::next_handshake_command (msg_t *) { return 0; }
-std::string stream_engine_base_t::get_peer_address(const options_t&) { return ""; }
 
 } // namespace slk

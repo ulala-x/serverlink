@@ -3,15 +3,15 @@
 #ifndef SL_LB_HPP_INCLUDED
 #define SL_LB_HPP_INCLUDED
 
-#include "pipe.hpp"
 #include "../core/array.hpp"
+#include "../msg/msg.hpp"
+#include <vector>
 
 namespace slk
 {
-class msg_t;
 class pipe_t;
 
-class lb_t : public array_item_t<1>
+class lb_t
 {
   public:
     lb_t ();
@@ -23,18 +23,24 @@ class lb_t : public array_item_t<1>
 
     int send (msg_t *msg_);
     int sendpipe (msg_t *msg_, pipe_t **pipe_);
-    void flush ();
 
     bool has_out ();
 
   private:
+    // libzmq parity: Use array with swap-based active pipe management
     typedef array_t<pipe_t, 2> pipes_t;
     pipes_t _pipes;
 
-    pipes_t::size_type _active;
-    pipes_t::size_type _current;
+    // Number of active pipes (those that pass check_write)
+    int _active;
 
+    // Index of the pipe to send the next message to
+    int _current;
+
+    // True if we are in the middle of a multipart message
     bool _more;
+
+    // True if we are dropping the current multipart message
     bool _dropping;
 
     SL_NON_COPYABLE_NOR_MOVABLE (lb_t)

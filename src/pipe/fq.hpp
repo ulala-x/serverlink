@@ -1,21 +1,14 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-/* ServerLink - Ported from libzmq */
 
 #ifndef SL_FQ_HPP_INCLUDED
 #define SL_FQ_HPP_INCLUDED
 
 #include "../core/array.hpp"
-#include "../msg/blob.hpp"
-#include "../util/macros.hpp"
+#include "../msg/msg.hpp"
 
 namespace slk
 {
-class msg_t;
 class pipe_t;
-
-//  Class manages a set of inbound pipes. On receive it performs fair
-//  queueing so that senders gone berserk won't cause denial of
-//  service for decent senders.
 
 class fq_t
 {
@@ -24,30 +17,20 @@ class fq_t
     ~fq_t ();
 
     void attach (pipe_t *pipe_);
-    void activated (pipe_t *pipe_);
     void pipe_terminated (pipe_t *pipe_);
+    void activated (pipe_t *pipe_);
 
     int recv (msg_t *msg_);
     int recvpipe (msg_t *msg_, pipe_t **pipe_);
+
     bool has_in ();
 
-    // Get the number of pipes (for debugging).
-    size_t size () const { return _pipes.size (); }
-
   private:
-    //  Inbound pipes.
     typedef array_t<pipe_t, 1> pipes_t;
     pipes_t _pipes;
 
-    //  Number of active pipes. All the active pipes are located at the
-    //  beginning of the pipes array.
-    pipes_t::size_type _active;
-
-    //  Index of the next bound pipe to read a message from.
-    pipes_t::size_type _current;
-
-    //  If true, part of a multipart message was already received, but
-    //  there are following parts still waiting in the current pipe.
+    int _active;
+    int _current;
     bool _more;
 
     SL_NON_COPYABLE_NOR_MOVABLE (fq_t)
