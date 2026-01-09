@@ -1,18 +1,17 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #include <zmq.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <pthread.h>
-#include <unistd.h>
-#include <time.h>
+#include <stdlib.h> // For malloc, free, atoi
+#include <string.h> // For memset
+#include <pthread.h> // For pthread_t, pthread_create, pthread_join
+#include <unistd.h> // For usleep
+#include <time.h> // For clock_gettime, struct timespec
 
 #define MESSAGES_COUNT 50000
 #define LATENCY_COUNT 5000
 #define TCP_ADDR "tcp://127.0.0.1:19999"
 
 int server_ready = 0;
-int test_failed = 0;
 int global_msg_size = 64;
 
 void* run_server(void* arg) {
@@ -27,35 +26,35 @@ void* run_server(void* arg) {
     zmq_setsockopt(sock, ZMQ_RCVHWM, &hwm, sizeof(hwm));
 
     if (type == ZMQ_ROUTER) zmq_setsockopt(sock, ZMQ_ROUTING_ID, "SERVER", 6);
-    if (zmq_bind(sock, TCP_ADDR) != 0) { test_failed = 1; return NULL; }
+    if (zmq_bind(sock, TCP_ADDR) != 0) return NULL;
     if (type == ZMQ_SUB) zmq_setsockopt(sock, ZMQ_SUBSCRIBE, "", 0);
     
     server_ready = 1;
     char id[256];
-    int id_len = 0;
-    char* buffer = (char*)malloc(global_msg_size + 1024);
+    char buffer[1024 * 512]; // Increased buffer size for potentially large messages
 
-    // --- Wait for READY Signal ---
+    // --- Handshake matching bench_zmq_router.cpp ---
     if (type != ZMQ_PUB) {
         if (type == ZMQ_ROUTER) {
-            id_len = zmq_recv(sock, id, sizeof(id), 0);
+            int ilen = zmq_recv(sock, id, sizeof(id), 0);
+            zmq_recv(sock, buffer, sizeof(buffer), 0);
+            zmq_send(sock, id, ilen, ZMQ_SNDMORE);
+        } else {
+            zmq_recv(sock, buffer, sizeof(buffer), 0);
         }
-        zmq_recv(sock, buffer, global_msg_size + 1024, 0);
-        if (type == ZMQ_ROUTER) zmq_send(sock, id, id_len, ZMQ_SNDMORE);
         zmq_send(sock, "GO", 2, 0);
     }
 
     int count = (mode == 0) ? MESSAGES_COUNT : LATENCY_COUNT;
     for (int i = 0; i < count; i++) {
-        int cur_id_len = 0;
-        if (type == ZMQ_ROUTER) cur_id_len = zmq_recv(sock, id, sizeof(id), 0);
-        int data_len = zmq_recv(sock, buffer, global_msg_size + 1024, 0);
+        int id_len = 0;
+        if (type == ZMQ_ROUTER) id_len = zmq_recv(sock, id, sizeof(id), 0);
+        int data_len = zmq_recv(sock, buffer, sizeof(buffer), 0);
         if (mode == 1 && type != ZMQ_SUB) {
-            if (type == ZMQ_ROUTER) zmq_send(sock, id, cur_id_len, ZMQ_SNDMORE);
+            if (type == ZMQ_ROUTER) zmq_send(sock, id, id_len, ZMQ_SNDMORE);
             zmq_send(sock, buffer, data_len, 0);
         }
     }
-    free(buffer);
     zmq_close(sock);
     zmq_ctx_term(ctx);
     return NULL;
@@ -69,11 +68,10 @@ int main(int argc, char** argv) {
     int mode = atoi(argv[4]);
     int args[3] = {s_type, c_type, mode};
 
-    server_ready = 0; test_failed = 0;
+    server_ready = 0;
     pthread_t s_thread;
     pthread_create(&s_thread, NULL, run_server, args);
-    while(!server_ready && !test_failed) usleep(10000); 
-    if (test_failed) return 1;
+    while(!server_ready) usleep(10000);
 
     void* ctx = zmq_ctx_new();
     void* client_sock = zmq_socket(ctx, c_type);
@@ -89,7 +87,6 @@ int main(int argc, char** argv) {
     usleep(200000);
 
     char tmp[256];
-    // --- Send READY Signal ---
     if (c_type != ZMQ_SUB) {
         if (c_type == ZMQ_ROUTER) zmq_send(client_sock, "SERVER", 6, ZMQ_SNDMORE);
         zmq_send(client_sock, "READY", 5, 0);

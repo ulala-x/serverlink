@@ -18,6 +18,7 @@
 #include "../util/likely.hpp"
 #include "../protocol/wire.hpp"
 #include <asio.hpp>
+#include "../io/asio/tcp_stream.hpp"
 
 // TODO: Peer address retrieval needs to be adapted for Asio
 static std::string get_peer_address (const slk::options_t &options_) 
@@ -59,10 +60,12 @@ slk::stream_engine_base_t::stream_engine_base_t (
     _session (NULL),
     _socket (NULL),
     _has_handshake_stage (has_handshake_stage_),
-    _lifetime_sentinel (std::make_shared<int> (0))
+    _lifetime_sentinel (std::make_shared<int> (0)),
+    _is_vectorized (false)
 {
     const int rc = _tx_msg.init ();
     errno_assert (rc == 0);
+    _out_batch.reserve (16);
 }
 
 slk::stream_engine_base_t::~stream_engine_base_t () 
@@ -229,21 +232,32 @@ void slk::stream_engine_base_t::handle_read(size_t bytes_transferred, int error_
     }
 }
 
-void slk::stream_engine_base_t::start_write()
+void slk::stream_engine_base_t::start_write ()
 {
-    if (unlikely(_io_error) || !_outsize) {
+    if (unlikely (_io_error) || (!_outsize && _out_batch.empty())) {
         _output_stopped = true;
         return;
     }
-    
+
     _output_stopped = false;
 
     std::weak_ptr<int> sentinel = _lifetime_sentinel;
-    _stream->async_write(_outpos, _outsize,
-        [this, sentinel](size_t bytes_transferred, int error_code) {
+    
+    if (_is_vectorized) {
+        tcp_stream_t* s = static_cast<tcp_stream_t*>(_stream.get());
+        s->async_writev(_out_batch, [this, sentinel](size_t bt, int ec) {
             if (sentinel.expired()) return;
-            handle_write(bytes_transferred, error_code);
+            handle_write(bt, ec);
         });
+    } else {
+        _stream->async_write (
+          _outpos, _outsize,
+          [this, sentinel] (size_t bytes_transferred, int error_code) {
+              if (sentinel.expired ())
+                  return;
+              handle_write (bytes_transferred, error_code);
+          });
+    }
 }
 
 void slk::stream_engine_base_t::handle_write(size_t bytes_transferred, int error_code)
@@ -257,51 +271,56 @@ void slk::stream_engine_base_t::handle_write(size_t bytes_transferred, int error
         return;
     }
 
-    _outpos += bytes_transferred;
-    _outsize -= bytes_transferred;
+    if (!_is_vectorized) {
+        _outpos += bytes_transferred;
+        _outsize -= bytes_transferred;
 
-    // If there is more data in the buffer, continue writing.
-    if (_outsize > 0) {
-        start_write();
-        return;
+        if (_outsize > 0) {
+            start_write ();
+            return;
+        }
+    } else {
+        _out_batch.clear();
+        _is_vectorized = false;
     }
 
-    // All buffered data sent. Try to get more from the encoder.
     if (unlikely (_encoder == NULL)) {
         _output_stopped = true;
         return;
     }
 
-    // Batching: Pull as many messages as possible into the encoder
-    std::weak_ptr<int> sentinel = _lifetime_sentinel;
+    // High-Performance Vectorized Batching
     _outsize = 0;
     _outpos = NULL;
+    _out_batch.clear();
     
-    while (_outsize < static_cast<size_t>(_options.out_batch_size)) {
-        if (_encoder->is_empty()) {
+    std::weak_ptr<int> sentinel = _lifetime_sentinel;
+    
+    while (_out_batch.size() < 16) {
+        if (_encoder->is_empty ()) {
             if ((this->*_next_msg) (&_tx_msg) == -1)
                 break;
-            if (sentinel.expired()) return;
+            if (sentinel.expired ()) return;
             _encoder->load_msg (&_tx_msg);
         }
+
+        unsigned char *ptr = NULL;
+        size_t n = _encoder->encode (&ptr, _options.out_batch_size);
+        if (n > 0) {
+            _out_batch.push_back(asio::buffer(ptr, n));
+            _outsize += n;
+        }
         
-        unsigned char* buffer_ptr = _outpos ? (_outpos + _outsize) : NULL;
-        size_t n = _encoder->encode(&buffer_ptr, static_cast<size_t>(_options.out_batch_size) - _outsize);
-        
-        if (!_outpos) _outpos = buffer_ptr;
-        _outsize += n;
-        
-        if (!_encoder->is_empty()) // Message too large for remaining batch space or zero-copy
+        if (!_encoder->is_empty ())
             break;
     }
 
-    if (_outsize > 0) {
-        start_write();
-        return;
+    if (!_out_batch.empty()) {
+        _is_vectorized = true;
+        start_write ();
+    } else {
+        _output_stopped = true;
     }
-    
-    // No more data to send, output is now stopped.
-    _output_stopped = true;
 }
 
 
