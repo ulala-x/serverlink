@@ -612,6 +612,13 @@ void slk::stream_engine_base_t::mechanism_ready ()
         _metadata = new (std::nothrow) metadata_t (properties);
 
     _handshaking = false;
+    
+    //  Handshake is complete. Notify the session that we are ready to receive messages.
+    //  This creates the pipe if it doesn't exist.
+    _session->engine_ready ();
+
+    //  Check if there are any messages waiting to be sent.
+    restart_output ();
 }
 
 bool slk::stream_engine_base_t::init_properties (properties_t &properties_)

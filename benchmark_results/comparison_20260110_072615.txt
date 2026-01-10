@@ -1,0 +1,58 @@
+Performance Comparison Results
+Date: Sat Jan 10 07:26:15 KST 2026
+System: Linux ulalax-home 6.6.87.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux
+GCC: gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0
+
+============================================================================
+
+############################################################################
+#                         THROUGHPUT BENCHMARKS                            #
+############################################################################
+
+============================================================================
+  Throughput Test: 64 bytes × 100000 messages
+============================================================================
+
+─────────────────────── TCP Transport ───────────────────────
+
+[libzmq]
+
+=== libzmq ROUTER-ROUTER Throughput (tcp) ===
+message size: 64 [B]
+message count: 100000
+mean throughput: 4459707 [msg/s]
+mean throughput: 2283.370 [Mb/s]
+
+─────────────────────── inproc Transport ────────────────────
+
+[libzmq]
+FAILED
+
+─────────────────────── IPC Transport ───────────────────────
+
+[libzmq]
+
+=== libzmq ROUTER-ROUTER Throughput (ipc) ===
+message size: 64 [B]
+message count: 100000
+mean throughput: 3759116 [msg/s]
+mean throughput: 1924.667 [Mb/s]
+
+
+============================================================================
+  Throughput Test: 256 bytes × 100000 messages
+============================================================================
+
+─────────────────────── TCP Transport ───────────────────────
+
+[libzmq]
+
+=== libzmq ROUTER-ROUTER Throughput (tcp) ===
+message size: 256 [B]
+message count: 100000
+mean throughput: 2241348 [msg/s]
+mean throughput: 4590.282 [Mb/s]
+
+─────────────────────── inproc Transport ────────────────────
+
+[libzmq]
